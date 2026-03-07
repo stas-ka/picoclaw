@@ -186,6 +186,8 @@ _dynamic_users = _load_dynamic_users()
 _user_mode: dict[int, str] = {}
 # pending confirmation: chat_id → bash command string
 _pending_cmd: dict[int, str] = {}
+# per-user language: 'ru' or 'en', set on first incoming message/callback
+_user_lang: dict[int, str] = {}
 _vosk_model_cache = None   # lazy-loaded Vosk model singleton
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -213,20 +215,153 @@ def _deny(chat_id: int) -> None:
     bot.send_message(chat_id, "⛔ Access denied.")
     log.warning(f"Denied access from chat_id={chat_id}")
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+# i18n — language detection + string lookup
+# Telegram language_code starts with 'ru' for Russian; everything else → English.
+# ─────────────────────────────────────────────────────────────────────────────
+
+_STRINGS: dict[str, dict[str, str]] = {
+    "ru": {
+        # menu buttons
+        "btn_digest":       "📧  Почта",
+        "btn_chat":         "💬  Чат",
+        "btn_system":       "🖥️   Системный чат",
+        "btn_voice":        "🎤  Голосовой запрос",
+        "btn_admin":        "🔐  Админ",
+        # greetings
+        "greet":            "👋 *Pico* — что делаем?",
+        "choose":           "👋 Выберите режим:",
+        "admin_only":       "⛔ Только для администраторов.",
+        "cancelled":        "❌ Отменено.",
+        # modes
+        "chat_enter":       "💬 *Чат* — напишите что угодно.\nНажмите /menu для выхода.",
+        "system_enter":     "🖥️ *Системный чат* — опишите задачу, я предложу команду.\n_Примеры: «покажи диск», «список сервисов», «температура CPU»_\n\nНажмите /menu для выхода.",
+        "voice_enter":      "🎤 *Голосовой запрос*\n\nНажмите кнопку 🎤 в поле ввода Telegram, запишите вопрос по-русски и отправьте голосовое сообщение.\n\n_Бот распознаёт речь через Vosk и ответит текстом + голосом._\n\nНажмите 🔙 Menu чтобы выйти.",
+        "voice_hint":       "🎤 _Отправьте голосовое сообщение — нажмите 🎤 в поле ввода._",
+        # voice processing
+        "recognizing":      "🎤 _Распознаю речь…_",
+        "dl_error":         "❌ Ошибка загрузки аудио: {e}",
+        "decode_error":     "❌ Ошибка декодирования аудио (ffmpeg): {e}",
+        "ffmpeg_no_data":   "❌ ffmpeg не выдал данных — проверьте установку ffmpeg.",
+        "vosk_error":       "❌ Ошибка Vosk: {e}",
+        "not_recognized":   "🎤 _Речь не распознана. Говорите внятнее или используйте русский язык._",
+        "you_said":         "📝 *Вы сказали:*\n_{text}_\n\n⏳ _Спрашиваю picoclaw…_",
+        "no_answer":        "_(picoclaw не вернул ответ)_",
+        "gen_audio":        "🔊 _Генерирую аудио…_",
+        "audio_caption":    "🔊 Аудио ответ",
+        "audio_error":      "_Аудио не отправлено: {e}_",
+        "audio_na":         "_(Аудио недоступно — piper не установлен)_",
+        # admin
+        "no_guests":        "_Нет добавленных гостевых пользователей._",
+        "no_guests_del":    "_Нет гостевых пользователей для удаления._",
+        "guest_header":     "👥 *Гостевые пользователи:*",
+        "add_prompt":       "➕ *Добавить пользователя*\n\nВведите Telegram *chat_id* нового пользователя.\n_(Доступ: Почта, Чат, Голос)_\n\nОтмена: /menu",
+        "bad_id":           "❌ Некорректный chat_id — введите только цифры.",
+        "already_guest":    "ℹ️ Пользователь `{uid}` уже добавлен.",
+        "already_full":     "ℹ️ Пользователь `{uid}` уже имеет полный доступ.",
+        "user_added":       "✅ Пользователь `{uid}` добавлен как гость.\n_Доступ: Почта, Чат, Голос._",
+        "bad_id_rem":       "❌ Некорректный chat_id.",
+        "remove_prompt":    "🗑 *Удалить пользователя*\n\nГостевые пользователи:\n{lst}\n\nВведите *chat_id* для удаления. Отмена: /menu",
+        "user_removed":     "✅ Пользователь `{uid}` удалён.",
+        "user_not_found":   "ℹ️ Пользователь `{uid}` не найден в списке.",
+        # digest
+        "digest_header":    "📧 *Последний дайджест* _(создан {age:.1f}ч назад)_\n\n",
+        "digest_none":      "📧 Дайджест ещё не создан. Загружаю…",
+        "digest_hint":      "_Обновите, чтобы получить письма за последние 24ч._",
+        "btn_refresh_now":  "🔄  Обновить",
+        "fetching":         "⏳ Загружаю письма…",
+        "digest_fresh":     "📧 *Свежий дайджест*\n\n",
+        "digest_no_out":    "Нет данных от скрипта дайджеста.",
+    },
+    "en": {
+        # menu buttons
+        "btn_digest":       "📧  Mail Digest",
+        "btn_chat":         "💬  Free Chat",
+        "btn_system":       "🖥️   System Chat",
+        "btn_voice":        "🎤  Voice Session",
+        "btn_admin":        "🔐  Admin",
+        # greetings
+        "greet":            "👋 *Pico* — what can I do for you?",
+        "choose":           "👋 Choose a mode:",
+        "admin_only":       "⛔ Admins only.",
+        "cancelled":        "❌ Cancelled.",
+        # modes
+        "chat_enter":       "💬 *Free Chat* — type anything.\nPress /menu to exit.",
+        "system_enter":     "🖥️ *System Chat* — describe a task, I\u2019ll suggest a command.\n_Examples: show disk, list services, CPU temperature_\n\nPress /menu to exit.",
+        "voice_enter":      "🎤 *Voice Session*\n\nTap the 🎤 button in the Telegram input bar, record your question and send it.\n\n_Bot will recognise speech via Vosk and reply with text + voice._\n\nPress 🔙 Menu to exit.",
+        "voice_hint":       "🎤 _Send a voice message — tap 🎤 in the input bar._",
+        # voice processing
+        "recognizing":      "🎤 _Recognising speech…_",
+        "dl_error":         "❌ Audio download error: {e}",
+        "decode_error":     "❌ Audio decode error (ffmpeg): {e}",
+        "ffmpeg_no_data":   "❌ ffmpeg produced no output — check ffmpeg installation.",
+        "vosk_error":       "❌ Vosk error: {e}",
+        "not_recognized":   "🎤 _Speech not recognised. Speak more clearly or use Russian._",
+        "you_said":         "📝 *You said:*\n_{text}_\n\n⏳ _Asking picoclaw…_",
+        "no_answer":        "_(picoclaw returned no answer)_",
+        "gen_audio":        "🔊 _Generating audio…_",
+        "audio_caption":    "🔊 Audio reply",
+        "audio_error":      "_Audio not sent: {e}_",
+        "audio_na":         "_(Audio unavailable — piper not installed)_",
+        # admin
+        "no_guests":        "_No guest users added._",
+        "no_guests_del":    "_No guest users to remove._",
+        "guest_header":     "👥 *Guest users:*",
+        "add_prompt":       "➕ *Add user*\n\nEnter the Telegram *chat_id* of the new user.\n_(Access: Mail, Chat, Voice)_\n\nCancel: /menu",
+        "bad_id":           "❌ Invalid chat_id — digits only.",
+        "already_guest":    "ℹ️ User `{uid}` already added.",
+        "already_full":     "ℹ️ User `{uid}` already has full access.",
+        "user_added":       "✅ User `{uid}` added as guest.\n_Access: Mail, Chat, Voice._",
+        "bad_id_rem":       "❌ Invalid chat_id.",
+        "remove_prompt":    "🗑 *Remove user*\n\nGuest users:\n{lst}\n\nEnter *chat_id* to remove. Cancel: /menu",
+        "user_removed":     "✅ User `{uid}` removed.",
+        "user_not_found":   "ℹ️ User `{uid}` not found in list.",
+        # digest
+        "digest_header":    "📧 *Last digest* _(generated {age:.1f}h ago)_\n\n",
+        "digest_none":      "📧 No saved digest yet. Fetching now…",
+        "digest_hint":      "_Refresh to fetch new emails from the last 24h._",
+        "btn_refresh_now":  "🔄  Refresh now",
+        "fetching":         "⏳ Fetching emails…",
+        "digest_fresh":     "📧 *Fresh digest*\n\n",
+        "digest_no_out":    "No output from digest script.",
+    },
+}
+
+
+def _set_lang(chat_id: int, from_user) -> None:
+    """Detect and store the user's preferred language (ru or en)."""
+    lc = getattr(from_user, "language_code", "") or ""
+    _user_lang[chat_id] = "ru" if lc.lower().startswith("ru") else "en"
+
+
+def _lang(chat_id: int) -> str:
+    """Return stored language code for this chat_id, default 'en'."""
+    return _user_lang.get(chat_id, "en")
+
+
+def _t(chat_id: int, key: str, **kwargs) -> str:
+    """Look up a UI string by key for the user's language."""
+    lang = _lang(chat_id)
+    strings = _STRINGS.get(lang, _STRINGS["en"])
+    text = strings.get(key) or _STRINGS["en"].get(key, key)
+    return text.format(**kwargs) if kwargs else text
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Helpers
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _menu_keyboard(chat_id: int = 0) -> InlineKeyboardMarkup:
-    """Return the main menu keyboard filtered by the caller's role."""
+    """Return the main menu keyboard filtered by the caller's role, in the user's language."""
     kb = InlineKeyboardMarkup(row_width=1)
-    kb.add(InlineKeyboardButton("📧  Mail Digest",   callback_data="digest"))
-    kb.add(InlineKeyboardButton("💬  Free Chat",      callback_data="mode_chat"))
-    if not _is_guest(chat_id):          # guests cannot see System Chat
-        kb.add(InlineKeyboardButton("🖥️   System Chat",  callback_data="mode_system"))
-    kb.add(InlineKeyboardButton("🎤  Voice Session", callback_data="voice_session"))
-    if _is_admin(chat_id):              # admins get the Admin panel
-        kb.add(InlineKeyboardButton("🔐  Admin",         callback_data="admin_menu"))
+    kb.add(InlineKeyboardButton(_t(chat_id, "btn_digest"),  callback_data="digest"))
+    kb.add(InlineKeyboardButton(_t(chat_id, "btn_chat"),    callback_data="mode_chat"))
+    if not _is_guest(chat_id):
+        kb.add(InlineKeyboardButton(_t(chat_id, "btn_system"), callback_data="mode_system"))
+    kb.add(InlineKeyboardButton(_t(chat_id, "btn_voice"),   callback_data="voice_session"))
+    if _is_admin(chat_id):
+        kb.add(InlineKeyboardButton(_t(chat_id, "btn_admin"),  callback_data="admin_menu"))
     return kb
 
 
@@ -245,8 +380,9 @@ def _confirm_keyboard(cmd_hash: str) -> InlineKeyboardMarkup:
     return kb
 
 
-def _send_menu(chat_id: int, text: str = "Choose an action:") -> None:
+def _send_menu(chat_id: int, greeting: bool = True) -> None:
     _user_mode.pop(chat_id, None)
+    text = _t(chat_id, "greet") if greeting else _t(chat_id, "choose")
     bot.send_message(chat_id, text,
                      parse_mode="Markdown",
                      reply_markup=_menu_keyboard(chat_id))
@@ -365,13 +501,13 @@ def _handle_admin_menu(chat_id: int) -> None:
 
 def _handle_admin_list_users(chat_id: int) -> None:
     if not _dynamic_users:
-        bot.send_message(chat_id, "_Нет добавленных гостевых пользователей._",
+        bot.send_message(chat_id, _t(chat_id, "no_guests"),
                          parse_mode="Markdown", reply_markup=_admin_keyboard())
         return
     lines = [f"• `{uid}`" for uid in sorted(_dynamic_users)]
     bot.send_message(
         chat_id,
-        "👥 *Гостевые пользователи:*\n" + "\n".join(lines),
+        _t(chat_id, "guest_header") + "\n" + "\n".join(lines),
         parse_mode="Markdown",
         reply_markup=_admin_keyboard(),
     )
@@ -381,10 +517,7 @@ def _start_admin_add_user(chat_id: int) -> None:
     _user_mode[chat_id] = "admin_add_user"
     bot.send_message(
         chat_id,
-        "➕ *Добавить пользователя*\n\n"
-        "Введите Telegram *chat_id* нового пользователя.\n"
-        "_(Пользователь получит доступ к: Mail Digest, Free Chat, Voice Session)_\n\n"
-        "Отмена: /menu",
+        _t(chat_id, "add_prompt"),
         parse_mode="Markdown",
     )
 
@@ -392,16 +525,14 @@ def _start_admin_add_user(chat_id: int) -> None:
 def _finish_admin_add_user(admin_id: int, text: str) -> None:
     text = text.strip()
     if not text.lstrip("-").isdigit():
-        bot.send_message(admin_id,
-                         "❌ Некорректный chat_id — введите только цифры.",
-                         parse_mode="Markdown")
+        bot.send_message(admin_id, _t(admin_id, "bad_id"), parse_mode="Markdown")
         return
     uid = int(text)
     if uid in _dynamic_users:
-        bot.send_message(admin_id, f"ℹ️ Пользователь `{uid}` уже добавлен.",
+        bot.send_message(admin_id, _t(admin_id, "already_guest", uid=uid),
                          parse_mode="Markdown", reply_markup=_admin_keyboard())
     elif uid in ALLOWED_USERS or uid in ADMIN_USERS:
-        bot.send_message(admin_id, f"ℹ️ Пользователь `{uid}` уже имеет полный доступ.",
+        bot.send_message(admin_id, _t(admin_id, "already_full", uid=uid),
                          parse_mode="Markdown", reply_markup=_admin_keyboard())
     else:
         _dynamic_users.add(uid)
@@ -409,8 +540,7 @@ def _finish_admin_add_user(admin_id: int, text: str) -> None:
         log.info(f"Admin {admin_id} added guest user {uid}")
         bot.send_message(
             admin_id,
-            f"✅ Пользователь `{uid}` добавлен как гость.\n"
-            f"_Доступ: Mail Digest, Free Chat, Voice Session._",
+            _t(admin_id, "user_added", uid=uid),
             parse_mode="Markdown",
             reply_markup=_admin_keyboard(),
         )
@@ -419,16 +549,14 @@ def _finish_admin_add_user(admin_id: int, text: str) -> None:
 
 def _start_admin_remove_user(chat_id: int) -> None:
     if not _dynamic_users:
-        bot.send_message(chat_id, "_Нет гостевых пользователей для удаления._",
+        bot.send_message(chat_id, _t(chat_id, "no_guests_del"),
                          parse_mode="Markdown", reply_markup=_admin_keyboard())
         return
     _user_mode[chat_id] = "admin_remove_user"
-    lines = [f"• `{uid}`" for uid in sorted(_dynamic_users)]
+    lst = "\n".join(f"• `{uid}`" for uid in sorted(_dynamic_users))
     bot.send_message(
         chat_id,
-        "🗑 *Удалить пользователя*\n\n"
-        "Текущие гостевые пользователи:\n" + "\n".join(lines) + "\n\n"
-        "Введите *chat_id* для удаления. Отмена: /menu",
+        _t(chat_id, "remove_prompt", lst=lst),
         parse_mode="Markdown",
     )
 
@@ -436,18 +564,17 @@ def _start_admin_remove_user(chat_id: int) -> None:
 def _finish_admin_remove_user(admin_id: int, text: str) -> None:
     text = text.strip()
     if not text.lstrip("-").isdigit():
-        bot.send_message(admin_id, "❌ Некорректный chat_id.",
-                         parse_mode="Markdown")
+        bot.send_message(admin_id, _t(admin_id, "bad_id_rem"), parse_mode="Markdown")
         return
     uid = int(text)
     if uid in _dynamic_users:
         _dynamic_users.discard(uid)
         _save_dynamic_users()
         log.info(f"Admin {admin_id} removed guest user {uid}")
-        bot.send_message(admin_id, f"✅ Пользователь `{uid}` удалён.",
+        bot.send_message(admin_id, _t(admin_id, "user_removed", uid=uid),
                          parse_mode="Markdown", reply_markup=_admin_keyboard())
     else:
-        bot.send_message(admin_id, f"ℹ️ Пользователь `{uid}` не найден в списке.",
+        bot.send_message(admin_id, _t(admin_id, "user_not_found", uid=uid),
                          parse_mode="Markdown", reply_markup=_admin_keyboard())
     _user_mode.pop(admin_id, None)
 
@@ -464,26 +591,26 @@ def _handle_digest(chat_id: int) -> None:
     if last.exists() and last.stat().st_size > 0:
         text = last.read_text(encoding="utf-8", errors="replace").strip()
         age_h = (time.time() - last.stat().st_mtime) / 3600
-        header = f"📧 *Last digest* _(generated {age_h:.1f}h ago)_\n\n"
+        header = _t(chat_id, "digest_header", age=age_h)
         bot.send_message(chat_id, header + _truncate(text), parse_mode="Markdown")
     else:
-        bot.send_message(chat_id, "📧 No saved digest yet. Fetching now…")
+        bot.send_message(chat_id, _t(chat_id, "digest_none"))
         _refresh_digest(chat_id)
         return
 
     # Offer refresh
     kb = InlineKeyboardMarkup(row_width=2)
     kb.add(
-        InlineKeyboardButton("🔄  Refresh now", callback_data="digest_refresh"),
-        InlineKeyboardButton("🔙  Menu",        callback_data="menu"),
+        InlineKeyboardButton(_t(chat_id, "btn_refresh_now"), callback_data="digest_refresh"),
+        InlineKeyboardButton("🔙  Menu",                     callback_data="menu"),
     )
-    bot.send_message(chat_id, "_Refresh to fetch new emails from the last 24h._",
+    bot.send_message(chat_id, _t(chat_id, "digest_hint"),
                      parse_mode="Markdown", reply_markup=kb)
 
 
 def _refresh_digest(chat_id: int) -> None:
     """Run gmail_digest.py in background and report result."""
-    msg = bot.send_message(chat_id, "⏳ Fetching emails…")
+    msg = bot.send_message(chat_id, _t(chat_id, "fetching"))
 
     def _run():
         rc, out = _run_subprocess(
@@ -493,17 +620,17 @@ def _refresh_digest(chat_id: int) -> None:
         if rc == 0 and out:
             text = out.strip()
         else:
-            text = out or "No output from digest script."
+            text = out or _t(chat_id, "digest_no_out")
 
         try:
             bot.edit_message_text(
-                f"📧 *Fresh digest*\n\n{_truncate(text)}",
+                _t(chat_id, "digest_fresh") + _truncate(text),
                 chat_id, msg.message_id,
                 parse_mode="Markdown",
                 reply_markup=_back_keyboard(),
             )
         except Exception:
-            bot.send_message(chat_id, f"📧 *Fresh digest*\n\n{_truncate(text)}",
+            bot.send_message(chat_id, _t(chat_id, "digest_fresh") + _truncate(text),
                              parse_mode="Markdown", reply_markup=_back_keyboard())
 
     threading.Thread(target=_run, daemon=True).start()
@@ -725,11 +852,7 @@ def _start_voice_session(chat_id: int) -> None:
     _user_mode[chat_id] = "voice"
     bot.send_message(
         chat_id,
-        "🎤 *Режим голосового запроса*\n\n"
-        "Нажмите кнопку 🎤 в поле ввода Telegram, запишите вопрос по-русски "
-        "и отправьте голосовое сообщение.\n\n"
-        "_Бот распознает речь через Vosk и ответит текстом + голосом._\n\n"
-        "Нажмите 🔙 Menu чтобы выйти из режима.",
+        _t(chat_id, "voice_enter"),
         parse_mode="Markdown",
         reply_markup=_back_keyboard(),
     )
@@ -742,7 +865,7 @@ def _handle_voice_message(chat_id: int, voice_obj) -> None:
         → picoclaw LLM → text answer + Piper TTS voice note.
     Runs in a background thread so the handler returns immediately.
     """
-    msg = bot.send_message(chat_id, "🎤 _Распознаю речь…_", parse_mode="Markdown")
+    msg = bot.send_message(chat_id, _t(chat_id, "recognizing"), parse_mode="Markdown")
 
     def _run():
         _timing: dict[str, float] = {}
@@ -755,19 +878,19 @@ def _handle_voice_message(chat_id: int, voice_obj) -> None:
             return "\n\n⏱ " + " · ".join(parts)
 
         # ── Download OGG from Telegram ──────────────────────────────────────
-        _t = time.time()
+        _ts = time.time()
         try:
             file_info = bot.get_file(voice_obj.file_id)
             ogg_bytes = bot.download_file(file_info.file_path)
         except Exception as e:
             _safe_edit(chat_id, msg.message_id,
-                       f"❌ Ошибка загрузки аудио: {e}",
+                       _t(chat_id, "dl_error", e=e),
                        reply_markup=_back_keyboard())
             return
-        _timing["Download"] = time.time() - _t
+        _timing["Download"] = time.time() - _ts
 
         # ── OGG → 16 kHz mono S16LE raw PCM (ffmpeg) ───────────────────────
-        _t = time.time()
+        _ts = time.time()
         try:
             ff = subprocess.Popen(
                 ["ffmpeg", "-i", "pipe:0",
@@ -779,19 +902,19 @@ def _handle_voice_message(chat_id: int, voice_obj) -> None:
             raw_pcm, _ = ff.communicate(input=ogg_bytes, timeout=30)
         except Exception as e:
             _safe_edit(chat_id, msg.message_id,
-                       f"❌ Ошибка декодирования аудио (ffmpeg): {e}",
+                       _t(chat_id, "decode_error", e=e),
                        reply_markup=_back_keyboard())
             return
-        _timing["Convert"] = time.time() - _t
+        _timing["Convert"] = time.time() - _ts
 
         if not raw_pcm:
             _safe_edit(chat_id, msg.message_id,
-                       "❌ ffmpeg не выдал данных — проверьте установку ffmpeg.",
+                       _t(chat_id, "ffmpeg_no_data"),
                        reply_markup=_back_keyboard())
             return
 
         # ── Vosk STT ─────────────────────────────────────────────────────────
-        _t = time.time()
+        _ts = time.time()
         try:
             import vosk as _vosk_lib
             import json as _json
@@ -804,29 +927,29 @@ def _handle_voice_message(chat_id: int, voice_obj) -> None:
             text = _json.loads(rec.FinalResult()).get("text", "").strip()
         except Exception as e:
             _safe_edit(chat_id, msg.message_id,
-                       f"❌ Ошибка Vosk: {e}",
+                       _t(chat_id, "vosk_error", e=e),
                        reply_markup=_back_keyboard())
             return
-        _timing["STT"] = time.time() - _t
+        _timing["STT"] = time.time() - _ts
 
         if not text:
             _safe_edit(chat_id, msg.message_id,
-                       "🎤 _Речь не распознана. Говорите внятнее или используйте русский язык._",
+                       _t(chat_id, "not_recognized"),
                        parse_mode="Markdown",
                        reply_markup=_back_keyboard())
             return
 
         # ── Show transcript, call picoclaw ────────────────────────────────────
         _safe_edit(chat_id, msg.message_id,
-                   f"📝 *Вы сказали:*\n_{text}_\n\n⏳ _Спрашиваю picoclaw…_",
+                   _t(chat_id, "you_said", text=text),
                    parse_mode="Markdown")
 
-        _t = time.time()
+        _ts = time.time()
         response = _ask_picoclaw(text, timeout=90)
-        _timing["LLM"] = time.time() - _t
+        _timing["LLM"] = time.time() - _ts
 
         if not response:
-            response = "_(picoclaw не вернул ответ)_"
+            response = _t(chat_id, "no_answer")
 
         # ── Text answer ───────────────────────────────────────────────────────
         bot.send_message(
@@ -837,25 +960,25 @@ def _handle_voice_message(chat_id: int, voice_obj) -> None:
         )
 
         # ── Piper TTS → send as Telegram voice note ───────────────────────────
-        tts_msg = bot.send_message(chat_id, "🔊 _Генерирую аудио…_",
+        tts_msg = bot.send_message(chat_id, _t(chat_id, "gen_audio"),
                                    parse_mode="Markdown")
-        _t = time.time()
+        _ts = time.time()
         ogg = _tts_to_ogg(response)
-        _timing["TTS"] = time.time() - _t
+        _timing["TTS"] = time.time() - _ts
 
         if ogg:
             try:
-                caption = "🔊 Аудио ответ" + _fmt_timing()
+                caption = _t(chat_id, "audio_caption") + _fmt_timing()
                 bot.send_voice(chat_id, io.BytesIO(ogg), caption=caption)
                 bot.delete_message(chat_id, tts_msg.message_id)
             except Exception as e:
                 log.warning(f"send_voice failed: {e}")
                 _safe_edit(chat_id, tts_msg.message_id,
-                           f"_Аудио не отправлено: {e}_",
+                           _t(chat_id, "audio_error", e=e),
                            parse_mode="Markdown")
         else:
             _safe_edit(chat_id, tts_msg.message_id,
-                       "_(Аудио недоступно — piper не установлен)_",
+                       _t(chat_id, "audio_na"),
                        parse_mode="Markdown")
 
     threading.Thread(target=_run, daemon=True).start()
@@ -871,7 +994,8 @@ def cmd_menu(message):
     if not _is_allowed(message.chat.id):
         _deny(message.chat.id)
         return
-    _send_menu(message.chat.id, "👋 *Pico* — что делаем?")
+    _set_lang(message.chat.id, message.from_user)
+    _send_menu(message.chat.id)
 
 
 @bot.message_handler(commands=["status"])
@@ -879,6 +1003,7 @@ def cmd_status(message):
     if not _is_allowed(message.chat.id):
         _deny(message.chat.id)
         return
+    _set_lang(message.chat.id, message.from_user)
     cid = message.chat.id
     mode = _user_mode.get(cid, "—")
     rc, out = _run_subprocess(["systemctl", "is-active",
@@ -901,14 +1026,14 @@ def callback_handler(call):
         bot.answer_callback_query(call.id, "⛔ Access denied")
         return
 
+    _set_lang(cid, call.from_user)   # update language on every interaction
     data = call.data
     bot.answer_callback_query(call.id)  # dismiss spinner
 
     if data == "menu":
         _user_mode.pop(cid, None)
         _pending_cmd.pop(cid, None)
-        bot.send_message(cid, "👋 *Pico* — что делаем?",
-                         parse_mode="Markdown", reply_markup=_menu_keyboard(cid))
+        _send_menu(cid)
 
     elif data == "digest":
         _handle_digest(cid)
@@ -918,50 +1043,42 @@ def callback_handler(call):
 
     elif data == "mode_chat":
         _user_mode[cid] = "chat"
-        bot.send_message(cid,
-                         "💬 *Free Chat* — напишите что угодно.\n"
-                         "Нажмите /menu для выхода.",
-                         parse_mode="Markdown")
+        bot.send_message(cid, _t(cid, "chat_enter"), parse_mode="Markdown")
 
     elif data == "mode_system":
         _user_mode[cid] = "system"
-        bot.send_message(cid,
-                         "🖥️ *System Chat* — опишите задачу, я предложу команду.\n"
-                         "_Примеры: «покажи диск», «список сервисов», "
-                         "«температура CPU», «последние 20 строк voice.log»_\n\n"
-                         "Нажмите /menu для выхода.",
-                         parse_mode="Markdown")
+        bot.send_message(cid, _t(cid, "system_enter"), parse_mode="Markdown")
 
     elif data == "voice_session":
         _start_voice_session(cid)
 
     elif data == "admin_menu":
         if not _is_admin(cid):
-            bot.send_message(cid, "⛔ Только для администраторов.")
+            bot.send_message(cid, _t(cid, "admin_only"))
         else:
             _handle_admin_menu(cid)
 
     elif data == "admin_add_user":
         if not _is_admin(cid):
-            bot.send_message(cid, "⛔ Только для администраторов.")
+            bot.send_message(cid, _t(cid, "admin_only"))
         else:
             _start_admin_add_user(cid)
 
     elif data == "admin_list_users":
         if not _is_admin(cid):
-            bot.send_message(cid, "⛔ Только для администраторов.")
+            bot.send_message(cid, _t(cid, "admin_only"))
         else:
             _handle_admin_list_users(cid)
 
     elif data == "admin_remove_user":
         if not _is_admin(cid):
-            bot.send_message(cid, "⛔ Только для администраторов.")
+            bot.send_message(cid, _t(cid, "admin_only"))
         else:
             _start_admin_remove_user(cid)
 
     elif data == "cancel":
         _pending_cmd.pop(cid, None)
-        bot.send_message(cid, "❌ Отменено.", reply_markup=_back_keyboard())
+        bot.send_message(cid, _t(cid, "cancelled"), reply_markup=_back_keyboard())
 
     elif data.startswith("run:"):
         _execute_pending_cmd(cid)
@@ -978,11 +1095,11 @@ def text_handler(message):
         _deny(cid)
         return
 
+    _set_lang(cid, message.from_user)
     mode = _user_mode.get(cid)
 
     if mode is None:
-        # No mode selected — show menu
-        _send_menu(cid, "👋 Выберите режим:")
+        _send_menu(cid, greeting=False)
         return
 
     if mode == "admin_add_user":
@@ -990,7 +1107,7 @@ def text_handler(message):
             _finish_admin_add_user(cid, message.text)
         else:
             _user_mode.pop(cid, None)
-            bot.send_message(cid, "⛔ Только для администраторов.")
+            bot.send_message(cid, _t(cid, "admin_only"))
         return
 
     elif mode == "admin_remove_user":
@@ -998,7 +1115,7 @@ def text_handler(message):
             _finish_admin_remove_user(cid, message.text)
         else:
             _user_mode.pop(cid, None)
-            bot.send_message(cid, "⛔ Только для администраторов.")
+            bot.send_message(cid, _t(cid, "admin_only"))
         return
 
     if mode == "chat":
@@ -1009,7 +1126,7 @@ def text_handler(message):
 
     elif mode == "voice":
         bot.send_message(cid,
-                         "🎤 _Отправьте голосовое сообщение — нажмите 🎤 в поле ввода._",
+                         _t(cid, "voice_hint"),
                          parse_mode="Markdown",
                          reply_markup=_back_keyboard())
 
@@ -1024,6 +1141,7 @@ def voice_handler(message):
     if not _is_allowed(cid):
         _deny(cid)
         return
+    _set_lang(cid, message.from_user)
     _handle_voice_message(cid, message.voice)
 
 
