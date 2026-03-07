@@ -2,6 +2,8 @@
 
 **@smartpico_bot** is a Telegram bot running on Raspberry Pi that provides AI chat, mail digest, system management, and voice interaction.
 
+> **New users:** When you first send `/start`, your request is queued for admin approval. You will be notified once approved.
+
 ---
 
 ## Getting Started
@@ -62,11 +64,36 @@ Send a voice note directly to the bot — it transcribes your speech offline (Vo
 ---
 
 ### 🔐 Admin Panel
-Manage guest user access. Visible only to **Admin** users.
+Full system management. Visible only to **Admin** users.
 
-- **Add user** — enter a Telegram chat ID to grant guest access (Mail, Chat, Voice).
-- **User list** — show all current guest users.
-- **Remove user** — revoke guest access by chat ID.
+#### User Management
+- **📋 Pending Requests** — list of users awaiting approval; badge shows pending count. Tap to **Approve** or **Block** each request.
+- **👥 User List** — show all registered users and their status (approved / blocked).
+- **➕ Add User** — grant a user access by entering their Telegram chat ID.
+- **➖ Remove User** — revoke access by Telegram chat ID.
+
+#### AI / LLM
+- **🤖 Switch LLM** — Change the active language model:
+  - OpenRouter (default) — 100+ models via free API
+  - OpenAI ChatGPT — gpt-4o, gpt-4o-mini, o3-mini, o1, gpt-4.5-preview
+  - YandexGPT *(planned)*
+- OpenAI API key is entered once and stored persistently.
+
+#### Voice Pipeline
+- **⚡ Voice Opts** — toggle optional STT/TTS speed optimisations:
+
+| Toggle | Effect | Time saving |
+|--------|--------|-------------|
+| Silence strip | Removes leading silence before STT | −6 s |
+| 8 kHz sample rate | Lighter Vosk processing | −7 s |
+| Warm Piper cache | Pre-loads TTS model at startup | −15 s cold start |
+| Parallel TTS thread | Text reply appears immediately while TTS generates | text in ~3 s |
+| Per-user audio toggle | Adds 🔇/🔊 button to every voice reply | skip TTS entirely |
+| Piper model in RAM | Copies ONNX model to `/dev/shm` | −13 s TTS load |
+
+#### System
+- **📜 Changelog** — browse full version history with release notes.
+- **🖥️ System Chat** — available from both admin and full-user menu.
 
 > To find a user's chat ID, ask them to message [@userinfobot](https://t.me/userinfobot) on Telegram.
 
@@ -86,11 +113,26 @@ Manage guest user access. Visible only to **Admin** users.
 
 | Role | Access |
 |------|--------|
-| 👑 **Admin** | All modes + Admin panel (add/remove users) |
+| 👑 **Admin** | All modes + full Admin panel (users, LLM, voice opts, changelog) |
 | 👤 **Full** | Mail, Chat, System Chat, Voice |
 | 👥 **Guest** | Mail, Chat, Voice |
+| ⏳ **Pending** | Registration submitted, awaiting admin approval |
+| 🚫 **Blocked** | Access denied by admin |
 
-Guest users are added by an admin via the Admin panel. Full users are configured in `bot.env` (`ALLOWED_USERS`). Admins are configured in `bot.env` (`ADMIN_USERS`).
+- **Admin** users are configured in `bot.env` (`ADMIN_USERS`).
+- **Full** users are configured in `bot.env` (`ALLOWED_USERS`).
+- **Guest** users are approved by an admin via the Pending Requests flow.
+- When an unknown user sends `/start`, they enter **Pending** state automatically.
+
+---
+
+## User Registration Flow
+
+1. New user sends `/start`.
+2. Bot replies: *"Your registration request has been submitted. Please wait for admin approval."*
+3. Admin receives a notification with **Approve** and **Block** buttons.
+4. On approval: user is added as Guest and notified. On block: user receives a declined message.
+5. The **📋 Pending Requests** button on the admin panel shows a live count of waiting requests.
 
 ---
 
@@ -123,3 +165,6 @@ Voice recognition and speech synthesis run **fully offline** on the Pi — no cl
 | Mail digest fails | Gmail credentials expired | Check IMAP App Password in `bot.env` |
 | "Admins only" on System Chat | You are a guest user | Ask admin to upgrade your access |
 | Voice not recognised | Spoke non-Russian | Use Russian (model is Russian-only) |
+| Button press does nothing | Markdown parse error (fixed in v2026.3.16–17) | Update bot to latest version |
+| Registration pending forever | Admin hasn't approved | Ask admin to check Pending Requests in admin panel |
+| `/start` shows wrong menu | Role mismatch in `bot.env` | Check `ALLOWED_USERS` / `ADMIN_USERS` in `bot.env` |

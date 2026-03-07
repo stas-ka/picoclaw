@@ -8,14 +8,7 @@
 
 ### 1.1 Telegram User Registration Workflow ✅
 
-When a new user sends `/start`, the bot registers them and notifies an admin.
-
-- [x] Capture Telegram ID, username, and registration timestamp
-- [x] Store registration status: `pending` / `approved` / `blocked`
-- [x] Send admin notification on new registration request
-- [x] Admin Telegram UI: list all pending registrations with approve/block buttons
-- [x] Admin actions per user: approve, block (badge count on admin panel button)
-- [x] Unregistered users get registration flow (pending/blocked/approved messages)
+✅ **Implemented** (v2026.3.15-rc1). Unknown users enter a registration flow on `/start`; admins approve/block via inline buttons; pending count badge shown on admin panel button.
 
 ### 1.2 Role-Based Access Control (RBAC) 🔲
 
@@ -144,7 +137,7 @@ Lightweight offline-capable knowledge base for personal/technical documents.
 | TTS (Piper `ru_RU-irina-medium`) | **~40 s** | ❌ bottleneck |
 | **Total** | **~58 s** | ❌ target: <15 s |
 
-### 5.2 Implemented optimisations ✅
+### 5.2 Active voice optimisations ✅
 
 | Opt | Bot menu toggle | Impact |
 |---|---|---|
@@ -220,45 +213,11 @@ Synchronize between local development machine and target Raspberry Pi.
 - [ ] Archive export for offline transfer
 - Covers: source code, scripts, configs, env templates, service files
 
-### 6.3 Backup System 🔲
+### 6.3 Backup System ✅
 
-#### 6.3.1 Full System Image Backup
+✅ **Implemented**. Scripts: `src/setup/backup_image.sh` (dd|zstd + SHA-256), `src/setup/install.sh` (fresh-install bootstrap), `src/setup/update.sh` (incremental update), `src/setup/backup_nextcloud.sh` (WebDAV upload/download/prune). Dependency manifests in `deploy/`.
 
-Full disk/partition image for hardware migration or disaster recovery.
-
-- [ ] Image backup script (`dd` or `rpi-clone`)
-- [ ] Compression: `zstd` or `gzip`
-- [ ] Checksum generation after image creation
-- [ ] Naming convention: `mico-image-rpi3-2026-03-07.img.zst`
-- [ ] Document restore procedure
-
-#### 6.3.2 Recovery / Installation Bundle
-
-Lightweight reproducible rebuild artifact stored in the project repository.
-
-Included: install scripts, update scripts, service files, config templates, package list
-
-- [ ] `src/setup/install.sh` — full fresh-install bootstrap
-- [ ] `src/setup/update.sh` — update existing install
-- [ ] Package dependency export (`dpkg --get-selections`)
-- [ ] Store in `/deploy` or `/ops` folder in repo
-- [ ] Git tag release-ready states
-
-#### 6.3.3 Remote Backup to Nextcloud
-
-```
-/Nextcloud/MicoBackups/
-  images/
-  recovery/
-  logs/
-```
-
-- [ ] Upload script: push image/bundle to Nextcloud (WebDAV)
-- [ ] Download script: pull and verify backup
-- [ ] Integrity check after upload (SHA-256)
-- [ ] Optional retention policy (keep last N backups)
-
-#### 6.3.4 Backup Policy
+#### 6.3 Backup Policy
 
 | Location | What to store |
 |---|---|
@@ -271,9 +230,14 @@ Rules:
 - Only reproducible, sanitized artifacts in version control
 - Use dated versioned filenames: `mico-recovery-bundle-2026-03-07.tar.gz`
 
----
+### 6.4 Update & Deployment Workflow
 
-## 7. Future / Experimental 💡
+- [x] `doc/update_strategy.md` created — covers SOP, rollback, parallel deploy, service restart timing
+- [ ] `src/setup/notify_maintenance.py` — pre-restart user notification script (see §3.1 of update_strategy.md)
+- [ ] `NOTIFY_USERS_ON_UPDATE` flag in `bot.env` — ping approved users on bot startup after version bump
+- [ ] Feature flags pattern in `bot.env` for gradual rollout
+
+---
 
 - [ ] Multi-user knowledge graph
 - [ ] Long-term AI memory (persistent across sessions, per user)

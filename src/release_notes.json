@@ -1,5 +1,17 @@
 [
   {
+    "version": "2026.3.17",
+    "date": "2026-03-07",
+    "title": "Fix admin menu Markdown parse failures (5 handlers)",
+    "notes": "- Voice Opts menu: escape status strings containing underscores (e.g. warm_piper) — was silently failing\n- Switch LLM confirm: removed parse_mode=Markdown with italic markers — was crashing silently\n- LLM menu + OpenAI sub-menu: plain-text output + try/except on all send calls\n- Pending Requests: escape user-supplied username/name through _escape_md() — any _ in a username broke the entire menu\n- All 5 admin handlers now have try/except with plain-text fallback"
+  },
+  {
+    "version": "2026.3.16",
+    "date": "2026-03-07",
+    "title": "Fix: Release Notes button in admin changelog menu",
+    "notes": "- _handle_admin_changelog: added try/except around Markdown send + plain-text fallback\n- Previously: button press triggered a Markdown parse exception that was swallowed — button appeared to do nothing\n- Admin → Changelog now reliably shows the full version history"
+  },
+  {
     "version": "2026.3.15-rc1",
     "date": "2026-03-07",
     "title": "RC1 — User Registration Workflow + Full Feature Overview",

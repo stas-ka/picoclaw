@@ -14,6 +14,7 @@ Local Russian voice assistant for Raspberry Pi, powered by [picoclaw](https://gi
 - **Voice pipeline optimization flags** — 5 optional toggles in the admin panel (silence strip, low sample rate, Piper warm-up, parallel TTS, per-user audio toggle)
 - **Versioned release notes + admin notification** — bump `BOT_VERSION`, add entry to `release_notes.json`, deploy; admins are notified automatically on first startup
 - **Internationalization** — Russian and English UI strings via `strings.json`; language toggle per user
+- **Backup & Recovery system** — full SD card image backup with zstd compression + SHA-256 checksum; Nextcloud WebDAV upload/download/prune; fresh-install bootstrap and incremental update scripts
 - Works on Raspberry Pi 3 B+ and newer (aarch64 / armv7)
 
 ---
@@ -23,8 +24,12 @@ Local Russian voice assistant for Raspberry Pi, powered by [picoclaw](https://gi
 | Document | Description |
 |---|---|
 | [doc/architecture.md](doc/architecture.md) | Full pipeline diagram, all components, file layout, configuration reference |
+| [doc/update_strategy.md](doc/update_strategy.md) | Update & deployment strategy: pre-user notification, rollback, parallel deployment, release SOP |
+| [doc/howto_bot.md](doc/howto_bot.md) | End-user guide for the Telegram bot — menus, roles, voice, admin panel |
 | [doc/hardware-performance-analysis.md](doc/hardware-performance-analysis.md) | Hardware bottleneck analysis, Pi 3 tuning guide, upgrade path for voice / LLM / RAG use cases |
 | [backup/device/README.md](backup/device/README.md) | Captured device configuration snapshot + restore instructions |
+| [deploy/packages.txt](deploy/packages.txt) | Project-essential apt packages for fresh install |
+| [deploy/requirements.txt](deploy/requirements.txt) | Python pip package requirements |
 
 ---
 

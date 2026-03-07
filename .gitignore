@@ -6,3 +6,9 @@
 __pycache__/
 *.pyc
 *.pyo
+
+# Test artifacts — captured audio / raw recordings
+src/tests/voice/audio_*
+src/tests/voice/*.ogg
+src/tests/voice/*.wav
+src/tests/voice/*.pcm

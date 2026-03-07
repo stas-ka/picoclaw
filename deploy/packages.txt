@@ -1,0 +1,21 @@
+# Pico Bot — Project-essential apt packages
+# Install with: sudo apt-get install -y $(grep -v '#' packages.txt | tr '\n' ' ')
+# Generated from OpenClawPI (Raspberry Pi 3 B+, Raspberry Pi OS Bookworm aarch64)
+# Last updated: 2026-03-07
+
+# --- Runtime dependencies ---
+ffmpeg                # OGG→WAV conversion for voice pipeline
+portaudio19-dev       # PortAudio library (required by sounddevice Python package)
+espeak-ng             # TTS phoneme engine (Piper dependency)
+python3               # Main runtime
+python3-pip           # pip3 for Python packages
+
+# --- Build tools ---
+build-essential       # gcc, make etc. (needed for some pip packages with C extensions)
+
+# --- Utilities ---
+git                   # Source code management
+curl                  # HTTP client
+wget                  # File download
+zstd                  # Compression (backup_image.sh)
+cron                  # Scheduled jobs (gmail_digest daily cron)

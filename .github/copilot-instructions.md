@@ -365,6 +365,20 @@ The authoritative source for service file content is `src/services/`. The Pi's `
 
 ---
 
+## TODO.md Maintenance Rule
+
+**TODO.md is the single source of truth for planned, in-progress, and completed work. Keep it current at all times.**
+
+Rules:
+- When a feature or task is **fully implemented and deployed**, collapse the detail checklist into a single `✅ Implemented (vX.Y.Z)` summary line. Do **not** leave behind a list of `[x]` items — they add noise without value.
+- When planning new work, add a section to `TODO.md` **before** writing code, using `🔲 Planned` status.
+- When work is **in progress**, change the status to `🔄 In progress`.
+- **Never let implemented items accumulate as clutter.** Audit `TODO.md` at the end of every significant feature or release cycle.
+- When starting a new session, check `TODO.md` to understand what's pending vs done.
+- When a new `BOT_VERSION` is released, update `TODO.md` to reflect the new completed state.
+
+---
+
 ## Documentation Maintenance Rule
 
 **When you add new functionality, change the architecture, add a new service, script, or component, or make any significant change to how the system works, you MUST update the relevant documents:**

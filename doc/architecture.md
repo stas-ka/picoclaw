@@ -323,6 +323,7 @@ systemd
   voice.log                   ← voice assistant log (append)
   digest.log                  ← Gmail digest log
   last_digest.txt             ← last digest output (read by menu bot)
+  registrations.json          ← user registration records: pending/approved/blocked (auto-created)
 
 /usr/local/bin/piper          ← Piper wrapper script
 /usr/local/share/piper/       ← Piper binary + bundled libs (libonnxruntime, etc.)
@@ -340,6 +341,10 @@ systemd
   picoclaw-voice.service
   picoclaw-telegram.service
 
+/mnt/ssd/backups/images/               ← full SD card image backups (optional, requires USB SSD)
+  mico-image-rpi3-YYYY-MM-DD.img.zst   ← compressed image (zstd)
+  mico-image-rpi3-YYYY-MM-DD.img.zst.sha256
+
 /etc/modprobe.d/
   usb-audio-fix.conf          ← options snd-usb-audio implicit_fb=1
 ```
@@ -352,7 +357,7 @@ systemd
 
 | Constant | Default | Env Override | Description |
 |---|---|---|---|
-| `BOT_VERSION` | `"2026.3.7"` | — | Version string; bump on every deployment |
+| `BOT_VERSION` | `"2026.3.15-rc1"` | — | Version string; bump on every deployment |
 | `RELEASE_NOTES_FILE` | `release_notes.json` next to script | `RELEASE_NOTES_FILE` | Path to versioned changelog JSON |
 | `LAST_NOTIFIED_FILE` | `~/.picoclaw/last_notified_version.txt` | — | Tracks last admin-notified version |
 | `_VOICE_OPTS_FILE` | `~/.picoclaw/voice_opts.json` | — | Persistent voice optimization flags |
@@ -361,6 +366,7 @@ systemd
 | `VOICE_SAMPLE_RATE` | `16000` | — | Base Vosk decode sample rate (Hz) |
 | `TTS_MAX_CHARS` | `200` | — | Max characters per TTS chunk (prevents timeout) |
 | `STRINGS_FILE` | `strings.json` next to script | `STRINGS_FILE` | i18n UI text file (ru/en) |
+| `REGISTRATIONS_FILE` | `~/.picoclaw/registrations.json` | `REGISTRATIONS_FILE` | User registration records (pending/approved/blocked) |
 
 ### `voice_assistant.py` CONFIG
 
@@ -379,3 +385,40 @@ systemd
 | `silence_timeout` | `2.0` | — | Seconds of silence to end recording |
 | `max_phrase_duration` | `15.0` | — | Max command recording length (s) |
 | `min_phrase_chars` | `3` | — | Minimum chars to accept STT result |
+
+---
+
+## Backup System (§6.3)
+
+Three-tier backup strategy:
+
+| Tier | Location | What | Scripts |
+|---|---|---|---|
+| Source | GitHub (`master`) | Code, configs, service files, docs | git push |
+| Image | `/mnt/ssd/backups/images/` | Full SD card `.img.zst` | `src/setup/backup_image.sh` |
+| Remote | Nextcloud `/MicoBackups/` | Images + recovery bundles | `src/setup/backup_nextcloud.sh` |
+
+### Scripts
+
+| Script | Purpose |
+|---|---|
+| `src/setup/backup_image.sh` | Full SD card image backup via `dd | zstd`; SHA-256 checksum; prints restore instructions |
+| `src/setup/backup_nextcloud.sh` | Upload/download/list/prune backups on Nextcloud via WebDAV (curl); SHA-256 verify |
+| `src/setup/install.sh` | Complete fresh-install bootstrap: apt packages, pip packages, picoclaw binary, Vosk model, Piper TTS, service units, cron |
+| `src/setup/update.sh` | Incremental update: re-deploy bot files, sync changed service units, restart active services |
+
+### Recovery / Installation Bundle (`deploy/`)
+
+| File | Description |
+|---|---|
+| `deploy/packages.txt` | Project-essential apt packages (annotated) |
+| `deploy/requirements.txt` | Python pip requirements |
+
+### Configuration — Nextcloud keys in `bot.env`
+
+| Key | Description |
+|---|---|
+| `NEXTCLOUD_URL` | Nextcloud base URL, e.g. `https://cloud.example.com` |
+| `NEXTCLOUD_USER` | Nextcloud username |
+| `NEXTCLOUD_PASS` | Nextcloud app password |
+| `NEXTCLOUD_REMOTE` | WebDAV sub-path, default `/MicoBackups` |
