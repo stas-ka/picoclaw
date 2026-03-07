@@ -1058,7 +1058,13 @@ def callback_handler(call):
         _start_voice_session(cid)
 
     elif data == "help":
-        bot.send_message(cid, _t(cid, "help_text"),
+        if _is_admin(cid):
+            help_key = "help_text_admin"
+        elif _is_guest(cid):
+            help_key = "help_text_guest"
+        else:
+            help_key = "help_text"
+        bot.send_message(cid, _t(cid, help_key),
                          parse_mode="Markdown",
                          reply_markup=_back_keyboard())
 
