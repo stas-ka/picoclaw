@@ -27,6 +27,8 @@ Config (env vars or ~/.picoclaw/bot.env):
   PIPER_BIN         path to Piper TTS binary  (default /usr/local/bin/piper)
   PIPER_MODEL       path to Piper .onnx voice model
   XDG_RUNTIME_DIR   PipeWire runtime dir      (default /run/user/1000)
+  VOICE_TIMING_DEBUG  set to 1/true to append per-step timing to voice replies
+                      (for testing only — leave 0 in production)
 """
 
 import logging
@@ -97,6 +99,8 @@ VOICE_SAMPLE_RATE     = 16000
 VOICE_CHUNK_SIZE      = 4000      # 250 ms at 16 kHz
 VOICE_SILENCE_TIMEOUT = 4.0       # seconds of silence → auto-stop
 VOICE_MAX_DURATION    = 30.0      # hard session cap (seconds)
+# When True, appends per-step timing footer to voice replies (test mode only)
+VOICE_TIMING_DEBUG    = os.environ.get("VOICE_TIMING_DEBUG", "0").lower() in ("1", "true", "yes")
 
 if not BOT_TOKEN:
     raise RuntimeError("BOT_TOKEN not set. Add it to ~/.picoclaw/bot.env")
@@ -492,7 +496,7 @@ def _tts_to_ogg(text: str) -> Optional[bytes]:
         )
         piper.stdin.write(text.encode("utf-8"))
         piper.stdin.close()
-        ogg_bytes, _ = ffmpeg.communicate(timeout=30)
+        ogg_bytes, _ = ffmpeg.communicate(timeout=90)
         piper.wait(timeout=5)
         return ogg_bytes or None
     except Exception as e:
@@ -525,7 +529,17 @@ def _handle_voice_message(chat_id: int, voice_obj) -> None:
     msg = bot.send_message(chat_id, "🎤 _Распознаю речь…_", parse_mode="Markdown")
 
     def _run():
+        _timing: dict[str, float] = {}
+
+        def _fmt_timing() -> str:
+            """Return timing footer string (empty if VOICE_TIMING_DEBUG is off)."""
+            if not VOICE_TIMING_DEBUG or not _timing:
+                return ""
+            parts = [f"{k} {v:.0f}s" for k, v in _timing.items()]
+            return "\n\n⏱ " + " · ".join(parts)
+
         # ── Download OGG from Telegram ──────────────────────────────────────
+        _t = time.time()
         try:
             file_info = bot.get_file(voice_obj.file_id)
             ogg_bytes = bot.download_file(file_info.file_path)
@@ -534,8 +548,10 @@ def _handle_voice_message(chat_id: int, voice_obj) -> None:
                        f"❌ Ошибка загрузки аудио: {e}",
                        reply_markup=_back_keyboard())
             return
+        _timing["Download"] = time.time() - _t
 
         # ── OGG → 16 kHz mono S16LE raw PCM (ffmpeg) ───────────────────────
+        _t = time.time()
         try:
             ff = subprocess.Popen(
                 ["ffmpeg", "-i", "pipe:0",
@@ -550,6 +566,7 @@ def _handle_voice_message(chat_id: int, voice_obj) -> None:
                        f"❌ Ошибка декодирования аудио (ffmpeg): {e}",
                        reply_markup=_back_keyboard())
             return
+        _timing["Convert"] = time.time() - _t
 
         if not raw_pcm:
             _safe_edit(chat_id, msg.message_id,
@@ -558,6 +575,7 @@ def _handle_voice_message(chat_id: int, voice_obj) -> None:
             return
 
         # ── Vosk STT ─────────────────────────────────────────────────────────
+        _t = time.time()
         try:
             import vosk as _vosk_lib
             import json as _json
@@ -573,6 +591,7 @@ def _handle_voice_message(chat_id: int, voice_obj) -> None:
                        f"❌ Ошибка Vosk: {e}",
                        reply_markup=_back_keyboard())
             return
+        _timing["STT"] = time.time() - _t
 
         if not text:
             _safe_edit(chat_id, msg.message_id,
@@ -586,14 +605,17 @@ def _handle_voice_message(chat_id: int, voice_obj) -> None:
                    f"📝 *Вы сказали:*\n_{text}_\n\n⏳ _Спрашиваю picoclaw…_",
                    parse_mode="Markdown")
 
-        response = _ask_picoclaw(text, timeout=60)
+        _t = time.time()
+        response = _ask_picoclaw(text, timeout=90)
+        _timing["LLM"] = time.time() - _t
+
         if not response:
             response = "_(picoclaw не вернул ответ)_"
 
         # ── Text answer ───────────────────────────────────────────────────────
         bot.send_message(
             chat_id,
-            f"🤖 *Picoclaw:*\n{_truncate(response)}",
+            f"🤖 *Picoclaw:*\n{_truncate(response)}{_fmt_timing()}",
             parse_mode="Markdown",
             reply_markup=_back_keyboard(),
         )
@@ -601,10 +623,14 @@ def _handle_voice_message(chat_id: int, voice_obj) -> None:
         # ── Piper TTS → send as Telegram voice note ───────────────────────────
         tts_msg = bot.send_message(chat_id, "🔊 _Генерирую аудио…_",
                                    parse_mode="Markdown")
+        _t = time.time()
         ogg = _tts_to_ogg(response)
+        _timing["TTS"] = time.time() - _t
+
         if ogg:
             try:
-                bot.send_voice(chat_id, io.BytesIO(ogg), caption="🔊 Аудио ответ")
+                caption = "🔊 Аудио ответ" + _fmt_timing()
+                bot.send_voice(chat_id, io.BytesIO(ogg), caption=caption)
                 bot.delete_message(chat_id, tts_msg.message_id)
             except Exception as e:
                 log.warning(f"send_voice failed: {e}")
