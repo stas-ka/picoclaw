@@ -1091,8 +1091,17 @@ def _notify_admins_new_version() -> None:
 def _handle_admin_changelog(chat_id: int) -> None:
     """Show the full changelog in the admin panel."""
     text = f"📝 *Release Notes*  (current: v{BOT_VERSION})\n" + _get_changelog_text()
-    bot.send_message(chat_id, text, parse_mode="Markdown",
-                     reply_markup=_admin_keyboard())
+    try:
+        bot.send_message(chat_id, text, parse_mode="Markdown",
+                         reply_markup=_admin_keyboard())
+    except Exception as e:
+        log.warning(f"[Changelog] Markdown failed for {chat_id}: {e} — retrying plain text")
+        try:
+            import re as _re_cl
+            plain = _re_cl.sub(r"[*_`]", "", text)
+            bot.send_message(chat_id, plain, reply_markup=_admin_keyboard())
+        except Exception as e2:
+            log.error(f"[Changelog] send failed for {chat_id}: {e2}")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
