@@ -20,6 +20,16 @@ Before writing any code for this project, consult these documents in `doc/`:
 - Deploy: pscp all changed files → plink restart → verify `Version : X.Y.Z` in journal
 - Strings: always add to both `"ru"` and `"en"` in `src/strings.json`
 
+### Post-deploy rule — ALWAYS ask after every successful deploy to the Pi
+
+After every successful deployment to the host (confirmed by journal showing `Version : X.Y.Z` and `Polling Telegram…`), **always ask the user**:
+
+> "Deployment verified ✅. Shall I also:
+> 1. Commit and push to git? (if not already done)
+> 2. Update `release_notes.json` with a new version entry? (if `BOT_VERSION` was bumped)"
+
+Do **not** ask if there is nothing to commit (e.g. commit was already done in the same session before deploy). Do **not** silently skip — always prompt explicitly.
+
 ---
 
 ## Workspace Layout
