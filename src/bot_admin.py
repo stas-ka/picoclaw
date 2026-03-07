@@ -30,7 +30,7 @@ from bot_access import (
 )
 from bot_users import (
     _get_pending_registrations, _find_registration, _upsert_registration,
-    _set_reg_status,
+    _set_reg_status, _load_registrations,
 )
 from bot_voice import _warm_piper_cache, _start_persistent_piper, _stop_persistent_piper
 
@@ -113,15 +113,44 @@ def _handle_admin_menu(chat_id: int) -> None:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _handle_admin_list_users(chat_id: int) -> None:
-    dyn = _dynamic_users()
-    if not dyn:
+    """Show all users grouped by role: Admins, Allowed, Approved, Blocked."""
+    sections = []
+
+    # 🔐 Admins (static from config)
+    if ADMIN_USERS:
+        blocks = [_user_info_block(uid, _find_registration(uid)) for uid in sorted(ADMIN_USERS)]
+        sections.append("🔐 *Admins:*\n\n" + "\n\n".join(blocks))
+
+    # ✅ Static allowed users (not admins)
+    static_only = sorted(uid for uid in ALLOWED_USERS if uid not in ADMIN_USERS)
+    if static_only:
+        blocks = [_user_info_block(uid, _find_registration(uid)) for uid in static_only]
+        sections.append("✅ *Allowed:*\n\n" + "\n\n".join(blocks))
+
+    # 👤 Dynamically approved users (not already in static lists)
+    dyn_only = sorted(uid for uid in _dynamic_users()
+                      if uid not in ALLOWED_USERS and uid not in ADMIN_USERS)
+    if dyn_only:
+        blocks = [_user_info_block(uid, _find_registration(uid)) for uid in dyn_only]
+        sections.append("👤 *Approved:*\n\n" + "\n\n".join(blocks))
+
+    # 🚫 Blocked users
+    blocked = [r for r in _load_registrations() if r.get("status") == "blocked"]
+    if blocked:
+        blk_blocks = []
+        for r in blocked:
+            uid = r.get("chat_id")
+            blk_blocks.append(_user_info_block(uid, r))
+        sections.append("🚫 *Blocked:*\n\n" + "\n\n".join(blk_blocks))
+
+    if not sections:
         bot.send_message(chat_id, _t(chat_id, "no_guests"),
                          parse_mode="Markdown", reply_markup=_admin_keyboard())
         return
-    blocks = [_user_info_block(uid, _find_registration(uid)) for uid in sorted(dyn)]
+
     bot.send_message(
         chat_id,
-        _t(chat_id, "guest_header") + "\n\n" + "\n\n".join(blocks),
+        "\n\n" + "\n\n───────\n\n".join(sections),
         parse_mode="Markdown",
         reply_markup=_admin_keyboard(),
     )
@@ -148,7 +177,7 @@ def _finish_admin_add_user(admin_id: int, text: str) -> None:
     else:
         dyn.add(uid)
         _save_dynamic_users()
-        log.info(f"Admin {admin_id} added guest user {uid}")
+        log.info(f"Admin {admin_id} added user {uid}")
         bot.send_message(admin_id, _t(admin_id, "user_added", uid=uid),
                          parse_mode="Markdown", reply_markup=_admin_keyboard())
     _st._user_mode.pop(admin_id, None)
@@ -242,7 +271,7 @@ def _do_approve_registration(admin_id: int, target_id: int) -> None:
     _save_dynamic_users()
     name_disp = f" \u2014 {reg.get('name')}" if reg.get("name") else ""
     log.info(f"[Reg] Admin {admin_id} approved user {target_id}")
-    bot.send_message(admin_id, f"\u2705 User `{target_id}`{name_disp} approved and added as guest.",
+    bot.send_message(admin_id, f"✅ User `{target_id}`{name_disp} approved and added.",
                      parse_mode="Markdown", reply_markup=_admin_keyboard())
     try:
         bot.send_message(target_id, _t(target_id, "reg_approved"),
