@@ -1,5 +1,11 @@
 [
   {
+    "version": "2026.3.10",
+    "date": "2026-03-07",
+    "title": "Auto-detect question language for replies",
+    "notes": "- Reply language now follows: question lang > Telegram lang > Russian (default) > English (backup)\n- Cyrillic-heavy text → reply in Russian; Latin-heavy → reply in English\n- Default language changed to Russian (was English)\n- Only supported languages (ru/en) are used for LLM replies"
+  },
+  {
     "version": "2026.3.9",
     "date": "2026-03-07",
     "title": "Fix picoclaw bash-lc command leaking to user",

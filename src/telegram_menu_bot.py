@@ -119,7 +119,7 @@ LAST_DIGEST_FILE = os.environ.get("LAST_DIGEST_FILE",
                                    os.path.expanduser("~/.picoclaw/last_digest.txt"))
 
 # Bot version — bump this string with every deployment so admins get notified
-BOT_VERSION           = "2026.3.9"
+BOT_VERSION           = "2026.3.10"
 RELEASE_NOTES_FILE    = os.environ.get(
     "RELEASE_NOTES_FILE",
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "release_notes.json"),
@@ -305,15 +305,24 @@ def _load_strings(path: str) -> dict:
 _STRINGS: dict[str, dict[str, str]] = _load_strings(_STRINGS_FILE)
 
 
+# Languages the voice assistant supports (must match _LANG_INSTRUCTION keys)
+_SUPPORTED_LANGS: frozenset[str] = frozenset({"ru", "en"})
+_DEFAULT_LANG  = "ru"   # primary default (Russian)
+_FALLBACK_LANG = "en"   # backup when default unavailable
+
+
 def _set_lang(chat_id: int, from_user) -> None:
-    """Detect and store the user's preferred language (ru or en)."""
-    lc = getattr(from_user, "language_code", "") or ""
-    _user_lang[chat_id] = "ru" if lc.lower().startswith("ru") else "en"
+    """Store the best-supported UI language for this user (ru / en)."""
+    lc = (getattr(from_user, "language_code", "") or "").lower()
+    # Map Telegram language_code to a supported language (ru | en).
+    # For UI strings we keep the nearest match; for LLM replies the
+    # priority chain in _resolve_lang() applies separately.
+    _user_lang[chat_id] = "ru" if lc.startswith("ru") else "en"
 
 
 def _lang(chat_id: int) -> str:
-    """Return stored language code for this chat_id, default 'en'."""
-    return _user_lang.get(chat_id, "en")
+    """Return stored UI language for this chat_id, default Russian."""
+    return _user_lang.get(chat_id, _DEFAULT_LANG)
 
 
 def _t(chat_id: int, key: str, **kwargs) -> str:
@@ -503,9 +512,59 @@ _LANG_INSTRUCTION: dict[str, str] = {
 }
 
 
+def _detect_text_lang(text: str) -> str | None:
+    """
+    Detect the language of *text* from Unicode character composition.
+    Returns a key from _SUPPORTED_LANGS, or None when undetermined.
+
+    Heuristic:
+      - significant Cyrillic  (≥40 % of alpha chars) → 'ru'
+      - significant Latin     (≥60 % of alpha chars) → 'en'
+      - otherwise → None  (fall through to Telegram / default)
+    """
+    cyrillic = sum(1 for c in text if "\u0400" <= c <= "\u04FF")
+    latin    = sum(1 for c in text if c.isalpha() and ord(c) < 128)
+    total    = cyrillic + latin
+    if total < 3:
+        return None
+    if cyrillic / total >= 0.40:
+        detected = "ru"
+    elif latin / total >= 0.60:
+        detected = "en"
+    else:
+        return None
+    return detected if detected in _SUPPORTED_LANGS else None
+
+
+def _resolve_lang(chat_id: int, user_text: str = "") -> str:
+    """
+    Resolve the reply language following the priority chain:
+      1. Language detected from the question text           (if supported)
+      2. Telegram UI language stored for this user          (if supported)
+      3. Russian (_DEFAULT_LANG)  — primary default
+      4. English (_FALLBACK_LANG) — backup
+    """
+    # Priority 1: question language
+    if user_text:
+        detected = _detect_text_lang(user_text)
+        if detected:
+            return detected
+    # Priority 2: Telegram user language
+    tg_lang = _user_lang.get(chat_id)
+    if tg_lang and tg_lang in _SUPPORTED_LANGS:
+        return tg_lang
+    # Priority 3: Russian default
+    if _DEFAULT_LANG in _SUPPORTED_LANGS:
+        return _DEFAULT_LANG
+    # Priority 4: English backup
+    return _FALLBACK_LANG
+
+
 def _with_lang(chat_id: int, user_text: str) -> str:
     """Prepend a language-enforcement instruction to any user → LLM prompt."""
-    return _LANG_INSTRUCTION.get(_lang(chat_id), "") + user_text
+    lang = _resolve_lang(chat_id, user_text)
+    instruction = _LANG_INSTRUCTION.get(lang, _LANG_INSTRUCTION.get(_FALLBACK_LANG, ""))
+    return instruction + user_text
 
 
 # Comprehensive emoji / Unicode pictograph pattern used by _escape_tts()
