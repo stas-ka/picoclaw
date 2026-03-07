@@ -329,6 +329,22 @@ plink -pw "$HOSTPWD" -batch stas@OpenClawPI "node /path/to/your/script.js"
 
 ---
 
+## Service File Sync Rule
+
+**Whenever a `.service` file in `src/services/` is changed, it MUST be deployed to the target device in the same operation — never commit a service file change without also syncing it to the Pi.**
+
+Deploy sequence for any `.service` file change:
+```bat
+pscp -pw "$HOSTPWD" src\services\<name>.service stas@OpenClawPI:/tmp/<name>.service
+plink -pw "$HOSTPWD" -batch stas@OpenClawPI "echo $HOSTPWD | sudo -S cp /tmp/<name>.service /etc/systemd/system/<name>.service && sudo systemctl daemon-reload && sudo systemctl restart <name>"
+```
+
+**Also: whenever new env vars are introduced in a service's `EnvironmentFile`, add them to the corresponding `.env` file comment / documentation AND to the actual file on the Pi (`~/.picoclaw/bot.env` for the Telegram bot) in the same operation.**
+
+The authoritative source for service file content is `src/services/`. The Pi's `/etc/systemd/system/` must always match it. If you discover a drift (Pi differs from `src/`), fix the Pi to match `src/` and commit.
+
+---
+
 ## Documentation Maintenance Rule
 
 **When you add new functionality, change the architecture, add a new service, script, or component, or make any significant change to how the system works, you MUST update the relevant documents:**
