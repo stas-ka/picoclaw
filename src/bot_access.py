@@ -44,10 +44,8 @@ def _is_admin(chat_id: int) -> bool:
 
 
 def _is_guest(chat_id: int) -> bool:
-    """Guest = runtime-added user who cannot use System Chat or Admin."""
-    return (chat_id in _dynamic_users
-            and chat_id not in ALLOWED_USERS
-            and chat_id not in ADMIN_USERS)
+    """All approved users get full access — no guest restrictions."""
+    return False
 
 
 def _deny(chat_id: int) -> None:
