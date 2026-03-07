@@ -119,7 +119,7 @@ LAST_DIGEST_FILE = os.environ.get("LAST_DIGEST_FILE",
                                    os.path.expanduser("~/.picoclaw/last_digest.txt"))
 
 # Bot version — bump this string with every deployment so admins get notified
-BOT_VERSION           = "2026.3.8"
+BOT_VERSION           = "2026.3.9"
 RELEASE_NOTES_FILE    = os.environ.get(
     "RELEASE_NOTES_FILE",
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "release_notes.json"),
@@ -441,32 +441,47 @@ def _ask_picoclaw(prompt: str, timeout: int = 60) -> Optional[str]:
 def _clean_picoclaw_output(text: str) -> str:
     """
     Extract the human-readable answer from picoclaw stdout.
-    Handles two artefacts:
+    Handles artefacts:
       1. Log lines mixed into stdout (timestamp prefixes)
-      2. The LLM wrapping its answer in a printf '...' shell command
+      2. "Picoclaw:" section header line
+      3. printf 'text' or printf "text" bare wrapper
+      4. [emoji] bash -lc 'printf "text"' wrapper (picoclaw agent command format)
     """
     import re
-    # Drop lines that look like picoclaw log entries
+    # Drop lines that look like picoclaw log entries or section headers
     clean_lines = []
     for line in text.splitlines():
         if re.match(r"^\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}", line):
             continue
         if re.match(r"^\[?\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}", line):
             continue
+        # Drop bare "Picoclaw:" header emitted by the agent binary
+        if re.match(r"^Picoclaw\s*:?\s*$", line, re.IGNORECASE):
+            continue
         clean_lines.append(line)
 
     clean = "\n".join(clean_lines).strip()
 
-    # Strip  printf 'text'  or  printf "text"  wrapper if present
+    # Pattern 1: bash -lc 'printf "text"'  (with optional leading emoji/chars)
+    # e.g.  🦞 bash -lc 'printf "Hello world"'
+    m = re.match(r"""^.*?bash\s+-lc\s+'printf\s+"(.*)"\s*'\s*$""", clean, re.DOTALL)
+    if m:
+        return m.group(1).replace("\\n", "\n").replace('\\"', '"').replace("\\'", "'").strip()
+
+    # Pattern 2: bash -lc 'printf '\''text'\'''  (single-quoted printf inside bash)
+    m = re.match(r"""^.*?bash\s+-lc\s+'printf\s+'\\''(.*)'\\''\s*$""", clean, re.DOTALL)
+    if m:
+        return m.group(1).replace("\\n", "\n").strip()
+
+    # Pattern 3: bare printf 'text'  or  printf "text"
     m = re.match(r"^printf\s+'(.*)'$", clean, re.DOTALL)
     if not m:
         m = re.match(r'^printf\s+"(.*)"$', clean, re.DOTALL)
     if m:
-        clean = m.group(1).replace("\\n", "\n").replace("\\'", "'").strip()
-    else:
-        # Unescape literal \n that some models emit as two characters (outside printf)
-        clean = clean.replace("\\n", "\n")
+        return m.group(1).replace("\\n", "\n").replace("\\'", "'").strip()
 
+    # Unescape literal \n that some models emit as two characters (outside printf)
+    clean = clean.replace("\\n", "\n")
     return clean
 
 
