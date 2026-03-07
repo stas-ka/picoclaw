@@ -70,7 +70,7 @@ from bot_handlers import (
     _handle_chat_message,
     _handle_system_message, _execute_pending_cmd,
     _handle_notes_menu, _handle_note_list, _start_note_create,
-    _handle_note_open, _start_note_edit, _handle_note_delete,
+    _handle_note_open, _handle_note_raw, _start_note_edit, _handle_note_delete,
     _notes_menu_keyboard,
 )
 
@@ -324,6 +324,12 @@ def callback_handler(call):
     elif data.startswith("note_open:"):
         if not _is_guest(cid):
             _handle_note_open(cid, data[len("note_open:"):])
+        else:
+            bot.send_message(cid, _t(cid, "admin_only"))
+
+    elif data.startswith("note_raw:"):
+        if not _is_guest(cid):
+            _handle_note_raw(cid, data[len("note_raw:"):])
         else:
             bot.send_message(cid, _t(cid, "admin_only"))
 

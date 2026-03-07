@@ -104,17 +104,37 @@ def _handle_note_open(chat_id: int, slug: str) -> None:
         return
     kb = InlineKeyboardMarkup(row_width=2)
     kb.row(
-        InlineKeyboardButton("✏️ Edit",  callback_data=f"note_edit:{slug}"),
-        InlineKeyboardButton("🗑 Delete", callback_data=f"note_delete:{slug}"),
+        InlineKeyboardButton("✏️ Edit",    callback_data=f"note_edit:{slug}"),
+        InlineKeyboardButton("🗑 Delete",  callback_data=f"note_delete:{slug}"),
     )
-    kb.add(InlineKeyboardButton("📋 All Notes", callback_data="note_list"))
-    kb.add(InlineKeyboardButton("🔙  Menu",      callback_data="menu"))
+    kb.row(
+        InlineKeyboardButton("📋 All Notes", callback_data="note_list"),
+        InlineKeyboardButton("🔤 Raw text",  callback_data=f"note_raw:{slug}"),
+    )
+    kb.add(InlineKeyboardButton("🔙  Menu", callback_data="menu"))
     bot.send_message(
         chat_id,
         f"📄 *{_escape_md(slug.replace('_', ' '))}*\n\n{_escape_md(text)}",
         parse_mode="Markdown",
         reply_markup=kb,
     )
+
+
+def _handle_note_raw(chat_id: int, slug: str) -> None:
+    """Send the note body as an unformatted plain-text message — easy to copy."""
+    text = _load_note_text(chat_id, slug)
+    if text is None:
+        bot.send_message(chat_id, _t(chat_id, "note_not_found"),
+                         reply_markup=_notes_menu_keyboard(chat_id))
+        return
+    kb = InlineKeyboardMarkup(row_width=2)
+    kb.row(
+        InlineKeyboardButton("✏️ Edit",   callback_data=f"note_edit:{slug}"),
+        InlineKeyboardButton("🗑 Delete", callback_data=f"note_delete:{slug}"),
+    )
+    kb.add(InlineKeyboardButton("🔙  Back", callback_data=f"note_open:{slug}"))
+    # Send without parse_mode — every character appears exactly as stored
+    bot.send_message(chat_id, text, reply_markup=kb)
 
 
 def _start_note_edit(chat_id: int, slug: str) -> None:
