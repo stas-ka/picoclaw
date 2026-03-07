@@ -230,6 +230,7 @@ _STRINGS: dict[str, dict[str, str]] = {
         "btn_voice":        "🎤  Голосовой запрос",
         "btn_admin":        "🔐  Админ",
         # greetings
+        "welcome":          "👋 Привет! Я *Pico* — ваш умный ассистент на Raspberry Pi.\n\nМогу:\n• 📧 сделать дайджест почты\n• 💬 ответить на любой вопрос\n• 🖥️ помочь с системными командами\n• 🎤 понять голосовой запрос\n\nВыберите режим:",
         "greet":            "👋 *Pico* — что делаем?",
         "choose":           "👋 Выберите режим:",
         "admin_only":       "⛔ Только для администраторов.",
@@ -282,6 +283,7 @@ _STRINGS: dict[str, dict[str, str]] = {
         "btn_voice":        "🎤  Voice Session",
         "btn_admin":        "🔐  Admin",
         # greetings
+        "welcome":          "👋 Hi! I'm *Pico* — your smart assistant running on Raspberry Pi.\n\nI can:\n• 📧 summarise your mail inbox\n• 💬 chat freely about anything\n• 🖥️ help with system commands\n• 🎤 understand voice messages\n\nChoose a mode:",
         "greet":            "👋 *Pico* — what can I do for you?",
         "choose":           "👋 Choose a mode:",
         "admin_only":       "⛔ Admins only.",
@@ -989,7 +991,18 @@ def _handle_voice_message(chat_id: int, voice_obj) -> None:
 # ─────────────────────────────────────────────────────────────────────────────
 # ─────────────────────────────────────────────────────────────────────────────
 
-@bot.message_handler(commands=["start", "menu"])
+@bot.message_handler(commands=["start"])
+def cmd_start(message):
+    if not _is_allowed(message.chat.id):
+        _deny(message.chat.id)
+        return
+    _set_lang(message.chat.id, message.from_user)
+    cid = message.chat.id
+    bot.send_message(cid, _t(cid, "welcome"), parse_mode="Markdown",
+                     reply_markup=_menu_keyboard(cid))
+
+
+@bot.message_handler(commands=["menu"])
 def cmd_menu(message):
     if not _is_allowed(message.chat.id):
         _deny(message.chat.id)
