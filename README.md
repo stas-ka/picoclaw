@@ -11,7 +11,10 @@ Local Russian voice assistant for Raspberry Pi, powered by [picoclaw](https://gi
 - Daily Gmail digest to Telegram
 - Interactive Telegram menu bot (Mail Digest / Free Chat / System Chat / Voice Session modes)
 - **On-demand Voice Session via Telegram** — tap the 🎤 button, then use Telegram's mic button to send a voice message; bot transcribes with Vosk (offline, Russian), sends to LLM, replies with text + Piper TTS voice note
-- **Voice pipeline optimization flags** — 5 optional toggles in the admin panel (silence strip, low sample rate, Piper warm-up, parallel TTS, per-user audio toggle)
+- **Voice works in all modes** — voice messages are routed into the active flow (note creation, note edit, or chat) rather than always going to the LLM
+- **Voice pipeline optimization flags** — 10 optional toggles in the admin panel (silence strip, low sample rate, Piper warm-up, parallel TTS, per-user audio toggle, tmpfs model, VAD pre-filter, Whisper STT, Piper low model, persistent Piper)
+- **Voice regression test suite** — T01–T13 automated tests covering model files, OGG decode, VAD, Vosk STT, WER, TTS, Piper synthesis, ffmpeg encode; baseline comparison; run on Pi via `test_voice_regression.py`
+- **Markdown Notes** — personal per-user note manager: create, edit (ForceReply in-place editing), view (Markdown rendered), raw text view, read aloud via Piper TTS, delete
 - **Versioned release notes + admin notification** — bump `BOT_VERSION`, add entry to `release_notes.json`, deploy; admins are notified automatically on first startup
 - **Internationalization** — Russian and English UI strings via `strings.json`; language toggle per user
 - **Backup & Recovery system** — full SD card image backup with zstd compression + SHA-256 checksum; Nextcloud WebDAV upload/download/prune; fresh-install bootstrap and incremental update scripts

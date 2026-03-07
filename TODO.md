@@ -85,7 +85,9 @@ Tasks:
 
 ## 4. Content & Knowledge
 
-### 4.1 Markdown Notes System ✅ Implemented (v2026.3.18)
+### 4.1 Markdown Notes System ✅ Implemented (v2026.3.19)
+
+✅ **Implemented**: create / list / open (Markdown rendered) / edit (ForceReply in-place) / raw text view / read aloud via Piper TTS / delete. Voice input during note creation and edit flows is routed into the note state machine instead of the LLM.
 
 ### 4.2 Local RAG Knowledge Base 🔲
 
@@ -133,7 +135,7 @@ Lightweight offline-capable knowledge base for personal/technical documents.
 | Vosk confidence filtering (`[?word]`) | always on | ✅ STT accuracy |
 | `TTS_MAX_CHARS = 600` | constant | ✅ balanced audio length |
 
-### 5.3 Planned improvements ✅ Implemented (v2026.3.19)
+### 5.3 Advanced voice opts ✅ Implemented (v2026.3.19)
 
 All items added as optional voice opts toggles (all default OFF, existing behaviour unchanged):
 - **`vad_prefilter`** — webrtcvad noise gate before Vosk STT
@@ -141,7 +143,11 @@ All items added as optional voice opts toggles (all default OFF, existing behavi
 - **`piper_low_model`** — ru\_RU-irina-low.onnx for faster TTS (needs model download)
 - **`persistent_piper`** — keepalive Piper subprocess holds ONNX in page cache
 
-### 5.4 Effort vs. impact summary
+### 5.4 Voice regression test suite ✅ Implemented (v2026.3.19)
+
+✅ **Implemented**: T01–T13 automated test runner (`src/tests/test_voice_regression.py`) covering model files, OGG decode, VAD filtering, Vosk STT + WER, TTS, Piper synthesis, ffmpeg encode, and regression comparison against a saved baseline. Run on Pi via `plink`. Mandatory before committing voice-related changes.
+
+### 5.5 Effort vs. impact summary
 
 | # | Change | Effort | Expected saving | Cumulative total |
 |---|---|---|---|---|
@@ -150,10 +156,10 @@ All items added as optional voice opts toggles (all default OFF, existing behavi
 | ✅ 3 | 8 kHz sample rate | Low | STT −7 s | 45 s |
 | ✅ 4 | warm_piper + tmpfs_model | Low | TTS cold −15 s | 30 s |
 | ✅ 5 | Parallel TTS thread | Medium | text in ~3 s | text fast |
-| 🔲 6 | VAD pre-filter | Low | STT −3 s | 27 s |
-| 🔲 7 | whisper.cpp STT | Medium | STT −11 s | ~16 s |
-| 🔲 8 | Piper low model | Low | TTS −13 s | ~14 s |
-| 🔲 9 | Persistent Piper Popen | High | TTS −20 s | ~10 s |
+| ✅ 6 | VAD pre-filter (opt) | Low | STT −3 s | 27 s |
+| ✅ 7 | whisper.cpp STT (opt) | Medium | STT −11 s | ~16 s |
+| ✅ 8 | Piper low model (opt) | Low | TTS −13 s | ~14 s |
+| ✅ 9 | Persistent Piper Popen (opt) | High | TTS −20 s | ~10 s |
 
 ---
 

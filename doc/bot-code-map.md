@@ -223,6 +223,7 @@ Imports: `bot_config`, `bot_state`, `bot_instance`, `bot_access`, `bot_users`.
 |---|---|
 | `_start_voice_session(chat_id)` | Set mode `'voice'`, show instructions |
 | `_handle_voice_message(chat_id, voice_obj)` | Full pipeline: OGG→PCM→[VAD]→[Whisper\|Vosk]→[NoteCmd\|LLM]→TTS→send |
+| `_handle_note_read_aloud(chat_id, slug)` | Load note, synthesise body via Piper TTS, send as voice message with title caption |
 
 ---
 
@@ -302,8 +303,9 @@ Imports: `bot_config`, `bot_state`, `bot_instance`, `bot_access`, `bot_users`.
 | `_handle_notes_menu(chat_id)` | Show notes submenu |
 | `_handle_note_list(chat_id)` | List all notes |
 | `_start_note_create(chat_id)` | Begin creation — prompt for title |
-| `_handle_note_open(chat_id, slug)` | Show note read view |
-| `_start_note_edit(chat_id, slug)` | Begin edit — prompt for new content |
+| `_handle_note_open(chat_id, slug)` | Show note read view (Markdown rendered) |
+| `_handle_note_raw(chat_id, slug)` | Show note body as raw plain text (no parse_mode) |
+| `_start_note_edit(chat_id, slug)` | Begin edit — sends current body via ForceReply for in-place editing |
 | `_handle_note_delete(chat_id, slug)` | Delete + confirm |
 
 ### Mail digest
@@ -376,8 +378,10 @@ All `data=` keys handled in `callback_handler()`:
 | `note_create` | `_start_note_create` |
 | `note_list` | `_handle_note_list` |
 | `note_open:<slug>` | `_handle_note_open` |
+| `note_raw:<slug>` | `_handle_note_raw` |
 | `note_edit:<slug>` | `_start_note_edit` |
 | `note_delete:<slug>` | `_handle_note_delete` |
+| `note_tts:<slug>` | `_handle_note_read_aloud` |
 | `cancel` | clear pending cmd/note/mode |
 | `run:<hash>` | `_execute_pending_cmd` |
 

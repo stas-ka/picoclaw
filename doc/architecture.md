@@ -167,7 +167,7 @@ The picoclaw gateway also handles Telegram messages independently of the voice a
 
 ### 7. Telegram Menu Bot (`telegram_menu_bot.py`)
 
-Interactive Telegram bot (`BOT_VERSION = "2026.3.7"`) with mode switching, voice sessions, admin panel, and internationalization (Russian / English).
+Interactive Telegram bot (`BOT_VERSION = "2026.3.19"`) with mode switching, voice sessions, notes, admin panel, and internationalization (Russian / English).
 
 #### User modes (inline keyboard)
 
@@ -177,6 +177,7 @@ Interactive Telegram bot (`BOT_VERSION = "2026.3.7"`) with mode switching, voice
 | Free Chat | 💬 Free Chat | Any text sent goes directly to `picoclaw agent -m` and returns the LLM response |
 | System Chat | 🖥 System Chat | Like Free Chat but prepends a system-admin context prompt |
 | **Voice Session** | **🎤 Voice Session** | **On-demand mic session: see below** |
+| **Notes** | **📝 Notes** | **Personal Markdown note manager: create, edit, view, delete, read aloud** |
 
 #### Admin panel buttons
 
@@ -186,7 +187,7 @@ Interactive Telegram bot (`BOT_VERSION = "2026.3.7"`) with mode switching, voice
 | 📋 List users | Show all authorised guest users |
 | 🗑 Remove user | Remove a guest user |
 | 🤖 Switch LLM | Switch active model (OpenRouter default + OpenAI sub-menu with gpt-4o, gpt-4o-mini, o3-mini, o1, gpt-4.5-preview) |
-| ⚡ Voice Opts | Toggle 5 optional voice latency optimizations (see below) |
+| ⚡ Voice Opts | Toggle 10 optional voice latency optimizations (see below) |
 | 📝 Release Notes | Show full versioned changelog from `release_notes.json` |
 
 | Property | Value |
@@ -198,7 +199,7 @@ Interactive Telegram bot (`BOT_VERSION = "2026.3.7"`) with mode switching, voice
 | Allowed user | `ALLOWED_USER` env var (chat ID) |
 | LLM backend | `picoclaw agent -m` subprocess (same config as gateway) |
 | i18n | `strings.json` (Russian + English, `_t(chat_id, key)`) |
-| Version constant | `BOT_VERSION = "2026.3.7"` (bumped per deployment) |
+| Version constant | `BOT_VERSION = "2026.3.19"` (bumped per deployment) |
 
 #### Voice Session Mode
 
@@ -236,7 +237,7 @@ User taps 🎤 Voice Session
 
 #### Voice Optimization Flags (`⚡ Voice Opts`)
 
-Five optional flags persisted in `~/.picoclaw/voice_opts.json` (all `false` by default). Toggled per-admin in the admin panel.
+Ten optional flags persisted in `~/.picoclaw/voice_opts.json` (all `false` by default). Toggled per-admin in the admin panel.
 
 | Flag | Default | Effect |
 |---|---|---|
@@ -245,6 +246,11 @@ Five optional flags persisted in `~/.picoclaw/voice_opts.json` (all `false` by d
 | `warm_piper` | off | Pre-load Piper ONNX model into memory at startup (eliminates first-TTS cold-start) |
 | `parallel_tts` | off | Start TTS synthesis in background thread immediately after LLM token streaming completes |
 | `user_audio_toggle` | off | Enable per-user 🔊/🔇 audio reply toggle (user can opt out of TTS voice reply) |
+| `tmpfs_model` | off | Copy Piper ONNX model to `/dev/shm` (RAM disk) for fastest possible model load |
+| `vad_prefilter` | off | Apply WebRTC VAD noise gate to strip non-speech frames before Vosk STT |
+| `whisper_stt` | off | Use `whisper.cpp` tiny model instead of Vosk for STT (requires binary + `ggml-tiny.bin`) |
+| `piper_low_model` | off | Use `ru_RU-irina-low.onnx` instead of medium quality (faster TTS, lower quality) |
+| `persistent_piper` | off | Keep a long-running Piper subprocess alive to hold ONNX in page cache between calls |
 
 Settings file: `~/.picoclaw/voice_opts.json`  
 
@@ -254,7 +260,7 @@ The bot tracks its own version and notifies admins exactly once per version bump
 
 | Item | Value |
 |---|---|
-| Constant | `BOT_VERSION = "2026.3.7"` in `telegram_menu_bot.py` |
+| Constant | `BOT_VERSION = "2026.3.19"` in `telegram_menu_bot.py` |
 | Changelog source | `release_notes.json` (deployed alongside bot script) |
 | Tracking file | `~/.picoclaw/last_notified_version.txt` (auto-created; stores last notified version) |
 | Trigger | On bot startup: if `BOT_VERSION != last_notified`, send changelog entry to all admins via Telegram |
@@ -309,7 +315,15 @@ systemd
 ```
 /home/stas/.picoclaw/
   voice_assistant.py          ← main voice daemon
-  telegram_menu_bot.py        ← interactive Telegram menu bot (v2026.3.7)
+  telegram_menu_bot.py        ← interactive Telegram menu bot (v2026.3.19)
+  bot_config.py               ← constants, env loading, logging
+  bot_state.py                ← mutable runtime state dicts
+  bot_instance.py             ← TeleBot singleton
+  bot_access.py               ← access control, i18n, keyboards, LLM wrapper
+  bot_users.py                ← registration + notes file I/O
+  bot_voice.py                ← full voice pipeline: STT/TTS/VAD + note read-aloud
+  bot_admin.py                ← admin panel: users, LLM, voice opts, release notes
+  bot_handlers.py             ← user handlers: digest, chat, system, notes UI
   strings.json                ← i18n UI strings (ru/en), deployed alongside bot
   release_notes.json          ← versioned changelog, deployed alongside bot
   config.json                 ← picoclaw + LLM config (API key here)
@@ -317,13 +331,16 @@ systemd
   bot.env                     ← BOT_TOKEN + ALLOWED_USER (loaded by systemd EnvironmentFile=)
   voice_opts.json             ← voice optimization flags (auto-created; do not commit)
   last_notified_version.txt   ← tracks last BOT_VERSION admin notification (auto-created)
-  vosk-model-small-ru/        ← 48 MB STT model directory
+  pending_tts.json            ← TTS orphan-cleanup tracker (auto-created)
+  users.json                  ← dynamically approved guest users (auto-created)
+  registrations.json          ← user registration records: pending/approved/blocked (auto-created)
+  notes/<chat_id>/<slug>.md   ← per-user Markdown note files (auto-created)
+  vosk-model-small-ru/        ← 48 MB Vosk Russian STT model directory
   ru_RU-irina-medium.onnx     ← 66 MB Piper TTS voice model
   ru_RU-irina-medium.onnx.json← Piper voice metadata
   voice.log                   ← voice assistant log (append)
   digest.log                  ← Gmail digest log
   last_digest.txt             ← last digest output (read by menu bot)
-  registrations.json          ← user registration records: pending/approved/blocked (auto-created)
 
 /usr/local/bin/piper          ← Piper wrapper script
 /usr/local/share/piper/       ← Piper binary + bundled libs (libonnxruntime, etc.)
