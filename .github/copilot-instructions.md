@@ -373,6 +373,7 @@ The authoritative source for service file content is `src/services/`. The Pi's `
 |---|---|
 | `README.md` | New setup steps, new features listed in the intro, directory structure changes, new services/scripts |
 | `doc/architecture.md` | New component added, new pipeline stage, new systemd service, new file appears on the Pi, process hierarchy changes |
+| `doc/hardware-performance-analysis.md` | New hardware tested, new tuning applied, new timing measurements, new recommended upgrade path |
 | `backup/device/README.md` | New software installed on Pi, new systemd services, new cron jobs, version upgrades |
 
 **Rules:**

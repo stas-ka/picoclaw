@@ -23,6 +23,7 @@ Local Russian voice assistant for Raspberry Pi, powered by [picoclaw](https://gi
 | Document | Description |
 |---|---|
 | [doc/architecture.md](doc/architecture.md) | Full pipeline diagram, all components, file layout, configuration reference |
+| [doc/hardware-performance-analysis.md](doc/hardware-performance-analysis.md) | Hardware bottleneck analysis, Pi 3 tuning guide, upgrade path for voice / LLM / RAG use cases |
 | [backup/device/README.md](backup/device/README.md) | Captured device configuration snapshot + restore instructions |
 
 ---
