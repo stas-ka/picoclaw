@@ -1,255 +1,120 @@
-# Pico Bot — TODO & Optimization Proposals
+# Pico Bot — TODO & Roadmap
+
+**Legend:** ✅ Done · 🔄 In progress · 🔲 Planned · 💡 Idea / future
 
 ---
 
-## Voice Pipeline Latency Optimization
+## 1. Access & Security
 
-### Observed timings (real measurement, March 2026)
+### 1.1 Telegram User Registration Workflow 🔲
 
-| Stage | Time | Status |
-|---|---|---|
-| Download OGG from Telegram | 0s | ✅ fine |
-| Convert OGG → 16kHz PCM (ffmpeg) | 1s | ✅ fine |
-| Speech-to-Text (Vosk `vosk-model-small-ru`) | **15s** | ❌ bottleneck |
-| LLM response (picoclaw → OpenRouter) | 2s | ✅ fine |
-| Text-to-Speech (Piper `ru_RU-irina-medium`) | **40s** | ❌ bottleneck |
-| **Total** | **~58s** | ❌ target: <15s |
+When a new user sends `/start`, the bot registers them and notifies an admin.
 
----
+- [ ] Capture Telegram ID, username, and registration timestamp
+- [ ] Store registration status: `pending` / `approved` / `blocked`
+- [ ] Send admin notification on new registration request
+- [ ] Admin Telegram UI: list all registered users (pending / active / blocked)
+- [ ] Admin actions per user: approve, block, unblock, remove
+- [ ] Unregistered users get guest mode (limited access) until approved
 
-### Quick wins (low effort, low risk)
-
-#### 1. Strip silence before STT — saves ~3–8s on STT
-Telegram voice notes often contain 1–5s of silence at start and end.
-Use ffmpeg `silenceremove` filter in the OGG→PCM conversion step
-to crop silence before passing to Vosk.
-
-```python
-# Add silenceremove to the existing ffmpeg command in Convert step:
-"-af", "silenceremove=start_periods=1:start_silence=0.3:start_threshold=-40dB"
-              ":stop_periods=1:stop_silence=0.5:stop_threshold=-40dB"
-```
-
-**Impact:** Reduces audio size fed to Vosk. 5s audio with 2s silence → 3s processed.
-Vosk time scales linearly with audio length → expected STT time: ~9s (−40%).
-
-
-#### 2. Reduce TTS_MAX_CHARS: 400 → 200 — saves ~20s on TTS
-Current limit is 400 characters (~50 words). LLM responses often are longer
-text wrapped to limit that still takes 40s to synthesize on Pi 3.
-At 200 chars (~25 words, ~3 sentences) Piper time halves to ~20s.
-Text reply always shows the full response — only the audio is shorter.
-
-```python
-# telegram_menu_bot.py, _tts_to_ogg()
-TTS_MAX_CHARS = 200   # was 400
-```
-
-**Impact:** TTS: ~40s → ~20s. Combined saving with #1: ~58s → ~28s.
-
-
-#### 3. Lower Vosk sample rate 16kHz → 8kHz — saves ~6s on STT
-`vosk-model-small-ru` supports 8kHz (telephone quality). Half the samples =
-roughly half the CPU work. Adjust ffmpeg `-ar` and Vosk `KaldiRecognizer` rate.
-
-```python
-# constants:
-VOICE_SAMPLE_RATE = 8000   # was 16000
-# ffmpeg: "-ar", "8000"
-# KaldiRecognizer(model, 8000)
-```
-
-**Impact:** STT: ~15s → ~8s. Audio quality for speech recognition is acceptable.
-
----
-
-### Medium effort
-
-#### 4. Keep a persistent Piper subprocess (warm process cache) — saves ~10–15s on TTS
-Each TTS call currently does `subprocess.run([PIPER_BIN, ...])` — this cold-starts
-Piper and loads the 66MB ONNX model from disk every time.  
-A warm persistent process avoids this ~10–15s startup overhead.
-
-**Design:**
-- On first TTS call, start Piper with `Popen(stdin=PIPE, stdout=PIPE)`.
-- Cache the process object as module-level singleton `_piper_proc`.
-- On subsequent calls, write text to `stdin`, read `stdout` for PCM.
-- Detect dead process (poll) and restart if needed.
-
-**Caution:** Needs careful EOF / flush handling to avoid deadlock.
-Current `subprocess.run` was specifically chosen to avoid the deadlock
-that plagued the previous Popen approach — this must be retested carefully.
-
-**Impact:** TTS cold-start: eliminated. Expected TTS total: ~15s → ~5s.
-
-
-#### 5. Parallel TTS start — overlaps text send and TTS synthesis
-Currently the pipeline is sequential:
-> LLM done → **send text** → **start TTS** → encode → send audio
-
-Text sending is near-instant. TTS is 20–40s. We can start TTS
-in a sub-thread immediately after LLM returns, while text is sent:
-
-```
-LLM done ──┬─→ send_message(text)         [~0.1s, main thread]
-            └─→ Thread: _tts_to_ogg()     [~20s, background]
-                → send_voice() when ready
-```
-
-With quick wins #1–#3, text reply appears in ~3s.
-Audio arrives ~20s later. This matches normal voice app UX.
-
-**Impact:** User sees text response immediately. Audio follows. No apparent 40s wait.
-
-
-#### 6. VAD (Voice Activity Detection) pre-filter — saves ~3–5s on STT
-Use `webrtcvad` (Python bindings for Google WebRTC VAD, ~50KB, no heavy deps)
-to segment incoming PCM into speech-only chunks, skipping silent frames
-before passing to Vosk.
-
-```bash
-pip3 install webrtcvad
-```
-
-```python
-import webrtcvad
-vad = webrtcvad.Vad(2)   # aggressiveness 0–3
-# filter raw_pcm frames, keep only speech frames
-```
-
-**Impact:** Complements silence stripping (#1). Removes mid-utterance pauses too.
-
----
-
-### Architectural options (higher effort)
-
-#### 7. Switch STT engine: Vosk → whisper.cpp (ARM binary)
-`whisper.cpp` for aarch64 with the `tiny` model (~75MB) is ~5x faster
-than `vosk-model-small-ru` on Pi 3 for Russian, and more accurate.
-
-- Pre-built ARM binary available: https://github.com/ggerganov/whisper.cpp
-- `tiny` model: 75MB, ~3–5s for a 10s clip on Pi 3
-- Supports Russian via multilingual model
-- Drop-in replacement: `subprocess.run(["whisper-cpp", "--model", ...], ...)`
-
-**Trade-off:** Requires downloading ~75MB model; breaks offline availability
-if using the OpenAI endpoint variant. The compiled binary approach stays offline.
-
-**Impact:** STT: ~15s → ~4s. Most impactful single change for STT.
-
-
-#### 8. Switch TTS engine: Piper medium → Piper low quality
-`ru_RU-irina-low` model is the same voice at lower quality, ~2x faster synthesis.
-
-```bash
-wget https://huggingface.co/rhasspy/piper-voices/resolve/main/ru/ru_RU/irina/low/ru_RU-irina-low.onnx
-wget https://huggingface.co/rhasspy/piper-voices/resolve/main/ru/ru_RU/irina/low/ru_RU-irina-low.onnx.json
-```
-
-**Impact:** TTS: ~20s (after #2) → ~10s. Speech quality still acceptable for bot use.
-
-
-#### 9. Add user toggle: "Audio on/off"
-Many users may prefer text-only replies to avoid the 40s TTS wait.
-Add a `🔊 Audio` / `🔇 No audio` toggle button to the back keyboard
-in voice session mode. Store preference per `chat_id`.
-
-**Impact:** Users who disable audio get instant responses (LLM 2s only).
-Avoids all TTS work for text-only users.
-
----
-
-### Effort vs. Impact summary
-
-| # | Change | Effort | STT saving | TTS saving | Total time after |
-|---|---|---|---|---|---|
-| 1 | Strip silence (ffmpeg) | Low | −6s | — | 52s |
-| 2 | TTS_MAX_CHARS 400→200 | Low | — | −20s | 38s |
-| 3 | Sample rate 16k→8k | Low | −7s | — | 31s |
-| 1+2+3 combined | | Low | | | **~28s** |
-| 5 | Parallel TTS thread | Medium | — | — | text in **3s**, audio in ~22s |
-| 4 | Warm Piper process | Medium | — | −15s | **~13s** |
-| 7 | whisper.cpp STT | High | −11s | — | |
-| 8 | Piper low model | Medium | — | −10s | |
-| 1+2+3+4+5 | All quick+medium | Low/Med | | | text in **2s**, audio in **~8s** |
-
-**Recommended implementation order:**
-1. `#2` (TTS_MAX_CHARS) — one-liner, zero risk
-2. `#1` (silence strip) — one ffmpeg flag, test accuracy
-3. `#3` (8kHz) — two constant changes, test recognition quality
-4. `#5` (parallel TTS thread) — user experience improvement
-5. `#4` (warm Piper process) — biggest TTS gain, needs careful testing
-
----
-
-## Future Roadmap (MikoClaw Full Vision)
-
----
-
-### 1. Telegram User Registration Workflow
-
-Allow users to register via Telegram bot with admin approval.
-
-- Capture Telegram ID, username, and registration time
-- Store registration status: `pending` / `approved` / `blocked`
-- Notify administrator on new registration request
-- Admin commands: `/approve_user <id>`, `/block_user <id>`, `/list_pending_users`
-
----
-
-### 2. Role-Based Access Control (RBAC)
+### 1.2 Role-Based Access Control (RBAC) 🔲
 
 | Role | Permissions |
 |---|---|
-| **Admin** | Full system control — manage users, environment, LLM providers, backups, security policies |
-| **Developer** | Develop and deploy skills, test features, access debug tools (cannot change security policies) |
-| **User / Guest** | Chat with assistant, use voice assistant, manage personal notes, access knowledge base |
+| **Admin** | Full system control — users, environment, LLM providers, backups, security policy |
+| **Developer** | Develop/deploy skills, test features, debug tools; bot restart; cannot change security policy |
+| **User** | Chat with assistant, voice assistant, personal notes, knowledge base |
+| **Guest** | Limited access until admin approves registration |
+
+- [ ] Implement role storage and enforcement in bot
+- [ ] Admin-only commands gated by role check
+- [ ] Developer: restart command available alongside Admin
+- [ ] Guest mode: only `/start` and a "registration sent" message
+
+### 1.3 Central Security Layer — MicoGuard 🔲
+
+Centralised policy enforcement module sitting between users and all bot actions.
+
+- [ ] Role validation on every command/callback
+- [ ] Security event logging (`security.log`)
+- [ ] Configurable access rules (admin UI + config file)
+- [ ] Runtime policy updates without restart
+- [ ] Architecture: `User → MicoGuard → LLM / Tools / System`
 
 ---
 
-### 3. Central Security Layer — MicoGuard
+## 2. Conversation & Memory
 
-Central policy enforcement and access validation.
+### 2.1 Conversation Memory System 🔲
 
-- Role validation
-- Security logging
-- Access control enforcement
-
-Architecture: `Users → MicoGuard → Microflows / LLM / Tools / System`
-
----
-
-### 4. Conversation Memory System
-
-- Store conversation history per user
-- Use sliding window memory (`max_memory_messages = 15`)
+- [ ] Store per-user conversation history
+- [ ] Sliding window: configurable `max_memory_messages` (default 15)
+- [ ] Inject last N messages as context into LLM prompt
+- [ ] Optional: persist memory across bot restarts (JSON / SQLite)
+- [ ] Optional: session-based (in-memory only) mode as lighter alternative
 
 ---
 
-### 5. Multi-LLM Provider Support
+## 3. LLM Provider Support
 
-Currently supported: OpenRouter (via picoclaw)
+### 3.1 Multi-LLM Provider Support 🔄
 
-Planned:
-- OpenAI (direct)
-- YandexGPT
-- Gemini
-- Anthropic
-- Local LLM (llama.cpp / Qwen2-0.5B fallback — see `doc/hardware-performance-analysis.md` Section 8.9)
+| Provider | Status |
+|---|---|
+| OpenRouter (via picoclaw) | ✅ Default, running |
+| YandexGPT | 🔲 Planned — add all model variants + API key config |
+| OpenAI (direct) | 🔲 Planned |
+| Gemini | 🔲 Planned |
+| Anthropic | 🔲 Planned |
+| Local LLM (llama.cpp) | 🔲 See §3.2 |
 
-Config pattern: `LLM_PROVIDER=YandexGPT`, `OPENAI_API_KEY=xxx`, `YANDEX_API_KEY=xxx`
+- [ ] Add `LLM_PROVIDER` env-var switch in `bot.env`
+- [ ] Implement YandexGPT client with API key from `bot.env`
+- [ ] Admin UI: show active provider + allow switching
+
+### 3.2 Local LLM — Offline Fallback 🔲
+
+Run a local `llama.cpp` model on the Pi as fallback when OpenRouter is unavailable.
+
+- See full analysis: `doc/hardware-performance-analysis.md` §8.9
+- Pi 3 B+: Qwen2-0.5B Q4 (~350 MB, ~1 tok/s) — emergency fallback only (~90 s/query)
+- Pi 4 B (4 GB): Phi-3-mini Q4 (~2.5 GB, ~2 tok/s) — usable fallback
+- Pi 5 (8 GB): Llama-3.2-3B Q4 (~2 GB, ~5 tok/s) — good fallback
+
+Tasks:
+- [ ] Build `llama.cpp` on target host, store on USB SSD
+- [ ] Download appropriate model to `/mnt/ssd/models/`
+- [ ] Create `picoclaw-llm.service` systemd unit
+- [ ] Implement `_call_picoclaw()` with `try/except` + local HTTP redirect (`localhost:8080`)
+- [ ] Label fallback responses with `⚠️ [local fallback]`
 
 ---
 
-### 6. Markdown Notes System
+## 4. Content & Knowledge
 
-Users can create, view, update, and delete personal notes via chat commands.
+### 4.1 Markdown Notes System 🔲
 
----
+Users can manage personal notes via chat and voice:
 
-### 7. Local RAG Knowledge Base
+- [ ] Create note (via command, menu, or voice dictation)
+- [ ] List notes
+- [ ] Open / read note
+- [ ] Edit / extend note
+- [ ] Delete note
+- [ ] Menu structure:
+  ```
+  Notes
+  ├ Create note
+  ├ List notes
+  ├ Edit note
+  └ Delete note
+  ```
+- [ ] Voice: dictate new note, query existing notes
+- [ ] Storage: Markdown files in `~/.picoclaw/notes/` or SQLite
 
-Lightweight knowledge base on Raspberry Pi or target host.
+### 4.2 Local RAG Knowledge Base 🔲
+
+Lightweight offline-capable knowledge base for personal/technical documents.
 
 ```
 /knowledge_base/
@@ -257,89 +122,163 @@ Lightweight knowledge base on Raspberry Pi or target host.
   embeddings.db
 ```
 
-Commands: `/rag_on`, `/rag_off`
-
-Query flow: `User question → Vector search → Context injection → LLM answer`
-
----
-
-### 8. Skill / Tool Plugin System
-
-Modular architecture: `Assistant → Skill Manager → Plugins / Tools`
-
-Examples: Notes, Knowledge search, Automation tools
+- [ ] Embed documents with a small embedding model (e.g. `all-MiniLM-L6-v2`)
+- [ ] Vector similarity search on user query
+- [ ] Inject retrieved context into LLM prompt
+- [ ] Commands: `/rag_on`, `/rag_off`
+- [ ] Query flow: `question → vector search → context → LLM answer`
+- [ ] Example use cases: personal notes, local manuals, family info, technical docs
 
 ---
 
-### 9. Logging and Monitoring
+## 5. Voice Pipeline Optimization
 
-Log categories: `assistant.log`, `security.log`, `voice.log`
+### 5.1 Measured baseline (Pi 3 B+, March 2026)
 
-Admin access to logs via Telegram UI.
+| Stage | Time | Status |
+|---|---|---|
+| Download OGG from Telegram | ~0 s | ✅ fine |
+| OGG → 16 kHz PCM (ffmpeg) | ~1 s | ✅ fine |
+| Speech-to-Text (Vosk `vosk-model-small-ru`) | **~15 s** | ❌ bottleneck |
+| LLM (picoclaw → OpenRouter) | ~2 s | ✅ fine |
+| TTS (Piper `ru_RU-irina-medium`) | **~40 s** | ❌ bottleneck |
+| **Total** | **~58 s** | ❌ target: <15 s |
+
+### 5.2 Implemented optimisations ✅
+
+| Opt | Bot menu toggle | Impact |
+|---|---|---|
+| Silence strip (ffmpeg `silenceremove`) | `silence_strip` | ✅ STT −6 s |
+| 8 kHz sample rate for Vosk | `low_sample_rate` | ✅ STT −7 s |
+| Pre-warm Piper ONNX cache | `warm_piper` | ✅ TTS cold-start −15 s |
+| Parallel TTS thread (text-first UX) | `parallel_tts` | ✅ text visible in ~3 s |
+| Per-user audio 🔊/🔇 toggle | `user_audio_toggle` | ✅ skip TTS entirely |
+| Piper model pinned to RAM (`/dev/shm`) | `tmpfs_model` | ✅ TTS load −13 s |
+| ffmpeg highpass + dynaudnorm pre-filter | always on | ✅ STT quality |
+| Vosk confidence filtering (`[?word]`) | always on | ✅ STT accuracy |
+| `TTS_MAX_CHARS = 600` | constant | ✅ balanced audio length |
+
+### 5.3 Planned improvements 🔲
+
+#### STT
+
+- [ ] **Switch to `whisper.cpp` tiny model** (aarch64 binary, ~75 MB)
+  - Expected: STT ~15 s → ~4 s; better Russian accuracy
+  - Ref: https://github.com/ggerganov/whisper.cpp
+
+- [ ] **VAD pre-filter** (`webrtcvad`, ~50 KB, no heavy deps)
+  - Removes inter-word pauses before Vosk; complements silence strip
+  ```bash
+  pip3 install webrtcvad
+  ```
+
+#### TTS
+
+- [ ] **Persistent Piper subprocess** (warm `Popen` singleton)
+  - Eliminates ONNX cold-load on every call
+  - ⚠️ Needs careful `stdin`/`stdout` flush handling (previous Popen attempt deadlocked)
+  - Expected: TTS total ~40 s → ~5 s
+
+- [ ] **Switch to `ru_RU-irina-low`** model
+  - Half the computation of `medium`; acceptable quality for bot use
+  - Expected: inference ~25 s → ~12 s
+  ```bash
+  wget https://huggingface.co/rhasspy/piper-voices/resolve/main/ru/ru_RU/irina/low/ru_RU-irina-low.onnx
+  ```
+
+### 5.4 Effort vs. impact summary
+
+| # | Change | Effort | Expected saving | Cumulative total |
+|---|---|---|---|---|
+| ✅ 1 | Silence strip | Low | STT −6 s | 52 s |
+| ✅ 2 | TTS_MAX_CHARS tuning | Low | TTS varies | — |
+| ✅ 3 | 8 kHz sample rate | Low | STT −7 s | 45 s |
+| ✅ 4 | warm_piper + tmpfs_model | Low | TTS cold −15 s | 30 s |
+| ✅ 5 | Parallel TTS thread | Medium | text in ~3 s | text fast |
+| 🔲 6 | VAD pre-filter | Low | STT −3 s | 27 s |
+| 🔲 7 | whisper.cpp STT | Medium | STT −11 s | ~16 s |
+| 🔲 8 | Piper low model | Low | TTS −13 s | ~14 s |
+| 🔲 9 | Persistent Piper Popen | High | TTS −20 s | ~10 s |
 
 ---
 
-### 10. Host–Project Synchronization
+## 6. Infrastructure & Operations
 
-Synchronize between local project and target host:
-- Source code, scripts, configs, env templates, deployment files
-- Tools: rsync, git deployment, archive export
+### 6.1 Logging & Monitoring 🔲
 
----
+- [ ] Structured log categories: `assistant.log`, `security.log`, `voice.log`
+- [ ] Admin Telegram UI: view last N log lines per category
+- [ ] Admin command: `/logs [category] [n]`
+- [ ] Optional: log rotation (`logrotate` config)
 
-### 11. Backup System
+### 6.2 Host–Project Synchronization 🔲
 
-#### Full System Image Backup
-- Full system recovery and hardware migration
-- Example: `mico-image-rpi5-2026-03-07.img.zst`
+Synchronize between local development machine and target Raspberry Pi.
 
-#### Recovery / Installation Bundle
-- Installation scripts, configs, deployment files, package list
-- Supports: fresh install, rebuild, update
+- [ ] rsync-based sync script for `src/` → Pi
+- [ ] Git-based deployment hook
+- [ ] Archive export for offline transfer
+- Covers: source code, scripts, configs, env templates, service files
 
----
+### 6.3 Backup System 🔲
 
-### 12. GitHub Integration
+#### 6.3.1 Full System Image Backup
 
-Recovery artifacts stored in the project repository:
+Full disk/partition image for hardware migration or disaster recovery.
+
+- [ ] Image backup script (`dd` or `rpi-clone`)
+- [ ] Compression: `zstd` or `gzip`
+- [ ] Checksum generation after image creation
+- [ ] Naming convention: `mico-image-rpi3-2026-03-07.img.zst`
+- [ ] Document restore procedure
+
+#### 6.3.2 Recovery / Installation Bundle
+
+Lightweight reproducible rebuild artifact stored in the project repository.
+
+Included: install scripts, update scripts, service files, config templates, package list
+
+- [ ] `src/setup/install.sh` — full fresh-install bootstrap
+- [ ] `src/setup/update.sh` — update existing install
+- [ ] Package dependency export (`dpkg --get-selections`)
+- [ ] Store in `/deploy` or `/ops` folder in repo
+- [ ] Git tag release-ready states
+
+#### 6.3.3 Remote Backup to Nextcloud
 
 ```
-/deploy
-/install
-/update
-/scripts
+/Nextcloud/MicoBackups/
+  images/
+  recovery/
+  logs/
 ```
 
----
+- [ ] Upload script: push image/bundle to Nextcloud (WebDAV)
+- [ ] Download script: pull and verify backup
+- [ ] Integrity check after upload (SHA-256)
+- [ ] Optional retention policy (keep last N backups)
 
-### 13. Remote Backup to Nextcloud
+#### 6.3.4 Backup Policy
 
-```
-/Nextcloud/
-  MicoBackups/
-    images/
-    recovery/
-    logs/
-```
-
----
-
-### 14. Backup and Sync Policy
-
-| Location | Contents |
+| Location | What to store |
 |---|---|
-| GitHub | Source code, deployment scripts, documentation |
-| Host | Runtime data, logs, databases, secrets |
-| Cloud (Nextcloud) | Image backups, recovery bundles |
+| **GitHub** | Source code, deploy scripts, config templates, documentation |
+| **Pi (host)** | Runtime data, live configs, secrets, logs, databases |
+| **Nextcloud** | Full image backups, recovery bundles, log archives |
 
-Naming example: `mico-recovery-bundle-2026-03-07.tar.gz`
+Rules:
+- Never commit secrets to GitHub
+- Only reproducible, sanitized artifacts in version control
+- Use dated versioned filenames: `mico-recovery-bundle-2026-03-07.tar.gz`
 
 ---
 
-### 15. Future Features
+## 7. Future / Experimental 💡
 
-- Local LLM support (see Section 8.9 in hardware analysis)
-- Multi-user knowledge graph
-- Long-term AI memory
-- Smart home integration
-- Multi-device access
+- [ ] Multi-user knowledge graph
+- [ ] Long-term AI memory (persistent across sessions, per user)
+- [ ] Smart home integration (Home Assistant, MQTT)
+- [ ] Multi-device access (same user on multiple Telegram accounts or devices)
+- [ ] USB SSD as local LLM host — full setup (see `doc/hardware-performance-analysis.md` §8)
+- [ ] Pi 4 B upgrade — drops total latency from ~58 s to ~15 s
+- [ ] Pi 5 + NVMe upgrade — ~8 s total latency, full local LLM viable
