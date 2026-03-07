@@ -207,12 +207,54 @@ def _run_subprocess(cmd: list[str], timeout: int = 60,
 
 
 def _ask_picoclaw(prompt: str, timeout: int = 60) -> Optional[str]:
-    """Call picoclaw agent -m and return response text."""
-    rc, out = _run_subprocess([PICOCLAW_BIN, "agent", "-m", prompt], timeout=timeout)
-    if rc == 0 and out:
-        return out
-    log.error(f"picoclaw error (rc={rc}): {out[:200]}")
-    return None
+    """Call picoclaw agent -m and return clean response text (no log lines)."""
+    try:
+        result = subprocess.run(
+            [PICOCLAW_BIN, "agent", "-m", prompt],
+            capture_output=True, text=True,
+            encoding="utf-8", errors="replace",
+            timeout=timeout,
+            env=os.environ.copy(),
+        )
+        out = result.stdout.strip()
+        if result.returncode != 0 or not out:
+            log.error(f"picoclaw error (rc={result.returncode}): {result.stderr[:300]}")
+            return None
+        return _clean_picoclaw_output(out)
+    except subprocess.TimeoutExpired:
+        return None
+    except Exception as e:
+        log.error(f"picoclaw exception: {e}")
+        return None
+
+
+def _clean_picoclaw_output(text: str) -> str:
+    """
+    Extract the human-readable answer from picoclaw stdout.
+    Handles two artefacts:
+      1. Log lines mixed into stdout (timestamp prefixes)
+      2. The LLM wrapping its answer in a printf '...' shell command
+    """
+    import re
+    # Drop lines that look like picoclaw log entries
+    clean_lines = []
+    for line in text.splitlines():
+        if re.match(r"^\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}", line):
+            continue
+        if re.match(r"^\[?\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}", line):
+            continue
+        clean_lines.append(line)
+
+    clean = "\n".join(clean_lines).strip()
+
+    # Strip  printf 'text'  or  printf "text"  wrapper if present
+    m = re.match(r"^printf\s+'(.*)'$", clean, re.DOTALL)
+    if not m:
+        m = re.match(r'^printf\s+"(.*)"$', clean, re.DOTALL)
+    if m:
+        clean = m.group(1).replace("\\n", "\n").replace("\\'", "'").strip()
+
+    return clean
 
 
 # ─────────────────────────────────────────────────────────────────────────────
