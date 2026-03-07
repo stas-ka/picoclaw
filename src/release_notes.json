@@ -1,5 +1,11 @@
 [
   {
+    "version": "2026.3.8",
+    "date": "2026-03-07",
+    "title": "Language enforcement + TTS emoji fix + Markdown safety",
+    "notes": "- All LLM responses forced to the user's language (Russian/English prefix injected into every prompt)\n- Emoji and Unicode pictographs stripped from TTS input — Piper no longer reads \"\u041e\u043c\u0430\u0440\" or similar at the start of voice replies\n- Literal \\\\n in LLM output is now correctly unescaped to a newline before display\n- Voice reply text uses Markdown escaping with plain-text fallback to prevent parse errors"
+  },
+  {
     "version": "2026.3.7",
     "date": "2026-03-07",
     "title": "Voice Pipeline Optimizations",

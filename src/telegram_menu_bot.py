@@ -119,7 +119,7 @@ LAST_DIGEST_FILE = os.environ.get("LAST_DIGEST_FILE",
                                    os.path.expanduser("~/.picoclaw/last_digest.txt"))
 
 # Bot version — bump this string with every deployment so admins get notified
-BOT_VERSION           = "2026.3.7"
+BOT_VERSION           = "2026.3.8"
 RELEASE_NOTES_FILE    = os.environ.get(
     "RELEASE_NOTES_FILE",
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "release_notes.json"),
@@ -463,8 +463,72 @@ def _clean_picoclaw_output(text: str) -> str:
         m = re.match(r'^printf\s+"(.*)"$', clean, re.DOTALL)
     if m:
         clean = m.group(1).replace("\\n", "\n").replace("\\'", "'").strip()
+    else:
+        # Unescape literal \n that some models emit as two characters (outside printf)
+        clean = clean.replace("\\n", "\n")
 
     return clean
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Language enforcement — injected into every LLM prompt
+# ─────────────────────────────────────────────────────────────────────────────
+
+_LANG_INSTRUCTION: dict[str, str] = {
+    "ru": (
+        "Отвечай строго на русском языке. "
+        "Не используй эмодзи, смайлики и символы. "
+        "Ответ краткий, по существу (2–4 предложения).\n\n"
+    ),
+    "en": (
+        "Reply in English only. "
+        "Do not use emoji or emoticons. "
+        "Keep the answer brief (2–4 sentences).\n\n"
+    ),
+}
+
+
+def _with_lang(chat_id: int, user_text: str) -> str:
+    """Prepend a language-enforcement instruction to any user → LLM prompt."""
+    return _LANG_INSTRUCTION.get(_lang(chat_id), "") + user_text
+
+
+# Comprehensive emoji / Unicode pictograph pattern used by _escape_tts()
+import re as _re_module
+_EMOJI_RE = _re_module.compile(
+    "[\U0001F000-\U0001FAFF"
+    "\U00002600-\U000027BF"
+    "\U00002702-\U000027B0"
+    "\U000024C2-\U0001F251"
+    "\u200D\uFE0F\u20E3]+",
+    flags=_re_module.UNICODE,
+)
+
+
+def _escape_tts(text: str) -> str:
+    """
+    Prepare text for Piper TTS:
+    - Strip all emoji / Unicode pictographs (Piper reads them as Russian words)
+    - Strip remaining Markdown syntax
+    - Collapse multiple blank lines
+    """
+    import re as _re
+    t = _EMOJI_RE.sub("", text)
+    # Strip Markdown
+    t = _re.sub(r"\*+([^*\n]+)\*+", r"\1", t)         # **bold** / *italic*
+    t = _re.sub(r"_+([^_\n]+)_+", r"\1", t)           # __bold__ / _italic_
+    t = _re.sub(r"`[^`]+`", "", t)                     # `code`
+    t = _re.sub(r"```.*?```", "", t, flags=_re.DOTALL) # code blocks
+    t = _re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", t)  # [link](url)
+    t = _re.sub(r"\n{3,}", "\n\n", t)                  # collapse blank lines
+    return t.strip()
+
+
+def _escape_md(text: str) -> str:
+    """Escape Markdown v1 special characters in free-form LLM response text."""
+    import re as _re
+    # Escape the four chars Telegram Markdown v1 treats as special: * _ ` [
+    return _re.sub(r"([*_`\[])", r"\\\1", text)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1061,7 +1125,7 @@ def _handle_chat_message(chat_id: int, user_text: str) -> None:
     msg = bot.send_message(chat_id, "⏳ Thinking…")
 
     def _run():
-        response = _ask_picoclaw(user_text, timeout=60)
+        response = _ask_picoclaw(_with_lang(chat_id, user_text), timeout=60)
         reply = response if response else "❌ No response from picoclaw."
         try:
             bot.edit_message_text(_truncate(reply), chat_id, msg.message_id,
@@ -1144,15 +1208,8 @@ def _tts_to_ogg(text: str) -> Optional[bytes]:
     """
     TTS_MAX_CHARS = 200   # ~25 words — reduces piper synthesis time on Pi 3
 
-    # Strip Markdown formatting — asterisks/underscores confuse piper phonemizer
-    import re as _re
-    tts_text = text.strip()
-    tts_text = _re.sub(r'\*+([^*]+)\*+', r'\1', tts_text)   # **bold** / *italic*
-    tts_text = _re.sub(r'_+([^_]+)_+', r'\1', tts_text)     # __bold__ / _italic_
-    tts_text = _re.sub(r'`[^`]+`', '', tts_text)             # `code` — drop inline code
-    tts_text = _re.sub(r'```.*?```', '', tts_text, flags=_re.DOTALL)  # code blocks
-    tts_text = _re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', tts_text)    # [link](url)
-    tts_text = tts_text.strip()
+    # Clean text: strip emoji (Piper reads them as words) + Markdown syntax
+    tts_text = _escape_tts(text)
 
     # Trim to whole sentences where possible, hard-cap at TTS_MAX_CHARS
     if len(tts_text) > TTS_MAX_CHARS:
@@ -1313,7 +1370,7 @@ def _handle_voice_message(chat_id: int, voice_obj) -> None:
                    parse_mode="Markdown")
 
         _ts = time.time()
-        response = _ask_picoclaw(text, timeout=90)
+        response = _ask_picoclaw(_with_lang(chat_id, text), timeout=90)
         _timing["LLM"] = time.time() - _ts
 
         if not response:
@@ -1330,12 +1387,23 @@ def _handle_voice_message(chat_id: int, voice_obj) -> None:
             _tts_thread = threading.Thread(target=_bg_tts, daemon=True)
             _tts_thread.start()
 
-        bot.send_message(
-            chat_id,
-            f"🤖 *Picoclaw:*\n{_truncate(response)}{_fmt_timing()}",
-            parse_mode="Markdown",
-            reply_markup=_voice_back_keyboard(chat_id),
-        )
+        import html as _html_mod
+        _display_text = _escape_md(_truncate(response))
+        try:
+            bot.send_message(
+                chat_id,
+                f"🤖 *Picoclaw:*\n{_display_text}{_fmt_timing()}",
+                parse_mode="Markdown",
+                reply_markup=_voice_back_keyboard(chat_id),
+            )
+        except Exception:
+            # Fallback: plain text when Markdown parse fails
+            bot.send_message(
+                chat_id,
+                f"Picoclaw:\n{_truncate(response)}{_fmt_timing()}",
+                parse_mode=None,
+                reply_markup=_voice_back_keyboard(chat_id),
+            )
 
         if _audio_on:
             tts_msg = bot.send_message(chat_id, _t(chat_id, "gen_audio"),
