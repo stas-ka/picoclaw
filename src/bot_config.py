@@ -79,7 +79,7 @@ MAIL_CREDS_DIR      = os.environ.get("MAIL_CREDS_DIR",
 # Bot version — bump on every user-visible deployment
 # ─────────────────────────────────────────────────────────────────────────────
 
-BOT_VERSION        = "2026.3.22"
+BOT_VERSION        = "2026.3.23"
 RELEASE_NOTES_FILE = os.environ.get(
     "RELEASE_NOTES_FILE",
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "release_notes.json"),
@@ -109,7 +109,8 @@ VOICE_SAMPLE_RATE     = 16000
 VOICE_CHUNK_SIZE      = 4000       # 250 ms at 16 kHz
 VOICE_SILENCE_TIMEOUT = 4.0        # seconds of silence → auto-stop
 VOICE_MAX_DURATION    = 30.0       # hard session cap (seconds)
-TTS_MAX_CHARS         = 600        # ~75 words / ~25 s on Pi 3
+TTS_MAX_CHARS         = 600        # ~75 words / ~25 s on Pi 3 — cap for real-time voice chat
+TTS_CHUNK_CHARS       = 1200       # ~150 words / ~55 s on Pi 3 — per-part cap for "Read aloud"
 VOICE_TIMING_DEBUG    = os.environ.get("VOICE_TIMING_DEBUG", "0").lower() in ("1", "true", "yes")
 
 # Strings file

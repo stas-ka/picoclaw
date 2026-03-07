@@ -1,5 +1,11 @@
 [
   {
+    "version": "2026.3.23",
+    "date": "2026-03-07",
+    "title": "Send as email from Notes, Digest, and Calendar",
+    "notes": "- Notes, Mail Digest, and Calendar events now have a Send as email button\n- First send: bot asks for recipient address and stores it per user\n- Subsequent sends use the stored address (change option always available)\n- Sends via SMTP over SSL using the configured mail App Password\n- Supports Gmail, Yandex, Mail.ru, and custom IMAP/SMTP providers"
+  },
+  {
     "version": "2026.3.22",
     "date": "2026-03-07",
     "title": "Calendar: confirmation step + full event editing",

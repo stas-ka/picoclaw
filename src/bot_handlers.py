@@ -112,7 +112,10 @@ def _handle_note_open(chat_id: int, slug: str) -> None:
         InlineKeyboardButton("🔊 Read aloud", callback_data=f"note_tts:{slug}"),
     )
     kb.row(
-        InlineKeyboardButton("📋 All Notes", callback_data="note_list"),
+        InlineKeyboardButton("� Send as email", callback_data=f"note_email:{slug}"),
+    )
+    kb.row(
+        InlineKeyboardButton("�📋 All Notes", callback_data="note_list"),
         InlineKeyboardButton("🔙  Menu",      callback_data="menu"),
     )
     bot.send_message(

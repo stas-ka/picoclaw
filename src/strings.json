@@ -106,7 +106,18 @@
     "mail_btn_settings":   "⚙️  Настройки почты",
     "mail_btn_delete":     "🗑  Удалить данные доступа",
     "mail_settings_msg":   "⚙️ *Настройки почты*\n\nПровайдер: *{provider}*\nАккаунт: `{masked}`\nНастроено: {date}\nСогласие: {consent}\n\n_Учётные данные хранятся только на этом устройстве (Raspberry Pi) и не передаются третьим сторонам._",
-    "mail_creds_deleted":  "🗑 *Данные доступа удалены.*\n\nДайджест почты отключён. Вы можете настроить новый доступ в любое время. Ваше согласие на обработку персональных данных отозвано (основание: Регламент ЕС 2016/679 (GDPR) ст. 7(3), Федеральный закон №152-ФЗ ст. 9 ч.2)."
+    "mail_creds_deleted":  "🗑 *Данные доступа удалены.*\n\nДайджест почты отключён. Вы можете настроить новый доступ в любое время. Ваше согласие на обработку персональных данных отозвано (основание: Регламент ЕС 2016/679 (GDPR) ст. 7(3), Федеральный закон №152-ФЗ ст. 9 ч.2).",
+
+    "email_ask_target":       "📧 *Отправка по e-mail*\n\nВведите адрес получателя:",
+    "email_sending":          "📤 Отправляю на `{to}`…",
+    "email_sent_ok":          "✅ Письмо успешно отправлено на `{to}`.",
+    "email_send_fail":        "❌ Ошибка отправки: _{err}_",
+    "email_auth_fail":        "❌ *Ошибка авторизации SMTP.*\n\nПроверьте пароль приложения в настройках почты.",
+    "email_invalid_addr":     "❌ Некорректный адрес. Повторите ввод.",
+    "email_target_saved":     "✅ Адрес `{to}` сохранён.",
+    "email_no_mail_creds":    "⛔ Сначала настройте доступ к почте (📧 Почта → Настройки).",
+    "email_no_target":        "❌ Адрес получателя не задан. Начните отправку заново.",
+    "email_btn_change_target":"✏️  Изменить адрес получателя"
   },
 
   "en": {
@@ -216,6 +227,17 @@
     "mail_btn_settings":   "⚙️  Mail settings",
     "mail_btn_delete":     "🗑  Delete credentials",
     "mail_settings_msg":   "⚙️ *Mail Settings*\n\nProvider: *{provider}*\nAccount: `{masked}`\nConfigured: {date}\nConsent: {consent}\n\n_Your credentials are stored only on this device (Raspberry Pi) and are never shared with third parties._",
-    "mail_creds_deleted":  "🗑 *Credentials deleted.*\n\nMail digest disabled. You can set up access again at any time. Your consent to personal data processing has been withdrawn (GDPR Art. 7(3); Federal Law No. 152-FZ Art. 9 §2)."
+    "mail_creds_deleted":  "🗑 *Credentials deleted.*\n\nMail digest disabled. You can set up access again at any time. Your consent to personal data processing has been withdrawn (GDPR Art. 7(3); Federal Law No. 152-FZ Art. 9 §2).",
+
+    "email_ask_target":       "📧 *Send as email*\n\nEnter the recipient address:",
+    "email_sending":          "📤 Sending to `{to}`…",
+    "email_sent_ok":          "✅ Email sent successfully to `{to}`.",
+    "email_send_fail":        "❌ Send error: _{err}_",
+    "email_auth_fail":        "❌ *SMTP authentication failed.*\n\nCheck the app password in mail settings.",
+    "email_invalid_addr":     "❌ Invalid address. Please try again.",
+    "email_target_saved":     "✅ Address `{to}` saved.",
+    "email_no_mail_creds":    "⛔ Configure mail access first (📧 Mail Digest → Settings).",
+    "email_no_target":        "❌ No recipient address set. Start the send flow again.",
+    "email_btn_change_target":"✏️  Change recipient address"
   }
 }

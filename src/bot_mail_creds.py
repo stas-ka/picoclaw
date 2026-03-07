@@ -337,6 +337,10 @@ def _mail_main_keyboard(chat_id: int) -> InlineKeyboardMarkup:
         "🔊  " + ("Прочитать вслух" if lang == "ru" else "Read aloud"),
         callback_data="digest_tts",
     ))
+    kb.add(InlineKeyboardButton(
+        "📧  " + ("Отправить по e-mail" if lang == "ru" else "Send as email"),
+        callback_data="digest_email",
+    ))
     kb.add(InlineKeyboardButton("🔙  Menu", callback_data="menu"))
     return kb
 

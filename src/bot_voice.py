@@ -24,7 +24,7 @@ import bot_state as _st
 from bot_config import (
     PIPER_BIN, PIPER_MODEL, PIPER_MODEL_TMPFS, PIPER_MODEL_LOW,
     VOSK_MODEL_PATH, VOICE_SAMPLE_RATE, VOICE_CHUNK_SIZE,
-    TTS_MAX_CHARS, VOICE_TIMING_DEBUG,
+    TTS_MAX_CHARS, TTS_CHUNK_CHARS, VOICE_TIMING_DEBUG,
     WHISPER_BIN, WHISPER_MODEL,
     _PENDING_TTS_FILE, log,
 )
@@ -321,18 +321,66 @@ def _stt_whisper(raw_pcm: bytes, sample_rate: int) -> Optional[str]:
 # TTS — Piper → raw PCM → ffmpeg → OGG Opus
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _tts_to_ogg(text: str) -> Optional[bytes]:
+def _split_for_tts(text: str, max_chars: int) -> list[str]:
+    """
+    Split *text* into chunks ≤ *max_chars* each, breaking preferentially at
+    sentence / paragraph boundaries so each chunk is a natural speech unit.
+    Returns a list of non-empty stripped strings.
+    """
+    text = text.strip()
+    if not text:
+        return []
+    if len(text) <= max_chars:
+        return [text]
+
+    # Sentence / clause separators ordered by preference
+    SENT_ENDS = [". ", "! ", "? ", ".\n", "!\n", "?\n", "…\n", ";\n", "; "]
+
+    chunks: list[str] = []
+    remaining = text
+    while len(remaining) > max_chars:
+        window = remaining[:max_chars]
+        best = -1
+        for sep in SENT_ENDS:
+            idx = window.rfind(sep)
+            # Require the break to be at least 20 % into the window
+            if idx > max_chars // 5 and idx + len(sep) - 1 > best:
+                best = idx + len(sep) - 1
+        if best > 0:
+            chunk     = remaining[:best + 1].strip()
+            remaining = remaining[best + 1:].strip()
+        else:
+            # Fall back to last whitespace boundary
+            idx = window.rfind(" ")
+            if idx > max_chars // 5:
+                chunk     = remaining[:idx].strip()
+                remaining = remaining[idx + 1:].strip()
+            else:
+                # Hard cut — no suitable boundary found
+                chunk     = remaining[:max_chars].strip()
+                remaining = remaining[max_chars:].strip()
+        if chunk:
+            chunks.append(chunk)
+    if remaining:
+        chunks.append(remaining)
+    return chunks
+
+
+def _tts_to_ogg(text: str, _trim: bool = True) -> Optional[bytes]:
     """
     Synthesise text with Piper TTS, encode with ffmpeg as OGG Opus.
     Returns bytes for bot.send_voice(), or None on failure.
 
     Two sequential subprocess.run() calls (not Popen pipe) to avoid
     the deadlock where parent holds piper.stdout open → ffmpeg blocks on stdin EOF.
+
+    _trim=True  — cap at TTS_MAX_CHARS (real-time voice chat responses).
+    _trim=False — no length cap; caller is responsible for pre-chunking.
     """
     tts_text = _escape_tts(text)
 
-    # Trim to whole sentences, then hard-cap at TTS_MAX_CHARS
-    if len(tts_text) > TTS_MAX_CHARS:
+    # Trim to whole sentences, then hard-cap at TTS_MAX_CHARS (real-time path only)
+    if _trim and len(tts_text) > TTS_MAX_CHARS:
         cut = tts_text[:TTS_MAX_CHARS]
         for sep in (". ", "! ", "? ", ".\n", "!\n", "?\n"):
             idx = cut.rfind(sep)
@@ -389,7 +437,8 @@ def _tts_to_ogg(text: str) -> Optional[bytes]:
 def _handle_note_read_aloud(chat_id: int, slug: str) -> None:
     """
     Read a note aloud via Piper TTS.
-    Strips Markdown/emoji before synthesis, sends as a Telegram voice message.
+    Long notes are split into chunks (~55 s each) and delivered as consecutive
+    voice messages so the full text is always heard.
     Runs in a background thread to avoid blocking the callback handler.
     """
     from bot_handlers import _notes_menu_keyboard  # deferred — avoids circular import at module level
@@ -404,20 +453,33 @@ def _handle_note_read_aloud(chat_id: int, slug: str) -> None:
     _save_pending_tts(chat_id, msg.message_id)
 
     def _run():
+        import io as _io
         try:
             # Strip title header and Markdown/emoji before TTS
-            lines = note_text.splitlines()
-            body  = "\n".join(lines[2:] if len(lines) > 2 else lines).strip() or note_text
-            plain = _escape_tts(body)
+            lines      = note_text.splitlines()
+            body       = "\n".join(lines[2:] if len(lines) > 2 else lines).strip() or note_text
+            plain      = _escape_tts(body)
             if not plain.strip():
-                plain = _escape_tts(note_text)
+                plain  = _escape_tts(note_text)
+            if not plain.strip():
+                _safe_edit(chat_id, msg.message_id,
+                           _t(chat_id, "audio_na"), parse_mode="Markdown")
+                return
 
-            ogg = _tts_to_ogg(plain)
-            if ogg:
-                import io as _io
-                note_title = lines[0].lstrip("# ").strip()
-                bot.send_voice(chat_id, _io.BytesIO(ogg),
-                               caption=f"🔊 {note_title}")
+            note_title = lines[0].lstrip("# ").strip()
+            chunks     = _split_for_tts(plain, TTS_CHUNK_CHARS)
+            total      = len(chunks)
+            sent       = 0
+
+            for i, chunk in enumerate(chunks):
+                ogg = _tts_to_ogg(chunk, _trim=False)
+                if ogg:
+                    label = (f"🔊 {note_title} ({i + 1}/{total})"
+                             if total > 1 else f"🔊 {note_title}")
+                    bot.send_voice(chat_id, _io.BytesIO(ogg), caption=label)
+                    sent += 1
+
+            if sent:
                 bot.delete_message(chat_id, msg.message_id)
             else:
                 _safe_edit(chat_id, msg.message_id,
@@ -438,7 +500,8 @@ def _handle_note_read_aloud(chat_id: int, slug: str) -> None:
 def _handle_digest_tts(chat_id: int) -> None:
     """
     Read the last mail digest aloud via Piper TTS.
-    Strips Markdown before synthesis, sends as a Telegram voice message.
+    Long digests are split into ~55 s chunks and delivered as consecutive
+    voice messages so the complete digest is always read in full.
     Runs in a background thread to avoid blocking the callback handler.
     """
     from bot_mail_creds import _last_digest_file  # deferred — avoids circular import
@@ -454,17 +517,28 @@ def _handle_digest_tts(chat_id: int) -> None:
     _save_pending_tts(chat_id, msg.message_id)
 
     def _run():
+        import io as _io
         try:
             plain = _escape_tts(digest_text)
             if not plain.strip():
                 _safe_edit(chat_id, msg.message_id,
                            _t(chat_id, "audio_na"), parse_mode="Markdown")
                 return
-            ogg = _tts_to_ogg(plain)
-            if ogg:
-                import io as _io
-                bot.send_voice(chat_id, _io.BytesIO(ogg),
-                               caption="🔊 " + _t(chat_id, "mail_digest_audio_caption"))
+
+            caption = "🔊 " + _t(chat_id, "mail_digest_audio_caption")
+            chunks  = _split_for_tts(plain, TTS_CHUNK_CHARS)
+            total   = len(chunks)
+            sent    = 0
+
+            for i, chunk in enumerate(chunks):
+                ogg = _tts_to_ogg(chunk, _trim=False)
+                if ogg:
+                    label = (f"{caption} ({i + 1}/{total})"
+                             if total > 1 else caption)
+                    bot.send_voice(chat_id, _io.BytesIO(ogg), caption=label)
+                    sent += 1
+
+            if sent:
                 bot.delete_message(chat_id, msg.message_id)
             else:
                 _safe_edit(chat_id, msg.message_id,

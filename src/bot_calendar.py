@@ -216,7 +216,11 @@ def _cal_event_keyboard(chat_id: int, ev_id: str) -> InlineKeyboardMarkup:
         callback_data=f"cal_del:{ev_id}",
     ))
     kb.add(InlineKeyboardButton(
-        "🔙  " + ("Назад" if lang == "ru" else "Back"),
+        "�  " + ("Отправить по e-mail" if lang == "ru" else "Send as email"),
+        callback_data=f"cal_email:{ev_id}",
+    ))
+    kb.add(InlineKeyboardButton(
+        "�🔙  " + ("Назад" if lang == "ru" else "Back"),
         callback_data="menu_calendar",
     ))
     return kb

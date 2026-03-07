@@ -88,7 +88,10 @@ from bot_mail_creds import (
     handle_mail_settings, handle_mail_del_creds,
     _pending_mail_setup,
 )
-
+# ─── Email send ────────────────────────────────────────────────────────────
+from bot_email import (
+    handle_send_email, handle_email_change_target, finish_email_set_target,
+)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Registration helper
@@ -398,7 +401,43 @@ def callback_handler(call):
             _handle_note_delete(cid, data[len("note_delete:"):])
         else:
             bot.send_message(cid, _t(cid, "admin_only"))
+    # ── Send as email ───────────────────────────────────────────────────────
+    elif data.startswith("note_email:"):
+        from bot_users import _load_note_text
+        slug    = data[len("note_email:"):]
+        content = _load_note_text(cid, slug)
+        if content:
+            handle_send_email(cid, f"Note: {slug.replace('_', ' ')}", content)
+        else:
+            bot.send_message(cid, _t(cid, "note_not_found"), reply_markup=_back_keyboard())
 
+    elif data == "digest_email":
+        from bot_mail_creds import _last_digest_file
+        last_f = _last_digest_file(cid)
+        if last_f.exists() and last_f.stat().st_size > 0:
+            body = last_f.read_text(encoding="utf-8", errors="replace").strip()
+            handle_send_email(cid, "Mail Digest", body)
+        else:
+            bot.send_message(cid, _t(cid, "digest_not_ready"), reply_markup=_back_keyboard())
+
+    elif data.startswith("cal_email:"):
+        from bot_calendar import _cal_load
+        ev_id  = data[len("cal_email:"):]
+        events = _cal_load(cid)
+        ev     = next((e for e in events if e["id"] == ev_id), None)
+        if ev:
+            from datetime import datetime
+            try:
+                dt_str = datetime.fromisoformat(ev["dt_iso"]).strftime("%d.%m.%Y %H:%M")
+            except Exception:
+                dt_str = ev.get("dt_iso", "")
+            body = f"{ev['title']}\n{dt_str}"
+            handle_send_email(cid, f"Calendar: {ev['title']}", body)
+        else:
+            bot.send_message(cid, "❌ Event not found.", reply_markup=_back_keyboard())
+
+    elif data == "email_change_target":
+        handle_email_change_target(cid)
     # ── Mail credentials setup ────────────────────────────────────────────
     elif data == "mail_consent":
         handle_mail_consent(cid)
@@ -594,7 +633,12 @@ def text_handler(message):
                          reply_markup=_notes_menu_keyboard(cid))
         return
 
-    # ── Mail credential setup flow ────────────────────────────────────────
+    # ── Email recipient address entry ─────────────────────────────────
+    if mode == "email_set_target":
+        finish_email_set_target(cid, message.text)
+        return
+
+    # ── Mail credential setup flow ────────────────────────────────────
     if mode == "mail_setup":
         finish_mail_setup(cid, message.text)
         return
