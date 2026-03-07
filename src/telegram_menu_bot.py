@@ -118,6 +118,14 @@ DIGEST_SCRIPT    = os.environ.get("DIGEST_SCRIPT",
 LAST_DIGEST_FILE = os.environ.get("LAST_DIGEST_FILE",
                                    os.path.expanduser("~/.picoclaw/last_digest.txt"))
 
+# Bot version — bump this string with every deployment so admins get notified
+BOT_VERSION           = "2026.3.7"
+RELEASE_NOTES_FILE    = os.environ.get(
+    "RELEASE_NOTES_FILE",
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "release_notes.json"),
+)
+LAST_NOTIFIED_FILE    = os.path.expanduser("~/.picoclaw/last_notified_version.txt")
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Dynamic guest-user storage (persisted to USERS_FILE)
 # ─────────────────────────────────────────────────────────────────────────────
@@ -466,12 +474,13 @@ def _clean_picoclaw_output(text: str) -> str:
 def _admin_keyboard() -> InlineKeyboardMarkup:
     kb = InlineKeyboardMarkup(row_width=1)
     kb.add(
-        InlineKeyboardButton("➕  Add user",     callback_data="admin_add_user"),
-        InlineKeyboardButton("📋  List users",   callback_data="admin_list_users"),
-        InlineKeyboardButton("🗑   Remove user",  callback_data="admin_remove_user"),
-        InlineKeyboardButton("🤖  Switch LLM",   callback_data="admin_llm_menu"),
-        InlineKeyboardButton("⚡  Voice Opts",    callback_data="voice_opts_menu"),
-        InlineKeyboardButton("🔙  Menu",          callback_data="menu"),
+        InlineKeyboardButton("➕  Add user",       callback_data="admin_add_user"),
+        InlineKeyboardButton("📋  List users",     callback_data="admin_list_users"),
+        InlineKeyboardButton("🗑   Remove user",    callback_data="admin_remove_user"),
+        InlineKeyboardButton("🤖  Switch LLM",     callback_data="admin_llm_menu"),
+        InlineKeyboardButton("⚡  Voice Opts",      callback_data="voice_opts_menu"),
+        InlineKeyboardButton("📝  Release Notes",   callback_data="admin_changelog"),
+        InlineKeyboardButton("🔙  Menu",            callback_data="menu"),
     )
     return kb
 
@@ -613,6 +622,84 @@ def _handle_voice_opt_toggle(chat_id: int, key: str) -> None:
         bot.send_message(chat_id, "⚡ _Warming Piper cache in background…_",
                          parse_mode="Markdown")
     _handle_voice_opts_menu(chat_id)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Release Notes — load, format, notify admins, admin menu handler
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _load_release_notes() -> list[dict]:
+    """Load release_notes.json; returns [] on any error."""
+    try:
+        return json.loads(Path(RELEASE_NOTES_FILE).read_text(encoding="utf-8"))
+    except Exception as e:
+        log.warning(f"[ReleaseNotes] cannot load {RELEASE_NOTES_FILE}: {e}")
+        return []
+
+
+def _format_release_entry(entry: dict, header: bool = True) -> str:
+    """Format one release notes entry as Telegram Markdown text."""
+    v   = entry.get("version", "?")
+    d   = entry.get("date", "")
+    t   = entry.get("title", "")
+    n   = entry.get("notes", "")
+    hdr = f"📦 *v{v}*" + (f"  _({d})_" if d else "") + (f" — {t}" if t else "")
+    return (hdr + "\n\n" + n) if header else n
+
+
+def _get_changelog_text(max_entries: int = 0) -> str:
+    """Return formatted changelog Markdown (all entries, or limited to max_entries)."""
+    entries = _load_release_notes()
+    if not entries:
+        return "📝 _Release notes not available._"
+    if max_entries:
+        entries = entries[:max_entries]
+    parts = [_format_release_entry(e) for e in entries]
+    sep = "\n\n" + "\u2500" * 28 + "\n\n"
+    return sep.join(parts)
+
+
+def _notify_admins_new_version() -> None:
+    """On startup, send release notes to all admins if BOT_VERSION is new."""
+    try:
+        last = Path(LAST_NOTIFIED_FILE).read_text(encoding="utf-8").strip()
+    except FileNotFoundError:
+        last = ""
+    except Exception as e:
+        log.warning(f"[ReleaseNotes] read last-notified: {e}")
+        last = ""
+
+    if last == BOT_VERSION:
+        return   # already notified for this version
+
+    entries = _load_release_notes()
+    # Find this version's entry
+    entry = next((e for e in entries if e.get("version") == BOT_VERSION), None)
+    if entry:
+        body = _format_release_entry(entry)
+    else:
+        body = f"📦 *v{BOT_VERSION}* deployed."
+
+    msg = f"� *New version deployed: v{BOT_VERSION}*\n\n{body}"
+    for admin_id in ADMIN_USERS:
+        try:
+            bot.send_message(admin_id, msg, parse_mode="Markdown",
+                             reply_markup=_admin_keyboard())
+            log.info(f"[ReleaseNotes] notified admin {admin_id} (v{BOT_VERSION})")
+        except Exception as e:
+            log.warning(f"[ReleaseNotes] notify admin {admin_id} failed: {e}")
+
+    try:
+        Path(LAST_NOTIFIED_FILE).write_text(BOT_VERSION, encoding="utf-8")
+    except Exception as e:
+        log.warning(f"[ReleaseNotes] save last-notified: {e}")
+
+
+def _handle_admin_changelog(chat_id: int) -> None:
+    """Show the full changelog in the admin panel."""
+    text = f"📝 *Release Notes*  (current: v{BOT_VERSION})\n" + _get_changelog_text()
+    bot.send_message(chat_id, text, parse_mode="Markdown",
+                     reply_markup=_admin_keyboard())
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1457,6 +1544,12 @@ def callback_handler(call):
         _user_audio[cid] = not _user_audio.get(cid, True)
         # answer_callback_query already called above; spinner is dismissed
 
+    elif data == "admin_changelog":
+        if not _is_admin(cid):
+            bot.send_message(cid, _t(cid, "admin_only"))
+        else:
+            _handle_admin_changelog(cid)
+
     elif data == "cancel":
         _pending_cmd.pop(cid, None)
         bot.send_message(cid, _t(cid, "cancelled"), reply_markup=_back_keyboard())
@@ -1549,12 +1642,16 @@ def main():
     log.info(f"  Digest script: {DIGEST_SCRIPT}")
     active_opts = [k for k, v in _voice_opts.items() if v]
     log.info(f"  Voice opts   : {active_opts or 'all OFF (stable defaults)'}")
+    log.info(f"  Version      : {BOT_VERSION}")
     log.info("=" * 50)
 
     # Pre-warm Piper ONNX model if opt is enabled
     if _voice_opts.get("warm_piper"):
         log.info("[VoiceOpt] warm_piper enabled — starting background warm-up")
         threading.Thread(target=_warm_piper_cache, daemon=True).start()
+
+    # Notify admins if this is a new deployment
+    _notify_admins_new_version()
 
     log.info("Polling Telegram…")
     bot.infinity_polling(timeout=30, long_polling_timeout=20)

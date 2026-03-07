@@ -1,0 +1,26 @@
+[
+  {
+    "version": "2026.3.7",
+    "date": "2026-03-07",
+    "title": "Voice Pipeline Optimizations",
+    "notes": "5 optional voice latency optimizations added (all OFF by default).\n\nEnable via Admin → ⚡ Voice Opts:\n• *Silence strip* — crops silence before STT (−6s)\n• *8 kHz sample rate* — lighter Vosk processing (−7s)\n• *Warm Piper cache* — pre-loads TTS model at startup (−15s first call)\n• *Parallel TTS thread* — TTS starts while text reply is sent (text-first UX)\n• *Per-user audio toggle* — 🔇/🔊 button on every voice reply\n\nSettings persist in `~/.picoclaw/voice_opts.json`."
+  },
+  {
+    "version": "2026.3.6",
+    "date": "2026-03-06",
+    "title": "OpenAI ChatGPT LLM Sub-menu + TTS Timeout Fix",
+    "notes": "OpenAI ChatGPT model selector with API key management.\nAvailable models: gpt-4o, gpt-4o-mini, o3-mini, o1, gpt-4.5-preview.\nAPI key saved once for all 5 models via Admin → Switch LLM → OpenAI ChatGPT.\n\nFixed audio timeout: Markdown stripped before TTS, char limit halved (200), timeout raised to 120s."
+  },
+  {
+    "version": "2026.3.5",
+    "date": "2026-03-05",
+    "title": "Role-based Help + /status Service Diagnostics",
+    "notes": "Three help variants: Admin / Full / Guest — each shows only relevant menu items and role badge.\n\n/status now shows per-service status with icons (✅/❌): Telegram Bot, AI Gateway, Voice Assistant, plus active LLM model and user role."
+  },
+  {
+    "version": "2026.3.4",
+    "date": "2026-03-04",
+    "title": "i18n Infrastructure + Voice Language Announcement",
+    "notes": "Full Russian/English localisation via strings.json.\nAll UI strings externalised — no hard-coded text in bot code.\nVoice session intro announces supported language (Vosk + Piper Irina).\nLLM switcher in admin panel — persist model choice to active_model.txt."
+  }
+]
