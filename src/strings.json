@@ -30,6 +30,7 @@
     "audio_caption":   "🔊 Аудио ответ",
     "audio_error":     "_Аудио не отправлено: {e}_",
     "audio_na":        "_(Аудио недоступно — piper не установлен)_",
+    "audio_interrupted": "_(Генерация аудио прервана — бот был перезапущен)_",
 
     "no_guests":       "_Нет добавленных гостевых пользователей._",
     "no_guests_del":   "_Нет гостевых пользователей для удаления._",
@@ -88,6 +89,7 @@
     "audio_caption":   "🔊 Audio reply",
     "audio_error":     "_Audio not sent: {e}_",
     "audio_na":        "_(Audio unavailable — piper not installed)_",
+    "audio_interrupted": "_(Audio generation interrupted — bot was restarted)_",
 
     "no_guests":       "_No guest users added._",
     "no_guests_del":   "_No guest users to remove._",

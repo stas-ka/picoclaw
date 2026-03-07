@@ -119,7 +119,7 @@ LAST_DIGEST_FILE = os.environ.get("LAST_DIGEST_FILE",
                                    os.path.expanduser("~/.picoclaw/last_digest.txt"))
 
 # Bot version — bump this string with every deployment so admins get notified
-BOT_VERSION           = "2026.3.11"
+BOT_VERSION           = "2026.3.12"
 RELEASE_NOTES_FILE    = os.environ.get(
     "RELEASE_NOTES_FILE",
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "release_notes.json"),
@@ -174,6 +174,7 @@ VOICE_TIMING_DEBUG    = os.environ.get("VOICE_TIMING_DEBUG", "0").lower() in ("1
 # Settings persist in ~/.picoclaw/voice_opts.json.
 # ─────────────────────────────────────────────────────────────────────────────
 _VOICE_OPTS_FILE     = os.path.expanduser("~/.picoclaw/voice_opts.json")
+_PENDING_TTS_FILE    = os.path.expanduser("~/.picoclaw/pending_tts.json")
 _VOICE_OPTS_DEFAULTS: dict = {
     "silence_strip":     False,   # #1: strip leading/trailing silence (ffmpeg)
     "low_sample_rate":   False,   # #3: 8 kHz instead of 16 kHz for Vosk STT
@@ -780,7 +781,7 @@ def _format_release_entry(entry: dict, header: bool = True) -> str:
     """Format one release notes entry as Telegram Markdown text."""
     v   = entry.get("version", "?")
     d   = entry.get("date", "")
-    t   = entry.get("title", "")
+    t   = _escape_md(entry.get("title", ""))   # escape to prevent Markdown parse errors
     n   = entry.get("notes", "")
     hdr = f"📦 *v{v}*" + (f"  _({d})_" if d else "") + (f" — {t}" if t else "")
     return (hdr + "\n\n" + n) if header else n
@@ -796,6 +797,66 @@ def _get_changelog_text(max_entries: int = 0) -> str:
     parts = [_format_release_entry(e) for e in entries]
     sep = "\n\n" + "\u2500" * 28 + "\n\n"
     return sep.join(parts)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Orphaned TTS message tracker
+# Persists 'Generating audio…' message IDs across restarts so they can be
+# cleaned up even if the bot was killed mid-synthesis.
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _save_pending_tts(chat_id: int, msg_id: int) -> None:
+    """Record a pending TTS message so it can be cleaned up on restart."""
+    try:
+        try:
+            data: dict = json.loads(Path(_PENDING_TTS_FILE).read_text(encoding="utf-8"))
+        except Exception:
+            data = {}
+        data[str(chat_id)] = msg_id
+        Path(_PENDING_TTS_FILE).write_text(json.dumps(data), encoding="utf-8")
+    except Exception as _e:
+        log.debug(f"_save_pending_tts: {_e}")
+
+
+def _clear_pending_tts(chat_id: int) -> None:
+    """Remove a chat's TTS entry once the message has been handled."""
+    try:
+        data: dict = json.loads(Path(_PENDING_TTS_FILE).read_text(encoding="utf-8"))
+        data.pop(str(chat_id), None)
+        Path(_PENDING_TTS_FILE).write_text(json.dumps(data), encoding="utf-8")
+    except Exception:
+        pass
+
+
+def _cleanup_orphaned_tts() -> None:
+    """
+    On startup: edit any 'Generating audio…' messages left orphaned by
+    a previous restart so users don't see a permanently stuck status bubble.
+    """
+    try:
+        data: dict = json.loads(Path(_PENDING_TTS_FILE).read_text(encoding="utf-8"))
+    except Exception:
+        return
+    if not data:
+        return
+    cleaned = 0
+    for chat_id_str, msg_id in list(data.items()):
+        try:
+            # Use bilingual message — we don't know the user's language here
+            bot.edit_message_text(
+                "⚠️ Генерация аудио прервана (бот перезапущен)\n"
+                "⚠️ Audio generation interrupted (bot restarted)",
+                int(chat_id_str), msg_id,
+            )
+            cleaned += 1
+        except Exception:
+            pass  # message already gone or too old
+    try:
+        Path(_PENDING_TTS_FILE).unlink(missing_ok=True)
+    except Exception:
+        pass
+    if cleaned:
+        log.info(f"[TTS] Cleaned {cleaned} orphaned 'Generating audio…' message(s)")
 
 
 def _notify_admins_new_version() -> None:
@@ -826,7 +887,14 @@ def _notify_admins_new_version() -> None:
                              reply_markup=_admin_keyboard())
             log.info(f"[ReleaseNotes] notified admin {admin_id} (v{BOT_VERSION})")
         except Exception as e:
-            log.warning(f"[ReleaseNotes] notify admin {admin_id} failed: {e}")
+            log.warning(f"[ReleaseNotes] Markdown failed for admin {admin_id}: {e} — retrying as plain text")
+            try:
+                import re as _re_rn
+                plain = _re_rn.sub(r"[*_`]", "", msg)
+                bot.send_message(admin_id, plain, reply_markup=_admin_keyboard())
+                log.info(f"[ReleaseNotes] notified admin {admin_id} (v{BOT_VERSION}, plain text)")
+            except Exception as e2:
+                log.warning(f"[ReleaseNotes] notify admin {admin_id} failed: {e2}")
 
     try:
         Path(LAST_NOTIFIED_FILE).write_text(BOT_VERSION, encoding="utf-8")
@@ -1479,30 +1547,42 @@ def _handle_voice_message(chat_id: int, voice_obj) -> None:
             )
 
         if _audio_on:
-            tts_msg = bot.send_message(chat_id, _t(chat_id, "gen_audio"),
-                                       parse_mode="Markdown")
-            _ts = time.time()
-            if _tts_thread is not None:
-                _tts_thread.join(timeout=130)
-                ogg = _tts_result[0]
-            else:
-                ogg = _tts_to_ogg(response)
-            _timing["TTS"] = time.time() - _ts
+            tts_msg = None
+            try:
+                tts_msg = bot.send_message(chat_id, _t(chat_id, "gen_audio"),
+                                           parse_mode="Markdown")
+                _save_pending_tts(chat_id, tts_msg.message_id)
+                _ts = time.time()
+                if _tts_thread is not None:
+                    # piper timeout 120s + ffmpeg timeout 30s + scheduling margin
+                    _tts_thread.join(timeout=160)
+                    ogg = _tts_result[0]
+                else:
+                    ogg = _tts_to_ogg(response)
+                _timing["TTS"] = time.time() - _ts
 
-            if ogg:
-                try:
+                if ogg:
                     caption = _t(chat_id, "audio_caption") + _fmt_timing()
                     bot.send_voice(chat_id, io.BytesIO(ogg), caption=caption)
                     bot.delete_message(chat_id, tts_msg.message_id)
-                except Exception as e:
-                    log.warning(f"send_voice failed: {e}")
+                    tts_msg = None   # cleaned up successfully
+                else:
                     _safe_edit(chat_id, tts_msg.message_id,
-                               _t(chat_id, "audio_error", e=e),
+                               _t(chat_id, "audio_na"),
                                parse_mode="Markdown")
-            else:
-                _safe_edit(chat_id, tts_msg.message_id,
-                           _t(chat_id, "audio_na"),
-                           parse_mode="Markdown")
+                    tts_msg = None   # cleaned up successfully
+            except Exception as e:
+                log.warning(f"TTS block error: {e}")
+            finally:
+                _clear_pending_tts(chat_id)
+                # If tts_msg is still set an unhandled exception occurred before cleanup
+                if tts_msg is not None:
+                    try:
+                        _safe_edit(chat_id, tts_msg.message_id,
+                                   _t(chat_id, "audio_error", e="generation failed"),
+                                   parse_mode="Markdown")
+                    except Exception:
+                        pass
 
     threading.Thread(target=_run, daemon=True).start()
 
@@ -1790,6 +1870,9 @@ def main():
     if _voice_opts.get("warm_piper"):
         log.info("[VoiceOpt] warm_piper enabled — starting background warm-up")
         threading.Thread(target=_warm_piper_cache, daemon=True).start()
+
+    # Clean up any 'Generating audio…' messages orphaned by a previous restart
+    _cleanup_orphaned_tts()
 
     # Notify admins if this is a new deployment
     _notify_admins_new_version()

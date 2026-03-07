@@ -1,5 +1,11 @@
 [
   {
+    "version": "2026.3.12",
+    "date": "2026-03-07",
+    "title": "Fix stuck 'Generating audio' on restart",
+    "notes": "- Persistent pending-TTS tracker: orphaned status messages cleaned on next startup\n- try/finally around TTS block: message always edited/deleted even on exception\n- join timeout fixed: 130s → 160s (piper 120s + ffmpeg 30s + margin)\n- Release notes notification: plain-text fallback + title Markdown escaping"
+  },
+  {
     "version": "2026.3.11",
     "date": "2026-03-07",
     "title": "Increase TTS audio length (200 → 600 chars)",
@@ -21,7 +27,7 @@
     "version": "2026.3.8",
     "date": "2026-03-07",
     "title": "Language enforcement + TTS emoji fix + Markdown safety",
-    "notes": "- All LLM responses forced to the user's language (Russian/English prefix injected into every prompt)\n- Emoji and Unicode pictographs stripped from TTS input — Piper no longer reads \"\u041e\u043c\u0430\u0440\" or similar at the start of voice replies\n- Literal \\\\n in LLM output is now correctly unescaped to a newline before display\n- Voice reply text uses Markdown escaping with plain-text fallback to prevent parse errors"
+    "notes": "- All LLM responses forced to the user's language (Russian/English prefix injected into every prompt)\n- Emoji and Unicode pictographs stripped from TTS input — Piper no longer reads \"Омар\" or similar at the start of voice replies\n- Literal \\\\n in LLM output is now correctly unescaped to a newline before display\n- Voice reply text uses Markdown escaping with plain-text fallback to prevent parse errors"
   },
   {
     "version": "2026.3.7",
