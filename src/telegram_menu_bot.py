@@ -159,6 +159,20 @@ VOICE_MAX_DURATION    = 30.0      # hard session cap (seconds)
 # When True, appends per-step timing footer to voice replies (test mode only)
 VOICE_TIMING_DEBUG    = os.environ.get("VOICE_TIMING_DEBUG", "0").lower() in ("1", "true", "yes")
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Voice pipeline optimization feature flags
+# All OFF by default — enable via Admin → ⚡ Voice Opts menu.
+# Settings persist in ~/.picoclaw/voice_opts.json.
+# ─────────────────────────────────────────────────────────────────────────────
+_VOICE_OPTS_FILE     = os.path.expanduser("~/.picoclaw/voice_opts.json")
+_VOICE_OPTS_DEFAULTS: dict = {
+    "silence_strip":     False,   # #1: strip leading/trailing silence (ffmpeg)
+    "low_sample_rate":   False,   # #3: 8 kHz instead of 16 kHz for Vosk STT
+    "warm_piper":        False,   # #4: pre-warm Piper ONNX model at bot startup
+    "parallel_tts":      False,   # #5: start TTS thread immediately after LLM
+    "user_audio_toggle": False,   # #9: show 🔊/🔇 per-voice-reply audio toggle
+}
+
 if not BOT_TOKEN:
     raise RuntimeError("BOT_TOKEN not set. Add it to ~/.picoclaw/bot.env")
 if not ALLOWED_USERS and not ADMIN_USERS:
@@ -197,6 +211,36 @@ _pending_cmd: dict[int, str] = {}
 _user_lang: dict[int, str] = {}
 _vosk_model_cache = None   # lazy-loaded Vosk model singleton
 _pending_llm_key: dict[int, str] = {}  # chat_id → waiting for OpenAI API key input
+_user_audio: dict[int, bool] = {}      # chat_id → True=audio on (default); used when user_audio_toggle enabled
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Voice optimization options — load / save / runtime state
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _load_voice_opts() -> dict:
+    """Load voice optimization flags from disk (all OFF by default)."""
+    try:
+        saved = json.loads(Path(_VOICE_OPTS_FILE).read_text(encoding="utf-8"))
+        opts = dict(_VOICE_OPTS_DEFAULTS)
+        opts.update({k: v for k, v in saved.items() if k in opts})
+        return opts
+    except FileNotFoundError:
+        return dict(_VOICE_OPTS_DEFAULTS)
+    except Exception as e:
+        log.warning(f"[VoiceOpts] load failed: {e}")
+        return dict(_VOICE_OPTS_DEFAULTS)
+
+
+def _save_voice_opts() -> None:
+    """Persist voice optimization flags to disk."""
+    try:
+        Path(_VOICE_OPTS_FILE).write_text(
+            json.dumps(_voice_opts, indent=2, ensure_ascii=False), encoding="utf-8")
+    except Exception as e:
+        log.warning(f"[VoiceOpts] save failed: {e}")
+
+
+_voice_opts: dict = _load_voice_opts()
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Bot setup
@@ -291,6 +335,17 @@ def _menu_keyboard(chat_id: int = 0) -> InlineKeyboardMarkup:
 
 def _back_keyboard() -> InlineKeyboardMarkup:
     kb = InlineKeyboardMarkup()
+    kb.add(InlineKeyboardButton("🔙  Menu", callback_data="menu"))
+    return kb
+
+
+def _voice_back_keyboard(chat_id: int) -> InlineKeyboardMarkup:
+    """Back keyboard extended with optional 🔊/🔇 audio toggle (when user_audio_toggle is enabled)."""
+    kb = InlineKeyboardMarkup()
+    if _voice_opts.get("user_audio_toggle"):
+        audio_on = _user_audio.get(chat_id, True)
+        lbl = "🔇  Mute audio" if audio_on else "🔊  Unmute audio"
+        kb.add(InlineKeyboardButton(lbl, callback_data="voice_audio_toggle"))
     kb.add(InlineKeyboardButton("🔙  Menu", callback_data="menu"))
     return kb
 
@@ -415,6 +470,7 @@ def _admin_keyboard() -> InlineKeyboardMarkup:
         InlineKeyboardButton("📋  List users",   callback_data="admin_list_users"),
         InlineKeyboardButton("🗑   Remove user",  callback_data="admin_remove_user"),
         InlineKeyboardButton("🤖  Switch LLM",   callback_data="admin_llm_menu"),
+        InlineKeyboardButton("⚡  Voice Opts",    callback_data="voice_opts_menu"),
         InlineKeyboardButton("🔙  Menu",          callback_data="menu"),
     )
     return kb
@@ -507,6 +563,56 @@ def _finish_admin_remove_user(admin_id: int, text: str) -> None:
         bot.send_message(admin_id, _t(admin_id, "user_not_found", uid=uid),
                          parse_mode="Markdown", reply_markup=_admin_keyboard())
     _user_mode.pop(admin_id, None)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Voice pipeline optimization admin menu
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _handle_voice_opts_menu(chat_id: int) -> None:
+    """Show voice optimization toggle panel for admins."""
+    def _flag(key: str) -> str:
+        return "✅" if _voice_opts.get(key) else "◻️"
+
+    kb = InlineKeyboardMarkup(row_width=1)
+    opts_rows = [
+        ("silence_strip",     f"{_flag('silence_strip')}  Silence strip  ·  −6s STT"),
+        ("low_sample_rate",   f"{_flag('low_sample_rate')}  8 kHz sample rate  ·  −7s STT"),
+        ("warm_piper",        f"{_flag('warm_piper')}  Warm Piper cache  ·  −15s TTS"),
+        ("parallel_tts",      f"{_flag('parallel_tts')}  Parallel TTS thread  ·  text-first UX"),
+        ("user_audio_toggle", f"{_flag('user_audio_toggle')}  Per-user audio 🔊/🔇 toggle"),
+    ]
+    for key, label in opts_rows:
+        kb.add(InlineKeyboardButton(label, callback_data=f"voice_opt_toggle:{key}"))
+    kb.add(InlineKeyboardButton("🔙  Admin", callback_data="admin_menu"))
+
+    active = [k for k, v in _voice_opts.items() if v]
+    status = ("Active: " + ", ".join(active)) if active else "All OFF — stable defaults"
+    bot.send_message(
+        chat_id,
+        f"⚡ *Voice Pipeline Optimisations*\n\n"
+        f"Default: all OFF (stable baseline). Toggle to test individually.\n"
+        f"Settings persist across restarts.\n\n"
+        f"_{status}_",
+        parse_mode="Markdown",
+        reply_markup=kb,
+    )
+
+
+def _handle_voice_opt_toggle(chat_id: int, key: str) -> None:
+    """Toggle one voice optimization flag and refresh the menu."""
+    if key not in _VOICE_OPTS_DEFAULTS:
+        return
+    _voice_opts[key] = not _voice_opts.get(key, False)
+    _save_voice_opts()
+    state = "ON ✅" if _voice_opts[key] else "OFF ◻️"
+    log.info(f"[VoiceOpts] {key} → {state} (by admin {chat_id})")
+    # If warm_piper was just enabled, start background warm-up immediately
+    if key == "warm_piper" and _voice_opts[key]:
+        threading.Thread(target=_warm_piper_cache, daemon=True).start()
+        bot.send_message(chat_id, "⚡ _Warming Piper cache in background…_",
+                         parse_mode="Markdown")
+    _handle_voice_opts_menu(chat_id)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -916,6 +1022,27 @@ def _get_vosk_model():
     return _vosk_model_cache
 
 
+def _warm_piper_cache() -> None:
+    """Pre-warm Piper ONNX model into OS page cache (runs in a background thread).
+    Eliminates the 10–15s cold ONNX model load on the first TTS call after startup.
+    Only called when the warm_piper voice opt is enabled."""
+    try:
+        log.info("[VoiceOpt] Warming Piper ONNX cache…")
+        result = subprocess.run(
+            [PIPER_BIN, "--model", PIPER_MODEL, "--output-raw"],
+            input=b".",
+            capture_output=True,
+            timeout=120,
+        )
+        if result.returncode == 0:
+            log.info("[VoiceOpt] Piper cache warm complete.")
+        else:
+            log.warning(f"[VoiceOpt] Piper warmup rc={result.returncode}: "
+                        f"{result.stderr[:100]}")
+    except Exception as e:
+        log.warning(f"[VoiceOpt] Piper warmup failed: {e}")
+
+
 def _tts_to_ogg(text: str) -> Optional[bytes]:
     """
     Synthesise text with Piper TTS, encode with ffmpeg as OGG Opus.
@@ -1038,12 +1165,18 @@ def _handle_voice_message(chat_id: int, voice_obj) -> None:
         _timing["Download"] = time.time() - _ts
 
         # ── OGG → 16 kHz mono S16LE raw PCM (ffmpeg) ───────────────────────
+        _srate = 8000 if _voice_opts.get("low_sample_rate") else VOICE_SAMPLE_RATE
+        _ff_cmd = ["ffmpeg", "-i", "pipe:0"]
+        if _voice_opts.get("silence_strip"):
+            _ff_cmd += ["-af",
+                        "silenceremove=start_periods=1:start_silence=0.3"
+                        ":start_threshold=-40dB"
+                        ":stop_periods=1:stop_silence=0.5:stop_threshold=-40dB"]
+        _ff_cmd += ["-ar", str(_srate), "-ac", "1", "-f", "s16le", "pipe:1"]
         _ts = time.time()
         try:
             ff = subprocess.Popen(
-                ["ffmpeg", "-i", "pipe:0",
-                 "-ar", str(VOICE_SAMPLE_RATE), "-ac", "1",
-                 "-f", "s16le", "pipe:1"],
+                _ff_cmd,
                 stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                 stderr=subprocess.DEVNULL,
             )
@@ -1067,9 +1200,9 @@ def _handle_voice_message(chat_id: int, voice_obj) -> None:
             import vosk as _vosk_lib
             import json as _json
             model = _get_vosk_model()
-            rec = _vosk_lib.KaldiRecognizer(model, VOICE_SAMPLE_RATE)
+            rec = _vosk_lib.KaldiRecognizer(model, _srate)
             rec.SetWords(True)
-            chunk = VOICE_CHUNK_SIZE * 2   # 2 bytes per S16 sample
+            chunk = VOICE_CHUNK_SIZE * 2 * _srate // VOICE_SAMPLE_RATE  # adjust for sample rate
             for i in range(0, len(raw_pcm), chunk):
                 rec.AcceptWaveform(raw_pcm[i:i + chunk])
             text = _json.loads(rec.FinalResult()).get("text", "").strip()
@@ -1100,34 +1233,48 @@ def _handle_voice_message(chat_id: int, voice_obj) -> None:
             response = _t(chat_id, "no_answer")
 
         # ── Text answer ───────────────────────────────────────────────────────
+        _audio_on = (not _voice_opts.get("user_audio_toggle")
+                     or _user_audio.get(chat_id, True))
+        _tts_result: list = [None]
+        _tts_thread = None
+        if _audio_on and _voice_opts.get("parallel_tts"):
+            def _bg_tts():
+                _tts_result[0] = _tts_to_ogg(response)
+            _tts_thread = threading.Thread(target=_bg_tts, daemon=True)
+            _tts_thread.start()
+
         bot.send_message(
             chat_id,
             f"🤖 *Picoclaw:*\n{_truncate(response)}{_fmt_timing()}",
             parse_mode="Markdown",
-            reply_markup=_back_keyboard(),
+            reply_markup=_voice_back_keyboard(chat_id),
         )
 
-        # ── Piper TTS → send as Telegram voice note ───────────────────────────
-        tts_msg = bot.send_message(chat_id, _t(chat_id, "gen_audio"),
-                                   parse_mode="Markdown")
-        _ts = time.time()
-        ogg = _tts_to_ogg(response)
-        _timing["TTS"] = time.time() - _ts
+        if _audio_on:
+            tts_msg = bot.send_message(chat_id, _t(chat_id, "gen_audio"),
+                                       parse_mode="Markdown")
+            _ts = time.time()
+            if _tts_thread is not None:
+                _tts_thread.join(timeout=130)
+                ogg = _tts_result[0]
+            else:
+                ogg = _tts_to_ogg(response)
+            _timing["TTS"] = time.time() - _ts
 
-        if ogg:
-            try:
-                caption = _t(chat_id, "audio_caption") + _fmt_timing()
-                bot.send_voice(chat_id, io.BytesIO(ogg), caption=caption)
-                bot.delete_message(chat_id, tts_msg.message_id)
-            except Exception as e:
-                log.warning(f"send_voice failed: {e}")
+            if ogg:
+                try:
+                    caption = _t(chat_id, "audio_caption") + _fmt_timing()
+                    bot.send_voice(chat_id, io.BytesIO(ogg), caption=caption)
+                    bot.delete_message(chat_id, tts_msg.message_id)
+                except Exception as e:
+                    log.warning(f"send_voice failed: {e}")
+                    _safe_edit(chat_id, tts_msg.message_id,
+                               _t(chat_id, "audio_error", e=e),
+                               parse_mode="Markdown")
+            else:
                 _safe_edit(chat_id, tts_msg.message_id,
-                           _t(chat_id, "audio_error", e=e),
+                           _t(chat_id, "audio_na"),
                            parse_mode="Markdown")
-        else:
-            _safe_edit(chat_id, tts_msg.message_id,
-                       _t(chat_id, "audio_na"),
-                       parse_mode="Markdown")
 
     threading.Thread(target=_run, daemon=True).start()
 
@@ -1294,6 +1441,22 @@ def callback_handler(call):
         else:
             _handle_llm_setkey_prompt(cid)
 
+    elif data == "voice_opts_menu":
+        if not _is_admin(cid):
+            bot.send_message(cid, _t(cid, "admin_only"))
+        else:
+            _handle_voice_opts_menu(cid)
+
+    elif data.startswith("voice_opt_toggle:"):
+        if not _is_admin(cid):
+            bot.send_message(cid, _t(cid, "admin_only"))
+        else:
+            _handle_voice_opt_toggle(cid, data[len("voice_opt_toggle:"):])
+
+    elif data == "voice_audio_toggle":
+        _user_audio[cid] = not _user_audio.get(cid, True)
+        # answer_callback_query already called above; spinner is dismissed
+
     elif data == "cancel":
         _pending_cmd.pop(cid, None)
         bot.send_message(cid, _t(cid, "cancelled"), reply_markup=_back_keyboard())
@@ -1384,7 +1547,14 @@ def main():
     log.info(f"  Guest users  : {sorted(_dynamic_users)}")
     log.info(f"  picoclaw     : {PICOCLAW_BIN}")
     log.info(f"  Digest script: {DIGEST_SCRIPT}")
+    active_opts = [k for k, v in _voice_opts.items() if v]
+    log.info(f"  Voice opts   : {active_opts or 'all OFF (stable defaults)'}")
     log.info("=" * 50)
+
+    # Pre-warm Piper ONNX model if opt is enabled
+    if _voice_opts.get("warm_piper"):
+        log.info("[VoiceOpt] warm_piper enabled — starting background warm-up")
+        threading.Thread(target=_warm_piper_cache, daemon=True).start()
 
     log.info("Polling Telegram…")
     bot.infinity_polling(timeout=30, long_polling_timeout=20)
