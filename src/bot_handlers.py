@@ -125,12 +125,23 @@ def _start_note_edit(chat_id: int, slug: str) -> None:
         return
     _st._user_mode[chat_id]    = "note_edit_content"
     _st._pending_note[chat_id] = {"step": "edit_content", "slug": slug}
-    note_title = text.splitlines()[0].lstrip("# ").strip()
+
+    lines = text.splitlines()
+    note_title = lines[0].lstrip("# ").strip()
+    # Body = everything after the "# Title" header line (skip blank separator)
+    body_lines = lines[2:] if len(lines) > 2 else (lines[1:] if len(lines) > 1 else [])
+    note_body  = "\n".join(body_lines).strip() or text
+
+    # Step 1 — tell the user what to do
     bot.send_message(
         chat_id,
         _t(chat_id, "note_edit_prompt", title=_escape_md(note_title)),
         parse_mode="Markdown",
     )
+    # Step 2 — send current content as copyable plain text with ForceReply
+    # Telegram opens the reply box automatically; user can copy/edit the body above
+    from telebot.types import ForceReply
+    bot.send_message(chat_id, note_body, reply_markup=ForceReply(selective=False))
 
 
 def _handle_note_delete(chat_id: int, slug: str) -> None:

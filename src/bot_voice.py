@@ -526,6 +526,57 @@ def _handle_voice_message(chat_id: int, voice_obj) -> None:
                        reply_markup=_back_keyboard())
             return
 
+        # ── Voice input during note multi-step flow ────────────────────────────
+        # If the user is waiting for a note title/content/edit via the keyboard
+        # flow, treat this voice message as the text input for that step.
+        _cur_mode = _st._user_mode.get(chat_id)
+        if _cur_mode in ("note_add_title", "note_add_content", "note_edit_content") \
+                and not _is_guest(chat_id):
+            _clean_text = re.sub(r'\[\?([^\]]*)\]', r'\1', text).strip()
+            _safe_edit(chat_id, msg.message_id,
+                       f"🎤 _{_escape_md(_clean_text)}_",
+                       parse_mode="Markdown")
+
+            if _cur_mode == "note_add_title":
+                note_slug = _slug(_clean_text)
+                _st._pending_note[chat_id] = {"step": "content", "slug": note_slug, "title": _clean_text}
+                _st._user_mode[chat_id]    = "note_add_content"
+                bot.send_message(chat_id,
+                                 _t(chat_id, "note_create_prompt_content",
+                                    title=_escape_md(_clean_text)),
+                                 parse_mode="Markdown")
+
+            elif _cur_mode == "note_add_content":
+                info  = _st._pending_note.pop(chat_id, {})
+                _st._user_mode.pop(chat_id, None)
+                slug  = info.get("slug", _slug(_clean_text[:30]))
+                title = info.get("title", slug)
+                _save_note_file(chat_id, slug, f"# {title}\n\n{_clean_text}")
+                from bot_handlers import _notes_menu_keyboard  # safe — deferred import, no circular issue at runtime
+                bot.send_message(chat_id,
+                                 _t(chat_id, "note_saved", title=_escape_md(title)),
+                                 parse_mode="Markdown",
+                                 reply_markup=_notes_menu_keyboard(chat_id))
+
+            elif _cur_mode == "note_edit_content":
+                info = _st._pending_note.pop(chat_id, {})
+                _st._user_mode.pop(chat_id, None)
+                slug = info.get("slug")
+                if not slug:
+                    from bot_access import _send_menu
+                    _send_menu(chat_id, greeting=False)
+                    return
+                existing   = _load_note_text(chat_id, slug)
+                title_line = existing.splitlines()[0] if existing else f"# {slug}"
+                _save_note_file(chat_id, slug, f"{title_line}\n\n{_clean_text}")
+                edit_title = title_line.lstrip("# ").strip()
+                from bot_handlers import _notes_menu_keyboard  # deferred — safe
+                bot.send_message(chat_id,
+                                 _t(chat_id, "note_updated", title=_escape_md(edit_title)),
+                                 parse_mode="Markdown",
+                                 reply_markup=_notes_menu_keyboard(chat_id))
+            return
+
         # ── Voice note commands (intercept before LLM) ────────────────────────
         _text_lower = text.lower()
         _note_create_ru = ("запиши заметку", "создай заметку", "запишите заметку", "сохрани заметку")
