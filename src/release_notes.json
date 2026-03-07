@@ -1,5 +1,11 @@
 [
   {
+    "version": "2026.3.18",
+    "date": "2026-03-08",
+    "title": "Notes System — create, list, edit, delete + voice dictation & read",
+    "notes": "- New 📝 Notes menu (Full + Admin roles) with Create / List / Open / Edit / Delete\n- Notes stored as Markdown files in ~/.picoclaw/notes/<chat_id>/\n- Voice dictation: say \"запиши заметку …\" / \"create note …\" to save a voice note\n- Voice read: say \"прочитай заметку …\" / \"read note …\" to hear a note via TTS\n- All notes UI localised in Russian and English via strings.json"
+  },
+  {
     "version": "2026.3.17",
     "date": "2026-03-07",
     "title": "Fix admin menu Markdown parse failures (5 handlers)",

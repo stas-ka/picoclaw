@@ -85,25 +85,7 @@ Tasks:
 
 ## 4. Content & Knowledge
 
-### 4.1 Markdown Notes System 🔲
-
-Users can manage personal notes via chat and voice:
-
-- [ ] Create note (via command, menu, or voice dictation)
-- [ ] List notes
-- [ ] Open / read note
-- [ ] Edit / extend note
-- [ ] Delete note
-- [ ] Menu structure:
-  ```
-  Notes
-  ├ Create note
-  ├ List notes
-  ├ Edit note
-  └ Delete note
-  ```
-- [ ] Voice: dictate new note, query existing notes
-- [ ] Storage: Markdown files in `~/.picoclaw/notes/` or SQLite
+### 4.1 Markdown Notes System ✅ Implemented (v2026.3.18)
 
 ### 4.2 Local RAG Knowledge Base 🔲
 

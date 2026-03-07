@@ -121,12 +121,14 @@ LAST_DIGEST_FILE = os.environ.get("LAST_DIGEST_FILE",
                                    os.path.expanduser("~/.picoclaw/last_digest.txt"))
 
 # Bot version — bump this string with every deployment so admins get notified
-BOT_VERSION           = "2026.3.17"
+BOT_VERSION           = "2026.3.18"
 RELEASE_NOTES_FILE    = os.environ.get(
     "RELEASE_NOTES_FILE",
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "release_notes.json"),
 )
 LAST_NOTIFIED_FILE    = os.path.expanduser("~/.picoclaw/last_notified_version.txt")
+NOTES_DIR             = os.environ.get("NOTES_DIR",
+                                        os.path.expanduser("~/.picoclaw/notes"))
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Dynamic guest-user storage (persisted to USERS_FILE)
@@ -301,6 +303,7 @@ _user_lang: dict[int, str] = {}
 _vosk_model_cache = None   # lazy-loaded Vosk model singleton
 _pending_llm_key: dict[int, str] = {}  # chat_id → waiting for OpenAI API key input
 _user_audio: dict[int, bool] = {}      # chat_id → True=audio on (default); used when user_audio_toggle enabled
+_pending_note: dict[int, dict] = {}   # chat_id → {"step": "title"|"content"|"edit_content", "slug": str, "title": str}
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Voice optimization options — load / save / runtime state
@@ -425,6 +428,8 @@ def _menu_keyboard(chat_id: int = 0) -> InlineKeyboardMarkup:
     if not _is_guest(chat_id):
         kb.add(InlineKeyboardButton(_t(chat_id, "btn_system"), callback_data="mode_system"))
     kb.add(InlineKeyboardButton(_t(chat_id, "btn_voice"),   callback_data="voice_session"))
+    if not _is_guest(chat_id):
+        kb.add(InlineKeyboardButton(_t(chat_id, "btn_notes"),  callback_data="menu_notes"))
     kb.add(InlineKeyboardButton(_t(chat_id, "btn_help"),    callback_data="help"))
     if _is_admin(chat_id):
         kb.add(InlineKeyboardButton(_t(chat_id, "btn_admin"),  callback_data="admin_menu"))
@@ -902,6 +907,170 @@ def _do_block_registration(admin_id: int, target_id: int) -> None:
         bot.send_message(target_id, _t(target_id, "reg_declined"))
     except Exception as e:
         log.warning(f"[Reg] Cannot notify blocked user {target_id}: {e}")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Notes System — per-user Markdown note files in ~/.picoclaw/notes/<chat_id>/
+# ─────────────────────────────────────────────────────────────────────────────
+
+import re as _notes_re
+
+
+def _slug(title: str) -> str:
+    """Convert a note title to a safe filename slug (lowercase, underscores)."""
+    s = title.lower().strip()
+    s = _notes_re.sub(r"[^\w\s\u0400-\u04ff-]", "", s)  # keep letters, digits, cyrillic, hyphens
+    s = _notes_re.sub(r"[\s]+", "_", s)
+    s = s.strip("_")
+    return s[:60] or "note"
+
+
+def _notes_user_dir(chat_id: int) -> Path:
+    """Return (and create) the per-user notes directory."""
+    p = Path(NOTES_DIR) / str(chat_id)
+    p.mkdir(parents=True, exist_ok=True)
+    return p
+
+
+def _list_notes_for(chat_id: int) -> list[dict]:
+    """Return list of {slug, title, mtime} sorted by modification time (newest first)."""
+    d = _notes_user_dir(chat_id)
+    notes = []
+    for f in sorted(d.glob("*.md"), key=lambda x: -x.stat().st_mtime):
+        try:
+            first_line = f.read_text(encoding="utf-8").splitlines()[0].lstrip("# ").strip()
+        except Exception:
+            first_line = f.stem
+        notes.append({"slug": f.stem, "title": first_line, "mtime": f.stat().st_mtime})
+    return notes
+
+
+def _load_note_text(chat_id: int, slug: str) -> Optional[str]:
+    """Return note file contents or None if not found."""
+    p = _notes_user_dir(chat_id) / f"{slug}.md"
+    if not p.exists():
+        return None
+    return p.read_text(encoding="utf-8")
+
+
+def _save_note_file(chat_id: int, slug: str, content: str) -> None:
+    """Write note file (creates or overwrites)."""
+    p = _notes_user_dir(chat_id) / f"{slug}.md"
+    p.write_text(content, encoding="utf-8")
+    log.info(f"[Notes] Saved note '{slug}' for user {chat_id}")
+
+
+def _delete_note_file(chat_id: int, slug: str) -> bool:
+    """Delete a note file. Returns True if deleted, False if not found."""
+    p = _notes_user_dir(chat_id) / f"{slug}.md"
+    if p.exists():
+        p.unlink()
+        log.info(f"[Notes] Deleted note '{slug}' for user {chat_id}")
+        return True
+    return False
+
+
+def _notes_menu_keyboard(chat_id: int) -> InlineKeyboardMarkup:
+    """Notes main submenu."""
+    kb = InlineKeyboardMarkup(row_width=1)
+    kb.add(
+        InlineKeyboardButton(_t(chat_id, "note_btn_create"),  callback_data="note_create"),
+        InlineKeyboardButton(_t(chat_id, "note_btn_list"),    callback_data="note_list"),
+        InlineKeyboardButton("🔙  Menu",                       callback_data="menu"),
+    )
+    return kb
+
+
+def _notes_list_keyboard(chat_id: int, notes: list[dict]) -> InlineKeyboardMarkup:
+    """Show per-note open/edit/delete inline buttons."""
+    kb = InlineKeyboardMarkup(row_width=3)
+    for note in notes:
+        slug  = note["slug"]
+        title = note["title"][:30]
+        kb.add(InlineKeyboardButton(f"📄 {title}", callback_data=f"note_open:{slug}"))
+        kb.row(
+            InlineKeyboardButton("✏️ Edit",   callback_data=f"note_edit:{slug}"),
+            InlineKeyboardButton("🗑 Delete",  callback_data=f"note_delete:{slug}"),
+        )
+    kb.add(InlineKeyboardButton(_t(chat_id, "note_btn_create"), callback_data="note_create"))
+    kb.add(InlineKeyboardButton("🔙  Menu", callback_data="menu"))
+    return kb
+
+
+def _handle_notes_menu(chat_id: int) -> None:
+    bot.send_message(
+        chat_id,
+        _t(chat_id, "note_menu_header"),
+        parse_mode="Markdown",
+        reply_markup=_notes_menu_keyboard(chat_id),
+    )
+
+
+def _handle_note_list(chat_id: int) -> None:
+    notes = _list_notes_for(chat_id)
+    if not notes:
+        bot.send_message(chat_id, _t(chat_id, "note_list_empty"),
+                         parse_mode="Markdown",
+                         reply_markup=_notes_menu_keyboard(chat_id))
+        return
+    header = _t(chat_id, "note_list_header", count=len(notes))
+    bot.send_message(chat_id, header,
+                     parse_mode="Markdown",
+                     reply_markup=_notes_list_keyboard(chat_id, notes))
+
+
+def _start_note_create(chat_id: int) -> None:
+    _user_mode[chat_id] = "note_add_title"
+    _pending_note[chat_id] = {"step": "title"}
+    bot.send_message(chat_id, _t(chat_id, "note_create_prompt_title"),
+                     parse_mode="Markdown")
+
+
+def _handle_note_open(chat_id: int, slug: str) -> None:
+    text = _load_note_text(chat_id, slug)
+    if text is None:
+        bot.send_message(chat_id, _t(chat_id, "note_not_found"),
+                         reply_markup=_notes_menu_keyboard(chat_id))
+        return
+    # Show note with Edit / Back buttons
+    kb = InlineKeyboardMarkup(row_width=2)
+    kb.row(
+        InlineKeyboardButton("✏️ Edit",   callback_data=f"note_edit:{slug}"),
+        InlineKeyboardButton("🗑 Delete",  callback_data=f"note_delete:{slug}"),
+    )
+    kb.add(InlineKeyboardButton("📋 All Notes", callback_data="note_list"))
+    kb.add(InlineKeyboardButton("🔙  Menu",      callback_data="menu"))
+    bot.send_message(chat_id,
+                     f"📄 *{_escape_md(slug.replace('_', ' '))}*\n\n{_escape_md(text)}",
+                     parse_mode="Markdown",
+                     reply_markup=kb)
+
+
+def _start_note_edit(chat_id: int, slug: str) -> None:
+    text = _load_note_text(chat_id, slug)
+    if text is None:
+        bot.send_message(chat_id, _t(chat_id, "note_not_found"),
+                         reply_markup=_notes_menu_keyboard(chat_id))
+        return
+    _user_mode[chat_id] = "note_edit_content"
+    _pending_note[chat_id] = {"step": "edit_content", "slug": slug}
+    note_title = text.splitlines()[0].lstrip("# ").strip()
+    bot.send_message(
+        chat_id,
+        _t(chat_id, "note_edit_prompt", title=_escape_md(note_title)),
+        parse_mode="Markdown",
+    )
+
+
+def _handle_note_delete(chat_id: int, slug: str) -> None:
+    deleted = _delete_note_file(chat_id, slug)
+    if deleted:
+        bot.send_message(chat_id, _t(chat_id, "note_deleted"),
+                         parse_mode="Markdown",
+                         reply_markup=_notes_menu_keyboard(chat_id))
+    else:
+        bot.send_message(chat_id, _t(chat_id, "note_not_found"),
+                         reply_markup=_notes_menu_keyboard(chat_id))
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1785,6 +1954,85 @@ def _handle_voice_message(chat_id: int, voice_obj) -> None:
                        reply_markup=_back_keyboard())
             return
 
+        # ── Voice note commands (intercept before LLM) ───────────────────────
+        _text_lower = text.lower()
+
+        # "запиши заметку …" / "create note …" — save STT text as a note
+        _note_create_ru = ("запиши заметку", "создай заметку", "запишите заметку", "сохрани заметку")
+        _note_create_en = ("create note", "save note", "new note")
+        _note_read_ru   = ("прочитай заметку", "читай заметку", "открой заметку")
+        _note_read_en   = ("read note", "open note", "show note")
+
+        def _starts_with_any(s: str, prefixes) -> Optional[str]:
+            for p in prefixes:
+                if s.startswith(p):
+                    return s[len(p):].strip()
+            return None
+
+        _create_remainder = (
+            _starts_with_any(_text_lower, _note_create_ru)
+            or _starts_with_any(_text_lower, _note_create_en)
+        )
+        _read_remainder = (
+            _starts_with_any(_text_lower, _note_read_ru)
+            or _starts_with_any(_text_lower, _note_read_en)
+        )
+
+        if _create_remainder is not None and not _is_guest(chat_id):
+            # Use remainder as title, full text as content
+            _note_title   = _create_remainder.strip() or _t(chat_id, "note_voice_default_title")
+            _note_slug    = _slug(_note_title)
+            _note_content = f"# {_note_title}\n\n(голосовая заметка / voice note)\n{text}"
+            _save_note_file(chat_id, _note_slug, _note_content)
+            _reply = _t(chat_id, "note_voice_saved", title=_note_title)
+            _safe_edit(chat_id, msg.message_id,
+                       f"📝 *Заметка / Note:* _{_escape_md(text)}_\n\n{_escape_md(_reply)}",
+                       parse_mode="Markdown",
+                       reply_markup=_voice_back_keyboard(chat_id))
+            # TTS confirmation
+            _audio_on2 = (not _voice_opts.get("user_audio_toggle") or _user_audio.get(chat_id, True))
+            if _audio_on2:
+                _ogg2 = _tts_to_ogg(_reply)
+                if _ogg2:
+                    bot.send_voice(chat_id, io.BytesIO(_ogg2))
+            return
+
+        if _read_remainder is not None and not _is_guest(chat_id):
+            _notes = _list_notes_for(chat_id)
+            _match = None
+            if _read_remainder:
+                # Fuzzy match: find note whose title contains the remainder
+                for _n in _notes:
+                    if _read_remainder in _n["title"].lower() or _read_remainder in _n["slug"]:
+                        _match = _n
+                        break
+            if not _match and _notes:
+                _match = _notes[0]   # fall back to most recent note
+            if not _match:
+                _reply2 = _t(chat_id, "note_voice_read_notfound")
+                _safe_edit(chat_id, msg.message_id,
+                           _escape_md(_reply2),
+                           parse_mode="Markdown",
+                           reply_markup=_voice_back_keyboard(chat_id))
+                return
+            _note_body = _load_note_text(chat_id, _match["slug"]) or ""
+            # Strip markdown heading for TTS
+            _note_plain = _escape_tts(_note_body)
+            _safe_edit(chat_id, msg.message_id,
+                       f"📄 *{_escape_md(_match['title'])}*\n\n{_escape_md(_note_body)}",
+                       parse_mode="Markdown",
+                       reply_markup=_voice_back_keyboard(chat_id))
+            _audio_on3 = (not _voice_opts.get("user_audio_toggle") or _user_audio.get(chat_id, True))
+            if _audio_on3:
+                _tts3 = bot.send_message(chat_id, _t(chat_id, "gen_audio"), parse_mode="Markdown")
+                _ogg3 = _tts_to_ogg(_note_plain)
+                if _ogg3:
+                    bot.send_voice(chat_id, io.BytesIO(_ogg3), caption=_t(chat_id, "audio_caption"))
+                    bot.delete_message(chat_id, _tts3.message_id)
+                else:
+                    _safe_edit(chat_id, _tts3.message_id, _t(chat_id, "audio_na"), parse_mode="Markdown")
+            return
+
         # ── Show transcript, call picoclaw ────────────────────────────────────
         _safe_edit(chat_id, msg.message_id,
                    _t(chat_id, "you_said", text=text),
@@ -2111,8 +2359,48 @@ def callback_handler(call):
             target_id = int(data.split(":", 1)[1])
             _do_block_registration(cid, target_id)
 
+    # ── Notes ────────────────────────────────────────────────────────────────
+
+    elif data == "menu_notes":
+        if _is_guest(cid):
+            bot.send_message(cid, _t(cid, "admin_only"))
+        else:
+            _handle_notes_menu(cid)
+
+    elif data == "note_create":
+        if _is_guest(cid):
+            bot.send_message(cid, _t(cid, "admin_only"))
+        else:
+            _start_note_create(cid)
+
+    elif data == "note_list":
+        if _is_guest(cid):
+            bot.send_message(cid, _t(cid, "admin_only"))
+        else:
+            _handle_note_list(cid)
+
+    elif data.startswith("note_open:"):
+        if _is_guest(cid):
+            bot.send_message(cid, _t(cid, "admin_only"))
+        else:
+            _handle_note_open(cid, data[len("note_open:"):])
+
+    elif data.startswith("note_edit:"):
+        if _is_guest(cid):
+            bot.send_message(cid, _t(cid, "admin_only"))
+        else:
+            _start_note_edit(cid, data[len("note_edit:"):])
+
+    elif data.startswith("note_delete:"):
+        if _is_guest(cid):
+            bot.send_message(cid, _t(cid, "admin_only"))
+        else:
+            _handle_note_delete(cid, data[len("note_delete:"):])
+
     elif data == "cancel":
         _pending_cmd.pop(cid, None)
+        _pending_note.pop(cid, None)
+        _user_mode.pop(cid, None)
         bot.send_message(cid, _t(cid, "cancelled"), reply_markup=_back_keyboard())
 
     elif data.startswith("run:"):
@@ -2160,6 +2448,59 @@ def text_handler(message):
         else:
             _user_mode.pop(cid, None)
             bot.send_message(cid, _t(cid, "admin_only"))
+        return
+
+    elif mode == "note_add_title":
+        if _is_guest(cid):
+            _user_mode.pop(cid, None)
+            _pending_note.pop(cid, None)
+            return
+        title = message.text.strip()
+        if not title:
+            bot.send_message(cid, _t(cid, "note_create_prompt_title"), parse_mode="Markdown")
+            return
+        slug = _slug(title)
+        _pending_note[cid] = {"step": "content", "slug": slug, "title": title}
+        _user_mode[cid] = "note_add_content"
+        bot.send_message(cid, _t(cid, "note_create_prompt_content", title=_escape_md(title)),
+                         parse_mode="Markdown")
+        return
+
+    elif mode == "note_add_content":
+        if _is_guest(cid):
+            _user_mode.pop(cid, None)
+            _pending_note.pop(cid, None)
+            return
+        info = _pending_note.pop(cid, {})
+        _user_mode.pop(cid, None)
+        slug  = info.get("slug", _slug(message.text[:30]))
+        title = info.get("title", slug)
+        content = f"# {title}\n\n{message.text.strip()}"
+        _save_note_file(cid, slug, content)
+        bot.send_message(cid, _t(cid, "note_saved", title=_escape_md(title)),
+                         parse_mode="Markdown",
+                         reply_markup=_notes_menu_keyboard(cid))
+        return
+
+    elif mode == "note_edit_content":
+        if _is_guest(cid):
+            _user_mode.pop(cid, None)
+            _pending_note.pop(cid, None)
+            return
+        info = _pending_note.pop(cid, {})
+        _user_mode.pop(cid, None)
+        slug = info.get("slug")
+        if not slug:
+            _send_menu(cid, greeting=False)
+            return
+        existing = _load_note_text(cid, slug)
+        title_line = (existing or "").splitlines()[0] if existing else f"# {slug}"
+        content = f"{title_line}\n\n{message.text.strip()}"
+        _save_note_file(cid, slug, content)
+        title = title_line.lstrip("# ").strip()
+        bot.send_message(cid, _t(cid, "note_updated", title=_escape_md(title)),
+                         parse_mode="Markdown",
+                         reply_markup=_notes_menu_keyboard(cid))
         return
 
     if mode == "chat":
