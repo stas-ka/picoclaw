@@ -10,9 +10,11 @@ Menus
   💬 Free Chat      — natural language chat via picoclaw LLM (no system access)
   🖥️  System Chat   — describe a task → LLM generates bash command
                        → user confirms → runs on Pi → shows output
-  🎤 Voice Session  — tap to open mic → real-time Vosk STT transcription shown
-                       in Telegram → picoclaw LLM answers → text + Piper TTS
-                       OGG voice note sent back
+  🎤 Voice Session  — tap to enter voice mode; then press the 🎤 mic button in
+                       Telegram, record your question in Russian, and send it.
+                       Bot downloads the OGG, runs Vosk STT offline, sends text
+                       to picoclaw LLM, replies with text + Piper TTS voice note.
+                       Voice messages are also processed without entering the mode.
 
 Config (env vars or ~/.picoclaw/bot.env):
   BOT_TOKEN         Telegram bot token  (from @BotFather)
@@ -114,8 +116,6 @@ log = logging.getLogger("pico-tgbot")
 _user_mode: dict[int, str] = {}
 # pending confirmation: chat_id → bash command string
 _pending_cmd: dict[int, str] = {}
-# active voice sessions {chat_id: {"stop_event": Event, "msg_id": int}}
-_voice_sessions: dict[int, dict] = {}
 _vosk_model_cache = None   # lazy-loaded Vosk model singleton
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -392,11 +392,19 @@ def _handle_chat_message(chat_id: int, user_text: str) -> None:
 # and a Piper TTS .ogg is sent as a Telegram voice note (requires ffmpeg).
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _voice_stop_keyboard() -> InlineKeyboardMarkup:
-    kb = InlineKeyboardMarkup()
-    kb.add(InlineKeyboardButton("⏹  Stop", callback_data="voice_stop"))
-    return kb
-
+# ─────────────────────────────────────────────────────────────────────────────
+# Voice Session ─ on-demand voice query via Telegram voice note
+#
+# How it works:
+#   1. User taps "🎤 Voice Session" → bot enters voice mode and shows instructions
+#   2. User records a voice message in Telegram (the mic button in the input bar)
+#      and sends it to the bot
+#   3. Bot downloads the OGG, converts to 16 kHz PCM via ffmpeg, runs Vosk STT
+#   4. Recognised text is sent to picoclaw agent
+#   5. Text answer is sent back + Piper TTS OGG voice note
+#
+# Works regardless of mode — any voice message sent to the bot is processed.
+# ─────────────────────────────────────────────────────────────────────────────
 
 def _get_vosk_model():
     """Lazy-load the Vosk Russian model (shared model dir with voice_assistant.py)."""
@@ -408,19 +416,11 @@ def _get_vosk_model():
     return _vosk_model_cache
 
 
-def _pipewire_env_voice() -> dict:
-    env = os.environ.copy()
-    env["XDG_RUNTIME_DIR"]      = PIPEWIRE_RUNTIME
-    env["PIPEWIRE_RUNTIME_DIR"] = PIPEWIRE_RUNTIME
-    env["PULSE_SERVER"]         = f"unix:{PIPEWIRE_RUNTIME}/pulse/native"
-    return env
-
-
 def _tts_to_ogg(text: str) -> Optional[bytes]:
     """
     Synthesise text with Piper TTS, encode with ffmpeg as OGG Opus.
     Returns bytes suitable for bot.send_voice(), or None on failure.
-    Requires: ffmpeg with libopus support (apt install ffmpeg).
+    Requires: ffmpeg with libopus + piper (installed by setup_voice.sh).
     """
     try:
         piper = subprocess.Popen(
@@ -446,170 +446,122 @@ def _tts_to_ogg(text: str) -> Optional[bytes]:
 
 
 def _start_voice_session(chat_id: int) -> None:
-    """Launch a background voice session thread for chat_id."""
-    # Cancel any existing session for this user
-    old = _voice_sessions.pop(chat_id, None)
-    if old:
-        old["stop_event"].set()
-
-    stop_event = threading.Event()
-    msg = bot.send_message(
-        chat_id,
-        "🎤 *Слушаю…*  _(говорите по-русски)_\n"
-        "Запись остановится автоматически через 4 с тишины · макс 30 с.",
-        parse_mode="Markdown",
-        reply_markup=_voice_stop_keyboard(),
-    )
-    session = {"stop_event": stop_event, "msg_id": msg.message_id}
-    _voice_sessions[chat_id] = session
-    threading.Thread(
-        target=_voice_session_worker, args=(chat_id, session), daemon=True
-    ).start()
-
-
-def _voice_session_worker(chat_id: int, session: dict) -> None:
-    """
-    Background worker: mic → Vosk STT (live transcript edited into Telegram)
-    → picoclaw LLM text answer → Piper TTS OGG voice note.
-    """
-    import json as _json
-    stop_event = session["stop_event"]
-    msg_id     = session["msg_id"]
-
-    # ── Load Vosk model ────────────────────────────────────────────────────
-    try:
-        import vosk as _vosk_lib
-        model = _get_vosk_model()
-    except Exception as e:
-        _safe_edit(chat_id, msg_id,
-                   f"❌ Vosk модель недоступна: {e}\n"
-                   f"Выполните `src/setup/setup_voice.sh` для установки.",
-                   reply_markup=_back_keyboard())
-        _voice_sessions.pop(chat_id, None)
-        return
-
-    rec = _vosk_lib.KaldiRecognizer(model, VOICE_SAMPLE_RATE)
-    rec.SetWords(True)
-
-    # ── Start audio capture (pw-record, fallback to parec) ─────────────────
-    env  = _pipewire_env_voice()
-    proc = None
-    for cmd in (
-        ["pw-record", f"--rate={VOICE_SAMPLE_RATE}", "--channels=1", "--format=s16", "-"],
-        ["parec", f"--rate={VOICE_SAMPLE_RATE}", "--channels=1", "--format=s16le"],
-    ):
-        try:
-            proc = subprocess.Popen(cmd, stdout=subprocess.PIPE,
-                                    stderr=subprocess.DEVNULL, env=env)
-            break
-        except FileNotFoundError:
-            continue
-
-    if proc is None:
-        _safe_edit(chat_id, msg_id,
-                   "❌ Не удалось запустить захват звука — pw-record и parec не найдены.",
-                   reply_markup=_back_keyboard())
-        _voice_sessions.pop(chat_id, None)
-        return
-
-    # ── STT loop ───────────────────────────────────────────────────────────
-    full_text  = ""
-    last_sound = time.time()
-    last_edit  = 0.0
-    start_time = time.time()
-
-    def _edit_live(display: str, listening: bool = True) -> None:
-        nonlocal last_edit
-        if time.time() - last_edit < 1.5:
-            return
-        last_edit = time.time()
-        snip  = display[-300:] if len(display) > 300 else display
-        icon  = "🎤" if listening else "✅"
-        label = "Слушаю" if listening else "Записано"
-        _safe_edit(chat_id, msg_id,
-                   f"{icon} *{label}:*\n\n_{snip}_",
-                   parse_mode="Markdown",
-                   reply_markup=_voice_stop_keyboard() if listening else None)
-
-    try:
-        while not stop_event.is_set():
-            if time.time() - start_time > VOICE_MAX_DURATION:
-                break
-            data = proc.stdout.read(VOICE_CHUNK_SIZE * 2)   # 2 bytes/sample S16
-            if not data:
-                break
-            if rec.AcceptWaveform(data):
-                word = _json.loads(rec.Result()).get("text", "").strip()
-                if word:
-                    full_text = (full_text + " " + word).strip()
-                    last_sound = time.time()
-                    _edit_live(full_text)
-            else:
-                partial = _json.loads(rec.PartialResult()).get("partial", "").strip()
-                if partial:
-                    last_sound = time.time()
-                    combined  = (full_text + " " + partial).strip() or partial
-                    _edit_live(combined)
-            # Auto-stop on silence (only after some speech is recognised)
-            if full_text and time.time() - last_sound > VOICE_SILENCE_TIMEOUT:
-                break
-    finally:
-        proc.kill()
-        try:
-            proc.wait(timeout=2)
-        except Exception:
-            pass
-
-    # Collect any remaining audio buffered inside Vosk
-    tail = _json.loads(rec.FinalResult()).get("text", "").strip()
-    if tail:
-        full_text = (full_text + " " + tail).strip()
-
-    _voice_sessions.pop(chat_id, None)
-
-    # ── No speech detected ─────────────────────────────────────────────────
-    if not full_text:
-        _safe_edit(chat_id, msg_id,
-                   "🎤 _Речь не распознана. Сессия завершена._",
-                   parse_mode="Markdown",
-                   reply_markup=_back_keyboard())
-        return
-
-    # ── Show final transcript + picoclaw status ────────────────────────────
-    _safe_edit(chat_id, msg_id,
-               f"📝 *Вы сказали:*\n_{full_text}_\n\n⏳ _Спрашиваю picoclaw…_",
-               parse_mode="Markdown")
-
-    # ── Call picoclaw LLM ──────────────────────────────────────────────────
-    response = _ask_picoclaw(full_text, timeout=60)
-    if not response:
-        response = "_(picoclaw не вернул ответ)_"
-
-    # ── Send text answer ───────────────────────────────────────────────────
+    """Enter voice mode — user sends a Telegram voice note to interact."""
+    _user_mode[chat_id] = "voice"
     bot.send_message(
         chat_id,
-        f"🤖 *Picoclaw:*\n{_truncate(response)}",
+        "🎤 *Режим голосового запроса*\n\n"
+        "Нажмите кнопку 🎤 в поле ввода Telegram, запишите вопрос по-русски "
+        "и отправьте голосовое сообщение.\n\n"
+        "_Бот распознает речь через Vosk и ответит текстом + голосом._\n\n"
+        "Нажмите 🔙 Menu чтобы выйти из режима.",
         parse_mode="Markdown",
         reply_markup=_back_keyboard(),
     )
 
-    # ── Generate Piper TTS audio → send as Telegram voice note ────────────
-    tts_msg = bot.send_message(chat_id, "🔊 _Генерирую аудио…_",
-                               parse_mode="Markdown")
-    ogg = _tts_to_ogg(response)
-    if ogg:
+
+def _handle_voice_message(chat_id: int, voice_obj) -> None:
+    """
+    Process a Telegram voice note sent by the user:
+      OGG download → ffmpeg decode→16kHz PCM → Vosk STT
+        → picoclaw LLM → text answer + Piper TTS voice note.
+    Runs in a background thread so the handler returns immediately.
+    """
+    msg = bot.send_message(chat_id, "🎤 _Распознаю речь…_", parse_mode="Markdown")
+
+    def _run():
+        # ── Download OGG from Telegram ──────────────────────────────────────
         try:
-            bot.send_voice(chat_id, io.BytesIO(ogg), caption="🔊 Аудио ответ")
-            bot.delete_message(chat_id, tts_msg.message_id)
+            file_info = bot.get_file(voice_obj.file_id)
+            ogg_bytes = bot.download_file(file_info.file_path)
         except Exception as e:
-            log.warning(f"send_voice failed: {e}")
-            _safe_edit(chat_id, tts_msg.message_id,
-                       f"_Аудио не отправлено: {e}_",
-                       parse_mode="Markdown")
-    else:
-        _safe_edit(chat_id, tts_msg.message_id,
-                   "_(Аудио недоступно — ffmpeg или piper не установлен)_",
+            _safe_edit(chat_id, msg.message_id,
+                       f"❌ Ошибка загрузки аудио: {e}",
+                       reply_markup=_back_keyboard())
+            return
+
+        # ── OGG → 16 kHz mono S16LE raw PCM (ffmpeg) ───────────────────────
+        try:
+            ff = subprocess.Popen(
+                ["ffmpeg", "-i", "pipe:0",
+                 "-ar", str(VOICE_SAMPLE_RATE), "-ac", "1",
+                 "-f", "s16le", "pipe:1"],
+                stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+            )
+            raw_pcm, _ = ff.communicate(input=ogg_bytes, timeout=30)
+        except Exception as e:
+            _safe_edit(chat_id, msg.message_id,
+                       f"❌ Ошибка декодирования аудио (ffmpeg): {e}",
+                       reply_markup=_back_keyboard())
+            return
+
+        if not raw_pcm:
+            _safe_edit(chat_id, msg.message_id,
+                       "❌ ffmpeg не выдал данных — проверьте установку ffmpeg.",
+                       reply_markup=_back_keyboard())
+            return
+
+        # ── Vosk STT ─────────────────────────────────────────────────────────
+        try:
+            import vosk as _vosk_lib
+            import json as _json
+            model = _get_vosk_model()
+            rec = _vosk_lib.KaldiRecognizer(model, VOICE_SAMPLE_RATE)
+            rec.SetWords(True)
+            chunk = VOICE_CHUNK_SIZE * 2   # 2 bytes per S16 sample
+            for i in range(0, len(raw_pcm), chunk):
+                rec.AcceptWaveform(raw_pcm[i:i + chunk])
+            text = _json.loads(rec.FinalResult()).get("text", "").strip()
+        except Exception as e:
+            _safe_edit(chat_id, msg.message_id,
+                       f"❌ Ошибка Vosk: {e}",
+                       reply_markup=_back_keyboard())
+            return
+
+        if not text:
+            _safe_edit(chat_id, msg.message_id,
+                       "🎤 _Речь не распознана. Говорите внятнее или используйте русский язык._",
+                       parse_mode="Markdown",
+                       reply_markup=_back_keyboard())
+            return
+
+        # ── Show transcript, call picoclaw ────────────────────────────────────
+        _safe_edit(chat_id, msg.message_id,
+                   f"📝 *Вы сказали:*\n_{text}_\n\n⏳ _Спрашиваю picoclaw…_",
                    parse_mode="Markdown")
+
+        response = _ask_picoclaw(text, timeout=60)
+        if not response:
+            response = "_(picoclaw не вернул ответ)_"
+
+        # ── Text answer ───────────────────────────────────────────────────────
+        bot.send_message(
+            chat_id,
+            f"🤖 *Picoclaw:*\n{_truncate(response)}",
+            parse_mode="Markdown",
+            reply_markup=_back_keyboard(),
+        )
+
+        # ── Piper TTS → send as Telegram voice note ───────────────────────────
+        tts_msg = bot.send_message(chat_id, "🔊 _Генерирую аудио…_",
+                                   parse_mode="Markdown")
+        ogg = _tts_to_ogg(response)
+        if ogg:
+            try:
+                bot.send_voice(chat_id, io.BytesIO(ogg), caption="🔊 Аудио ответ")
+                bot.delete_message(chat_id, tts_msg.message_id)
+            except Exception as e:
+                log.warning(f"send_voice failed: {e}")
+                _safe_edit(chat_id, tts_msg.message_id,
+                           f"_Аудио не отправлено: {e}_",
+                           parse_mode="Markdown")
+        else:
+            _safe_edit(chat_id, tts_msg.message_id,
+                       "_(Аудио недоступно — piper не установлен)_",
+                       parse_mode="Markdown")
+
+    threading.Thread(target=_run, daemon=True).start()
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -635,10 +587,8 @@ def cmd_status(message):
     rc, out = _run_subprocess(["systemctl", "is-active",
                                "picoclaw-voice", "picoclaw-gateway",
                                "picoclaw-telegram"], timeout=5)
-    voice_active = cid in _voice_sessions
     bot.send_message(cid,
                      f"*Mode:* `{mode}`\n"
-                     f"*Voice session:* `{'active' if voice_active else 'idle'}`\n"
                      f"*Services:*\n```\n{out}\n```",
                      parse_mode="Markdown", reply_markup=_back_keyboard())
 
@@ -686,13 +636,7 @@ def callback_handler(call):
                          parse_mode="Markdown")
 
     elif data == "voice_session":
-        _user_mode.pop(cid, None)   # exit any text mode
         _start_voice_session(cid)
-
-    elif data == "voice_stop":
-        session = _voice_sessions.pop(cid, None)
-        if session:
-            session["stop_event"].set()
 
     elif data == "cancel":
         _pending_cmd.pop(cid, None)
@@ -725,6 +669,25 @@ def text_handler(message):
 
     elif mode == "system":
         _handle_system_message(cid, message.text)
+
+    elif mode == "voice":
+        bot.send_message(cid,
+                         "🎤 _Отправьте голосовое сообщение — нажмите 🎤 в поле ввода._",
+                         parse_mode="Markdown",
+                         reply_markup=_back_keyboard())
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Voice message handler — processes Telegram voice notes (mic button)
+# ─────────────────────────────────────────────────────────────────────────────
+
+@bot.message_handler(content_types=["voice"])
+def voice_handler(message):
+    cid = message.chat.id
+    if not _is_allowed(cid):
+        _deny(cid)
+        return
+    _handle_voice_message(cid, message.voice)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

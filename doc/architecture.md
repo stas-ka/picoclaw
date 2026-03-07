@@ -187,33 +187,34 @@ Interactive Telegram bot that exposes four operating modes via inline keyboard:
 
 #### Voice Session Mode
 
-Tap **🎤 Voice Session** to open an on-demand mic session without a physical device:
+Tap **🎤 Voice Session** to enter voice mode — the bot prompts you to send a voice message:
 
 ```
 User taps 🎤 Voice Session
-  → Bot sends "🎤 Слушаю…" message with ⏹ Stop button
-  → Background thread starts pw-record (or parec) subprocess
-  → Vosk KaldiRecognizer processes audio chunks (16 kHz S16)
-  → Partial results edit the Telegram message in real-time (every 1.5 s)
-  → Final result collected after 4 s silence OR user taps ⏹ OR 30 s cap
-  → Full transcript sent to picoclaw agent -m
-  → LLM text response displayed with 🤖 Picoclaw: header
+  → Bot sends instructions, enters "voice" mode
+  → User presses 🎤 mic button in Telegram, records Russian speech, sends it
+  → Bot receives OGG Opus voice note from Telegram
+  → ffmpeg: pipe OGG → 16 kHz mono S16LE raw PCM
+  → Vosk KaldiRecognizer (Russian): PCM → transcript text
+  → picoclaw agent -m "transcript"
+  → LLM text response displayed with 🤖 header
   → Piper TTS → ffmpeg PCM→OGG Opus → bot.send_voice() voice note
 ```
 
+**Note:** Voice messages sent via Telegram's mic button are processed automatically in *any* mode — no need to tap the Voice Session button first.
+
 | Property | Value |
 |---|---|
-| Wake | Telegram button tap |
-| STT | Vosk `vosk-model-small-ru` (same model as voice_assistant.py) |
-| Audio capture | `pw-record --rate=16000` (fallback `parec`) |
-| Silence timeout | 4.0 s |
-| Max duration | 30.0 s |
+| Trigger | 🎤 mic button in Telegram input bar (standard Telegram feature) |
+| Audio format received | OGG Opus (Telegram default) |
+| Decode | `ffmpeg -i pipe:0 -ar 16000 -ac 1 -f s16le pipe:1` |
+| STT | Vosk `vosk-model-small-ru` (Russian, offline) |
 | TTS binary | `/usr/local/bin/piper` |
 | TTS model | `~/.picoclaw/ru_RU-irina-medium.onnx` |
 | Audio encoding | `ffmpeg` PCM S16LE 22050 Hz → OGG Opus 24 kbit/s |
 | Delivery | Telegram `send_voice()` (OGG Opus) |
 
-**Note:** Voice Session runs inside the existing `picoclaw-telegram.service` process — no separate service needed. Requires `ffmpeg` on the Pi (`apt install ffmpeg`, installed by `setup_voice.sh`).
+**Why not capture from Pi mic?** The Pi's USB microphone is exclusively locked by `picoclaw-voice.service` (always-on wake word detection). ALSA does not allow two processes to capture simultaneously. The Telegram bot instead uses the user's phone microphone via Telegram's native voice message feature.
 
 **Relationship to the gateway:**  
 `picoclaw-gateway.service` handles Telegram natively via the picoclaw Go binary (currently with `"enabled": false` in config.json — disabled in favour of the menu bot). `picoclaw-telegram.service` runs the menu bot independently and gives a structured, button-driven UX instead of raw chat.
@@ -245,10 +246,10 @@ systemd
   │     └── /usr/bin/python3 telegram_menu_bot.py
   │           ├── /usr/bin/picoclaw agent -m "..." [subprocess, per message]
   │           ├── /usr/bin/python3 gmail_digest.py --stdout [subprocess, on demand]
-  │           └── [voice session thread, per user activation]
-  │                 ├── pw-record [subprocess, stdout pipe] ← mic capture
+  │           └── [voice handler thread, per received voice note]
+  │                 ├── ffmpeg -i pipe:0 ... [subprocess] ← OGG → PCM decode
   │                 ├── /usr/local/bin/piper [subprocess] ← TTS synthesis
-  │                 └── ffmpeg [subprocess, stdin/stdout pipe] ← PCM→OGG Opus
+  │                 └── ffmpeg ... pipe:1 [subprocess] ← PCM → OGG Opus encode
   │
   └── picoclaw-voice.service
         └── /usr/bin/python3 voice_assistant.py

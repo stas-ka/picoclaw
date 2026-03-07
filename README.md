@@ -9,7 +9,7 @@ Local Russian voice assistant for Raspberry Pi, powered by [picoclaw](https://gi
 - Telegram bot channel via picoclaw gateway
 - Daily Gmail digest to Telegram
 - Interactive Telegram menu bot (Mail Digest / Free Chat / System Chat modes)
-- **On-demand Voice Session via Telegram** — tap a button, mic activates, live transcription shown in chat, LLM answers with text + Piper TTS voice note
+- **On-demand Voice Session via Telegram** — tap the 🎤 button, then use Telegram's mic button to send a voice message; bot transcribes with Vosk (offline, Russian), sends to LLM, replies with text + Piper TTS voice note
 - Works on Raspberry Pi 3 B+ and newer (aarch64 / armv7)
 
 ---
