@@ -53,30 +53,6 @@ Always add `-batch` to suppress interactive prompts.
 
 ---
 
-## picoclaw Installation on Remote Host
-
-- **Installed as:** npm global package
-- **Location:** `/home/stas/.npm-global/lib/node_modules/picoclaw`
-- **Version:** `2026.3.3`
-- **Entry point:** `index.js`
-- **No CLI binary** — `package.json` has no `bin` field, so `which picoclaw` returns nothing. It is used as a Node.js module only (`require('picoclaw')` / `import`).
-- **No systemd service** registered.
-- **SDK dependency:** `@cmdop/node` — installed globally at `/home/stas/.npm-global/lib/node_modules/@cmdop/node`
-
-picoclaw is a themed wrapper around the **CMDOP SDK** (`@cmdop/node`). It requires an API key from [https://my.cmdop.com/dashboard/settings/](https://my.cmdop.com/dashboard/settings/).
-
-Verify installation at any time:
-```bat
-plink -pw "$HOSTPWD" -batch stas@OpenClawPI "npm list -g picoclaw && npm list -g @cmdop/node"
-```
-
-Verify picoclaw loads correctly (no errors):
-```bat
-plink -pw "$HOSTPWD" -batch stas@OpenClawPI "node -e \"const p = require('/home/stas/.npm-global/lib/node_modules/picoclaw'); console.log('OK', p.defaultConfig);\""
-```
-
----
-
 ## sipeed/picoclaw — AI Agent Go Binary
 
 This is a **separate, different project** from the npm `picoclaw` package above.  
@@ -201,6 +177,64 @@ plink -pw "$HOSTPWD" -batch stas@OpenClawPI "journalctl -u picoclaw-gateway -n 3
 
 ---
 
+## Telegram Bot Deployment Workflow
+
+Use this workflow whenever you change `telegram_menu_bot.py`, `strings.json`, or `release_notes.json`.
+
+### 1 — Bump `BOT_VERSION` and add release notes
+
+Every user-visible change should get a version bump so admins are auto-notified on startup.
+
+1. Edit `src/telegram_menu_bot.py` — update the constant:
+   ```python
+   BOT_VERSION = "2026.3.X"   # use YYYY.M.D format
+   ```
+
+2. Edit `src/release_notes.json` — prepend a new entry at the top of the array:
+   ```json
+   {
+     "version": "2026.3.X",
+     "date":    "2026-03-XX",
+     "title":   "Short feature name",
+     "notes":   "- Bullet 1\n- Bullet 2"
+   }
+   ```
+   Keep existing entries — admins can scroll the full changelog.
+
+### 2 — Deploy to the Pi
+
+```bat
+rem Copy updated bot and companion files
+pscp -pw "%HOSTPWD%" src\telegram_menu_bot.py stas@OpenClawPI:/home/stas/.picoclaw/
+pscp -pw "%HOSTPWD%" src\release_notes.json   stas@OpenClawPI:/home/stas/.picoclaw/
+pscp -pw "%HOSTPWD%" src\strings.json         stas@OpenClawPI:/home/stas/.picoclaw/
+
+rem Restart the service
+plink -pw "%HOSTPWD%" -batch stas@OpenClawPI "echo %HOSTPWD% | sudo -S systemctl restart picoclaw-telegram"
+```
+
+### 3 — Verify admin notification
+
+After restart, the bot automatically sends admins a release note message (once per `BOT_VERSION`). Verify in journal:
+
+```bat
+plink -pw "%HOSTPWD%" -batch stas@OpenClawPI "journalctl -u picoclaw-telegram -n 20 --no-pager | grep -i release"
+```
+
+You should see: `[ReleaseNotes] notified admin 994963580 (v2026.3.X)`
+
+Notification state is stored in `~/.picoclaw/last_notified_version.txt` — delete it to re-trigger.
+
+### Runtime files created by the bot
+
+| File | Created when | Description |
+|---|---|---|
+| `~/.picoclaw/voice_opts.json` | First voice opts toggle | Per-user voice optimization flags |
+| `~/.picoclaw/last_notified_version.txt` | First admin notification | Tracks last notified `BOT_VERSION` |
+| `~/.picoclaw/bot.env` | Manual step (secrets) | `BOT_TOKEN` + `ALLOWED_USER` |
+
+---
+
 ## Russian Voice Assistant (RB-TalkingPI)
 
 Local offline Russian voice interface for picoclaw. Based on analysis of KIM-ASSISTANT project
@@ -313,20 +347,6 @@ pscp -pw "$HOSTPWD" stas@OpenClawPI:<remote-path> <local-dest>
 
 (`pscp` is bundled with PuTTY at `C:\Program Files\PuTTY\pscp.exe`)
 
-### Use picoclaw in a Node.js script on the remote host
-```js
-// Example: use picoclaw via node -e on the remote host
-const { createPicoClaw } = require('/home/stas/.npm-global/lib/node_modules/picoclaw');
-const client = createPicoClaw({ apiKey: 'cmdop_live_xxx' });
-const result = await client.run('uptime');
-console.log(result);
-```
-
-Run it remotely:
-```bat
-plink -pw "$HOSTPWD" -batch stas@OpenClawPI "node /path/to/your/script.js"
-```
-
 ---
 
 ## Service File Sync Rule
@@ -373,5 +393,6 @@ The authoritative source for service file content is `src/services/`. The Pi's `
 - All target-side sources belong in `src/`. Shell setup scripts go in `src/setup/`. Systemd units go in `src/services/`. Hardware tests go in `src/tests/`.
 - The remote OS is Linux (Raspberry Pi 3 B+ — hostname `openclawpi`, arm64 / aarch64 architecture).
 - `python3`, `npm`, `node`, and `curl` are available on the remote host.
-- `node_modules` path for picoclaw: `/home/stas/.npm-global/lib/node_modules/picoclaw`
-- `node_modules` path for @cmdop/node: `/home/stas/.npm-global/lib/node_modules/@cmdop/node`
+- picoclaw Go binary: `/usr/bin/picoclaw` — used as a subprocess by the bot (`picoclaw agent -m "..."`)
+- Bot companion source files deployed alongside `telegram_menu_bot.py`: `src/strings.json`, `src/release_notes.json`
+- Bot runtime state files on Pi (auto-created, do NOT commit): `~/.picoclaw/voice_opts.json`, `~/.picoclaw/last_notified_version.txt`

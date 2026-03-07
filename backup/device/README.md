@@ -33,6 +33,22 @@ Hostname: `OpenClawPI`, user: `stas`.
 | Piper TTS | 2023.11.14-2 (aarch64) |
 | Piper voice | ru_RU-irina-medium |
 | Vosk model | vosk-model-small-ru-0.22 |
+| telegram_menu_bot.py | BOT_VERSION 2026.3.7 |
+
+---
+
+## Runtime state files (auto-created, not in backup)
+
+These files are created automatically by `telegram_menu_bot.py` at runtime.  
+They are **not** committed to git and are not part of the backup snapshot.
+
+| File | Description |
+|---|---|
+| `~/.picoclaw/voice_opts.json` | Per-user voice optimization flags (toggled in admin panel) |
+| `~/.picoclaw/last_notified_version.txt` | Tracks last `BOT_VERSION` for which admins were notified |
+
+To reset voice opts: delete `~/.picoclaw/voice_opts.json` and restart the bot.
+To re-trigger release notification: delete `~/.picoclaw/last_notified_version.txt` and restart.
 
 ---
 

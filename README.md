@@ -6,10 +6,14 @@ Local Russian voice assistant for Raspberry Pi, powered by [picoclaw](https://gi
 - Offline Russian STT via Vosk (48 MB model, real-time on Pi 3)
 - Offline Russian TTS via Piper (natural female voice, ~1–3 s latency)
 - LLM via OpenRouter (100+ models, free tier available)
+- **OpenAI ChatGPT sub-menu** — switch between gpt-4o, gpt-4o-mini, o3-mini, o1, gpt-4.5-preview directly from the admin panel; manage API keys inline
 - Telegram bot channel via picoclaw gateway
 - Daily Gmail digest to Telegram
-- Interactive Telegram menu bot (Mail Digest / Free Chat / System Chat modes)
+- Interactive Telegram menu bot (Mail Digest / Free Chat / System Chat / Voice Session modes)
 - **On-demand Voice Session via Telegram** — tap the 🎤 button, then use Telegram's mic button to send a voice message; bot transcribes with Vosk (offline, Russian), sends to LLM, replies with text + Piper TTS voice note
+- **Voice pipeline optimization flags** — 5 optional toggles in the admin panel (silence strip, low sample rate, Piper warm-up, parallel TTS, per-user audio toggle)
+- **Versioned release notes + admin notification** — bump `BOT_VERSION`, add entry to `release_notes.json`, deploy; admins are notified automatically on first startup
+- **Internationalization** — Russian and English UI strings via `strings.json`; language toggle per user
 - Works on Raspberry Pi 3 B+ and newer (aarch64 / armv7)
 
 ---
@@ -538,6 +542,8 @@ See [`doc/architecture.md`](doc/architecture.md) for the full component architec
 │   ├── telegram_menu_bot.py      ← interactive Telegram menu bot
 │   ├── gmail_digest.py           ← daily email digest agent
 │   ├── gmail_auth.py             ← OAuth2 setup helper (run once on Windows)
+│   ├── strings.json              ← i18n UI strings (ru/en) deployed alongside bot
+│   ├── release_notes.json        ← versioned changelog deployed alongside bot
 │   ├── setup/                    ← installation & fix scripts (run on Pi)
 │   │   ├── setup_voice.sh        ← full voice stack installer
 │   │   ├── setup_gateway.sh      ← picoclaw gateway service installer

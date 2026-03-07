@@ -167,7 +167,9 @@ The picoclaw gateway also handles Telegram messages independently of the voice a
 
 ### 7. Telegram Menu Bot (`telegram_menu_bot.py`)
 
-Interactive Telegram bot that exposes four operating modes via inline keyboard:
+Interactive Telegram bot (`BOT_VERSION = "2026.3.7"`) with mode switching, voice sessions, admin panel, and internationalization (Russian / English).
+
+#### User modes (inline keyboard)
 
 | Mode | Button | Description |
 |---|---|---|
@@ -175,6 +177,17 @@ Interactive Telegram bot that exposes four operating modes via inline keyboard:
 | Free Chat | 💬 Free Chat | Any text sent goes directly to `picoclaw agent -m` and returns the LLM response |
 | System Chat | 🖥 System Chat | Like Free Chat but prepends a system-admin context prompt |
 | **Voice Session** | **🎤 Voice Session** | **On-demand mic session: see below** |
+
+#### Admin panel buttons
+
+| Button | Action |
+|---|---|
+| ➕ Add user | Add a guest user by Telegram chat ID |
+| 📋 List users | Show all authorised guest users |
+| 🗑 Remove user | Remove a guest user |
+| 🤖 Switch LLM | Switch active model (OpenRouter default + OpenAI sub-menu with gpt-4o, gpt-4o-mini, o3-mini, o1, gpt-4.5-preview) |
+| ⚡ Voice Opts | Toggle 5 optional voice latency optimizations (see below) |
+| 📝 Release Notes | Show full versioned changelog from `release_notes.json` |
 
 | Property | Value |
 |---|---|
@@ -184,6 +197,8 @@ Interactive Telegram bot that exposes four operating modes via inline keyboard:
 | Token source | `/home/stas/.picoclaw/bot.env` (loaded via `EnvironmentFile=`) |
 | Allowed user | `ALLOWED_USER` env var (chat ID) |
 | LLM backend | `picoclaw agent -m` subprocess (same config as gateway) |
+| i18n | `strings.json` (Russian + English, `_t(chat_id, key)`) |
+| Version constant | `BOT_VERSION = "2026.3.7"` (bumped per deployment) |
 
 #### Voice Session Mode
 
@@ -218,6 +233,34 @@ User taps 🎤 Voice Session
 
 **Relationship to the gateway:**  
 `picoclaw-gateway.service` handles Telegram natively via the picoclaw Go binary (currently with `"enabled": false` in config.json — disabled in favour of the menu bot). `picoclaw-telegram.service` runs the menu bot independently and gives a structured, button-driven UX instead of raw chat.
+
+#### Voice Optimization Flags (`⚡ Voice Opts`)
+
+Five optional flags persisted in `~/.picoclaw/voice_opts.json` (all `false` by default). Toggled per-admin in the admin panel.
+
+| Flag | Default | Effect |
+|---|---|---|
+| `silence_strip` | off | Run `ffmpeg silenceremove` filter on incoming voice before Vosk decoding |
+| `low_sample_rate` | off | Decode voice at 8 kHz instead of 16 kHz (faster Vosk, lower quality) |
+| `warm_piper` | off | Pre-load Piper ONNX model into memory at startup (eliminates first-TTS cold-start) |
+| `parallel_tts` | off | Start TTS synthesis in background thread immediately after LLM token streaming completes |
+| `user_audio_toggle` | off | Enable per-user 🔊/🔇 audio reply toggle (user can opt out of TTS voice reply) |
+
+Settings file: `~/.picoclaw/voice_opts.json`  
+
+#### Release Notes & Deployment Tracking
+
+The bot tracks its own version and notifies admins exactly once per version bump on startup.
+
+| Item | Value |
+|---|---|
+| Constant | `BOT_VERSION = "2026.3.7"` in `telegram_menu_bot.py` |
+| Changelog source | `release_notes.json` (deployed alongside bot script) |
+| Tracking file | `~/.picoclaw/last_notified_version.txt` (auto-created; stores last notified version) |
+| Trigger | On bot startup: if `BOT_VERSION != last_notified`, send changelog entry to all admins via Telegram |
+| Admin access | Admin panel → 📝 Release Notes shows full changelog |
+
+**Deployment workflow:** bump `BOT_VERSION`, add entry to top of `release_notes.json`, deploy both files + restart service. Admins receive notification automatically.
 
 ---
 
@@ -266,10 +309,14 @@ systemd
 ```
 /home/stas/.picoclaw/
   voice_assistant.py          ← main voice daemon
-  telegram_menu_bot.py        ← interactive Telegram menu bot
+  telegram_menu_bot.py        ← interactive Telegram menu bot (v2026.3.7)
+  strings.json                ← i18n UI strings (ru/en), deployed alongside bot
+  release_notes.json          ← versioned changelog, deployed alongside bot
   config.json                 ← picoclaw + LLM config (API key here)
   gmail_digest.py             ← daily email digest agent
   bot.env                     ← BOT_TOKEN + ALLOWED_USER (loaded by systemd EnvironmentFile=)
+  voice_opts.json             ← voice optimization flags (auto-created; do not commit)
+  last_notified_version.txt   ← tracks last BOT_VERSION admin notification (auto-created)
   vosk-model-small-ru/        ← 48 MB STT model directory
   ru_RU-irina-medium.onnx     ← 66 MB Piper TTS voice model
   ru_RU-irina-medium.onnx.json← Piper voice metadata
@@ -299,7 +346,23 @@ systemd
 
 ---
 
-## Configuration Reference (`voice_assistant.py` CONFIG)
+## Configuration Reference
+
+### `telegram_menu_bot.py` constants
+
+| Constant | Default | Env Override | Description |
+|---|---|---|---|
+| `BOT_VERSION` | `"2026.3.7"` | — | Version string; bump on every deployment |
+| `RELEASE_NOTES_FILE` | `release_notes.json` next to script | `RELEASE_NOTES_FILE` | Path to versioned changelog JSON |
+| `LAST_NOTIFIED_FILE` | `~/.picoclaw/last_notified_version.txt` | — | Tracks last admin-notified version |
+| `_VOICE_OPTS_FILE` | `~/.picoclaw/voice_opts.json` | — | Persistent voice optimization flags |
+| `PIPER_BIN` | `/usr/local/bin/piper` | `PIPER_BIN` | Piper TTS binary |
+| `PIPER_MODEL` | `~/.picoclaw/ru_RU-irina-medium.onnx` | `PIPER_MODEL` | Piper voice model |
+| `VOICE_SAMPLE_RATE` | `16000` | — | Base Vosk decode sample rate (Hz) |
+| `TTS_MAX_CHARS` | `200` | — | Max characters per TTS chunk (prevents timeout) |
+| `STRINGS_FILE` | `strings.json` next to script | `STRINGS_FILE` | i18n UI text file (ru/en) |
+
+### `voice_assistant.py` CONFIG
 
 | Key | Default | Env Override | Description |
 |---|---|---|---|
