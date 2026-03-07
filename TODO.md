@@ -179,3 +179,167 @@ Avoids all TTS work for text-only users.
 3. `#3` (8kHz) — two constant changes, test recognition quality
 4. `#5` (parallel TTS thread) — user experience improvement
 5. `#4` (warm Piper process) — biggest TTS gain, needs careful testing
+
+---
+
+## Future Roadmap (MikoClaw Full Vision)
+
+---
+
+### 1. Telegram User Registration Workflow
+
+Allow users to register via Telegram bot with admin approval.
+
+- Capture Telegram ID, username, and registration time
+- Store registration status: `pending` / `approved` / `blocked`
+- Notify administrator on new registration request
+- Admin commands: `/approve_user <id>`, `/block_user <id>`, `/list_pending_users`
+
+---
+
+### 2. Role-Based Access Control (RBAC)
+
+| Role | Permissions |
+|---|---|
+| **Admin** | Full system control — manage users, environment, LLM providers, backups, security policies |
+| **Developer** | Develop and deploy skills, test features, access debug tools (cannot change security policies) |
+| **User / Guest** | Chat with assistant, use voice assistant, manage personal notes, access knowledge base |
+
+---
+
+### 3. Central Security Layer — MicoGuard
+
+Central policy enforcement and access validation.
+
+- Role validation
+- Security logging
+- Access control enforcement
+
+Architecture: `Users → MicoGuard → Microflows / LLM / Tools / System`
+
+---
+
+### 4. Conversation Memory System
+
+- Store conversation history per user
+- Use sliding window memory (`max_memory_messages = 15`)
+
+---
+
+### 5. Multi-LLM Provider Support
+
+Currently supported: OpenRouter (via picoclaw)
+
+Planned:
+- OpenAI (direct)
+- YandexGPT
+- Gemini
+- Anthropic
+- Local LLM (llama.cpp / Qwen2-0.5B fallback — see `doc/hardware-performance-analysis.md` Section 8.9)
+
+Config pattern: `LLM_PROVIDER=YandexGPT`, `OPENAI_API_KEY=xxx`, `YANDEX_API_KEY=xxx`
+
+---
+
+### 6. Markdown Notes System
+
+Users can create, view, update, and delete personal notes via chat commands.
+
+---
+
+### 7. Local RAG Knowledge Base
+
+Lightweight knowledge base on Raspberry Pi or target host.
+
+```
+/knowledge_base/
+  documents/
+  embeddings.db
+```
+
+Commands: `/rag_on`, `/rag_off`
+
+Query flow: `User question → Vector search → Context injection → LLM answer`
+
+---
+
+### 8. Skill / Tool Plugin System
+
+Modular architecture: `Assistant → Skill Manager → Plugins / Tools`
+
+Examples: Notes, Knowledge search, Automation tools
+
+---
+
+### 9. Logging and Monitoring
+
+Log categories: `assistant.log`, `security.log`, `voice.log`
+
+Admin access to logs via Telegram UI.
+
+---
+
+### 10. Host–Project Synchronization
+
+Synchronize between local project and target host:
+- Source code, scripts, configs, env templates, deployment files
+- Tools: rsync, git deployment, archive export
+
+---
+
+### 11. Backup System
+
+#### Full System Image Backup
+- Full system recovery and hardware migration
+- Example: `mico-image-rpi5-2026-03-07.img.zst`
+
+#### Recovery / Installation Bundle
+- Installation scripts, configs, deployment files, package list
+- Supports: fresh install, rebuild, update
+
+---
+
+### 12. GitHub Integration
+
+Recovery artifacts stored in the project repository:
+
+```
+/deploy
+/install
+/update
+/scripts
+```
+
+---
+
+### 13. Remote Backup to Nextcloud
+
+```
+/Nextcloud/
+  MicoBackups/
+    images/
+    recovery/
+    logs/
+```
+
+---
+
+### 14. Backup and Sync Policy
+
+| Location | Contents |
+|---|---|
+| GitHub | Source code, deployment scripts, documentation |
+| Host | Runtime data, logs, databases, secrets |
+| Cloud (Nextcloud) | Image backups, recovery bundles |
+
+Naming example: `mico-recovery-bundle-2026-03-07.tar.gz`
+
+---
+
+### 15. Future Features
+
+- Local LLM support (see Section 8.9 in hardware analysis)
+- Multi-user knowledge graph
+- Long-term AI memory
+- Smart home integration
+- Multi-device access
