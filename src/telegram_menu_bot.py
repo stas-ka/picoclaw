@@ -835,29 +835,34 @@ def _handle_admin_pending_users(chat_id: int) -> None:
     pending = _get_pending_registrations()
     if not pending:
         bot.send_message(chat_id, _t(chat_id, "no_pending_regs"),
-                         parse_mode="Markdown", reply_markup=_admin_keyboard())
+                         reply_markup=_admin_keyboard())
         return
     for reg in pending:
-        uid  = reg.get("chat_id")
+        uid   = reg.get("chat_id")
         uname = reg.get("username", "")
         name  = reg.get("name", "")
         ts    = reg.get("timestamp", "")[:16].replace("T", " ")
-        uname_disp = f"@{uname}" if uname else "_(no username)_"
+        # Escape user-supplied strings to prevent Markdown parse failures
+        uname_disp = f"@{_escape_md(uname)}" if uname else "(no username)"
+        name_disp  = _escape_md(name) if name else "(not set)"
         kb = InlineKeyboardMarkup(row_width=2)
         kb.add(
-            InlineKeyboardButton("✅  Approve", callback_data=f"reg_approve:{uid}"),
-            InlineKeyboardButton("🚫  Block",   callback_data=f"reg_block:{uid}"),
+            InlineKeyboardButton("\u2705  Approve", callback_data=f"reg_approve:{uid}"),
+            InlineKeyboardButton("\U0001f6ab  Block",   callback_data=f"reg_block:{uid}"),
         )
-        bot.send_message(
-            chat_id,
-            f"👤 *Pending registration*\n\n"
+        text = (
+            f"\U0001f464 *Pending registration*\n\n"
             f"ID: `{uid}`\n"
             f"Username: {uname_disp}\n"
-            f"Name: {name or '_(not set)_'}\n"
-            f"Time: {ts}",
-            parse_mode="Markdown",
-            reply_markup=kb,
+            f"Name: {name_disp}\n"
+            f"Time: {ts}"
         )
+        try:
+            bot.send_message(chat_id, text, parse_mode="Markdown", reply_markup=kb)
+        except Exception as e:
+            log.warning(f"[Reg] pending_users send failed: {e}")
+            import re as _re_pu
+            bot.send_message(chat_id, _re_pu.sub(r"[*_`]", "", text), reply_markup=kb)
 
 
 def _do_approve_registration(admin_id: int, target_id: int) -> None:
@@ -923,15 +928,20 @@ def _handle_voice_opts_menu(chat_id: int) -> None:
 
     active = [k for k, v in _voice_opts.items() if v]
     status = ("Active: " + ", ".join(active)) if active else "All OFF — stable defaults"
-    bot.send_message(
-        chat_id,
+    # Escape key names (contain underscores) so Markdown parser doesn't treat them as italics
+    status_esc = _escape_md(status)
+    text = (
         f"⚡ *Voice Pipeline Optimisations*\n\n"
         f"Default: all OFF (stable baseline). Toggle to test individually.\n"
         f"Settings persist across restarts.\n\n"
-        f"_{status}_",
-        parse_mode="Markdown",
-        reply_markup=kb,
+        f"_{status_esc}_"
     )
+    try:
+        bot.send_message(chat_id, text, parse_mode="Markdown", reply_markup=kb)
+    except Exception as e:
+        log.warning(f"[VoiceOpts] Markdown failed: {e}")
+        import re as _re_vo
+        bot.send_message(chat_id, _re_vo.sub(r"[*_`]", "", text), reply_markup=kb)
 
 
 def _handle_voice_opt_toggle(chat_id: int, key: str) -> None:
@@ -1167,14 +1177,17 @@ def _handle_admin_llm_menu(chat_id: int) -> None:
     kb.add(InlineKeyboardButton("🔙  Admin", callback_data="admin_menu"))
 
     current_label = current or "(config default: openrouter-auto)"
-    bot.send_message(
-        chat_id,
-        f"🤖 *Switch LLM*\n\nActive: `{current_label}`\n\n"
-        f"✅ active   ✔️ key set   ⚠️ needs key\n\n"
-        f"Tap *OpenAI ChatGPT* to select GPT-4o / GPT-4o-mini and set your API key.",
-        parse_mode="Markdown",
-        reply_markup=kb,
+    text = (
+        f"\U0001f916 *Switch LLM*\n\nActive: `{current_label}`\n\n"
+        f"\u2705 active   \u2714\ufe0f key set   \u26a0\ufe0f needs key\n\n"
+        f"Tap *OpenAI ChatGPT* to select GPT-4o / GPT-4o-mini and set your API key."
     )
+    try:
+        bot.send_message(chat_id, text, parse_mode="Markdown", reply_markup=kb)
+    except Exception as e:
+        log.warning(f"[LLM] llm_menu send failed: {e}")
+        import re as _re_llm
+        bot.send_message(chat_id, _re_llm.sub(r"[*_`]", "", text), reply_markup=kb)
 
 
 def _handle_set_llm(chat_id: int, model_name: str) -> None:
@@ -1184,11 +1197,14 @@ def _handle_set_llm(chat_id: int, model_name: str) -> None:
         models_map = {m["model_name"]: m for m in _get_picoclaw_models() if m.get("model_name")}
         m = models_map.get(model_name, {})
         has_key = bool(m.get("api_key", "").strip())
-        warn = "" if has_key else "\n\n⚠️ _No API key set for this model — go to OpenAI ChatGPT menu to add one._"
-        msg = f"✅ *LLM switched to:* `{model_name}`{warn}\n\n_All subsequent chat, system, and voice requests will use this model._"
+        warn = "" if has_key else "\n\n\u26a0\ufe0f No API key set for this model — go to OpenAI ChatGPT menu to add one."
+        msg = f"\u2705 LLM switched to: {model_name}{warn}\n\nAll subsequent chat, system, and voice requests will use this model."
     else:
-        msg = "↩️ *LLM reset to config default* (`openrouter-auto`)."
-    bot.send_message(chat_id, msg, parse_mode="Markdown", reply_markup=_admin_keyboard())
+        msg = "\u21a9\ufe0f LLM reset to config default (openrouter-auto)."
+    try:
+        bot.send_message(chat_id, msg, reply_markup=_admin_keyboard())
+    except Exception as e:
+        log.warning(f"[LLM] set_llm send failed: {e}")
 
 
 # ── OpenAI ChatGPT sub-menu ───────────────────────────────────────────────────
@@ -1247,27 +1263,30 @@ def _handle_openai_llm_menu(chat_id: int) -> None:
         m = models.get(name, {})
         has_key = bool(m.get("api_key", "").strip()) or bool(shared_key)
         is_current = (name == current)
-        prefix = "✅" if is_current else ("✔️" if has_key else "⚠️")
+        prefix = "\u2705" if is_current else ("\u2714\ufe0f" if has_key else "\u26a0\ufe0f")
         kb.add(InlineKeyboardButton(f"{prefix} {name} — {description}",
                                     callback_data=f"llm_select:{name}"))
 
-    key_label = (f"🔑 Update OpenAI Key (…{shared_key[-4:]})" if shared_key
-                 else "🔑 Set OpenAI API Key")
+    key_label = (f"\U0001f511 Update OpenAI Key (\u2026{shared_key[-4:]})" if shared_key
+                 else "\U0001f511 Set OpenAI API Key")
     kb.add(InlineKeyboardButton(key_label, callback_data="llm_setkey_openai"))
-    kb.add(InlineKeyboardButton("🔙  LLM Menu", callback_data="admin_llm_menu"))
+    kb.add(InlineKeyboardButton("\U0001f519  LLM Menu", callback_data="admin_llm_menu"))
 
-    status_line = (f"🔑 Key: `…{shared_key[-4:]}` ✅ configured"
-                   if shared_key else "🔑 Key: ⚠️ not set — tap below to add")
-    bot.send_message(
-        chat_id,
-        f"🔵 *OpenAI ChatGPT Models*\n\n"
+    status_line = (f"\U0001f511 Key: ...{shared_key[-4:]} configured"
+                   if shared_key else "\U0001f511 Key: not set — tap below to add")
+    text = (
+        f"\U0001f535 *OpenAI ChatGPT Models*\n\n"
         f"{status_line}\n\n"
-        f"✅ active   ✔️ key set   ⚠️ needs key\n\n"
-        f"_One API key is shared by all OpenAI models._\n"
-        f"_Get yours at: https://platform.openai.com/api-keys_",
-        parse_mode="Markdown",
-        reply_markup=kb,
+        f"\u2705 active   \u2714\ufe0f key set   \u26a0\ufe0f needs key\n\n"
+        f"One API key is shared by all OpenAI models.\n"
+        f"Get yours at: https://platform.openai.com/api-keys"
     )
+    try:
+        bot.send_message(chat_id, text, parse_mode="Markdown", reply_markup=kb)
+    except Exception as e:
+        log.warning(f"[LLM] openai_menu send failed: {e}")
+        import re as _re_oa
+        bot.send_message(chat_id, _re_oa.sub(r"[*_`]", "", text), reply_markup=kb)
 
 
 def _handle_llm_setkey_prompt(chat_id: int) -> None:
