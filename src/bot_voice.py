@@ -770,6 +770,17 @@ def _handle_voice_message(chat_id: int, voice_obj) -> None:
                    _t(chat_id, "you_said", text=_clean_text),
                    parse_mode="Markdown")
 
+        # Security L1: reject injection attempts before sending to LLM
+        from bot_security import _check_injection
+        _is_inj, _inj_reason = _check_injection(text)
+        if _is_inj:
+            log.warning(f"[Security] voice injection blocked chat_id={chat_id}")
+            _safe_edit(chat_id, msg.message_id,
+                       _t(chat_id, "security_blocked"),
+                       parse_mode="Markdown",
+                       reply_markup=_back_keyboard())
+            return
+
         _ts = time.time()
         response = _ask_picoclaw(_with_lang_voice(chat_id, text), timeout=90)
         _timing["LLM"] = time.time() - _ts

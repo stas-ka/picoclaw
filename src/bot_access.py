@@ -143,13 +143,16 @@ def _resolve_lang(chat_id: int, user_text: str = "") -> str:
 
 
 def _with_lang(chat_id: int, user_text: str) -> str:
-    """Prepend language-enforcement instruction to a user → LLM prompt."""
+    """Prepend security preamble + language instruction, then wrap user text."""
+    from bot_security import SECURITY_PREAMBLE, _wrap_user_input
     lang = _resolve_lang(chat_id, user_text)
-    return _LANG_INSTRUCTION.get(lang, _LANG_INSTRUCTION[_FALLBACK_LANG]) + user_text
+    lang_instr = _LANG_INSTRUCTION.get(lang, _LANG_INSTRUCTION[_FALLBACK_LANG])
+    return SECURITY_PREAMBLE + lang_instr + _wrap_user_input(user_text)
 
 
 def _with_lang_voice(chat_id: int, stt_text: str) -> str:
-    """Like _with_lang but adds an STT-error hint for low-confidence words ([?word])."""
+    """Like _with_lang but includes STT-error hint for low-confidence words ([?word])."""
+    from bot_security import SECURITY_PREAMBLE, _wrap_user_input
     has_uncertain = bool(re.search(r'\[\?', stt_text))
     lang = _resolve_lang(chat_id, stt_text)
     instruction = _LANG_INSTRUCTION.get(lang, _LANG_INSTRUCTION[_FALLBACK_LANG])
@@ -165,8 +168,8 @@ def _with_lang_voice(chat_id: int, stt_text: str) -> str:
             "correct them using context and answer the original question. "
             "Do not mention the corrections.\n\n"
         )
-        return instruction + stt_hint + stt_text
-    return instruction + stt_text
+        return SECURITY_PREAMBLE + instruction + stt_hint + _wrap_user_input(stt_text)
+    return SECURITY_PREAMBLE + instruction + _wrap_user_input(stt_text)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -323,7 +326,7 @@ def _menu_keyboard(chat_id: int = 0) -> InlineKeyboardMarkup:
     kb = InlineKeyboardMarkup(row_width=1)
     kb.add(InlineKeyboardButton(_t(chat_id, "btn_digest"),  callback_data="digest"))
     kb.add(InlineKeyboardButton(_t(chat_id, "btn_chat"),    callback_data="mode_chat"))
-    if not _is_guest(chat_id):
+    if _is_admin(chat_id):    # System Chat is admin-only: executes commands on the Pi
         kb.add(InlineKeyboardButton(_t(chat_id, "btn_system"), callback_data="mode_system"))
     kb.add(InlineKeyboardButton(_t(chat_id, "btn_voice"),   callback_data="voice_session"))
     if not _is_guest(chat_id):

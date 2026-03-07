@@ -21,7 +21,7 @@ from bot_config import (
 )
 from bot_instance import bot
 from bot_access import (
-    _t, _with_lang, _escape_md, _truncate,
+    _t, _is_admin, _with_lang, _escape_md, _truncate,
     _safe_edit, _back_keyboard, _run_subprocess, _ask_picoclaw,
 )
 from bot_users import (
@@ -210,7 +210,25 @@ _SYSTEM_PROMPT = (
 
 
 def _handle_system_message(chat_id: int, user_text: str) -> None:
-    """Translate natural language → bash command → ask for confirmation."""
+    """Translate natural language → bash command → ask for confirmation.
+    Admin-only: executing system commands is restricted to administrators.
+    """
+    if not _is_admin(chat_id):
+        bot.send_message(chat_id,
+                         _t(chat_id, "security_admin_only"),
+                         reply_markup=_back_keyboard())
+        log.warning(f"[Security] non-admin system-chat attempt from chat_id={chat_id}")
+        return
+
+    from bot_security import _check_injection
+    is_inj, reason = _check_injection(user_text)
+    if is_inj:
+        bot.send_message(chat_id,
+                         _t(chat_id, "security_blocked"),
+                         parse_mode="Markdown",
+                         reply_markup=_back_keyboard())
+        return
+
     bot.send_chat_action(chat_id, "typing")
     prompt = f"{_SYSTEM_PROMPT}\n\nTask: {user_text}"
     msg = bot.send_message(chat_id, "⏳ Generating command…")
@@ -285,6 +303,16 @@ def _execute_pending_cmd(chat_id: int) -> None:
 
 def _handle_chat_message(chat_id: int, user_text: str) -> None:
     """Forward message to picoclaw agent and return response."""
+    from bot_security import _check_injection
+    is_inj, reason = _check_injection(user_text)
+    if is_inj:
+        bot.send_message(chat_id,
+                         _t(chat_id, "security_blocked"),
+                         parse_mode="Markdown",
+                         reply_markup=_back_keyboard())
+        log.warning(f"[Security] chat injection blocked chat_id={chat_id}")
+        return
+
     bot.send_chat_action(chat_id, "typing")
     msg = bot.send_message(chat_id, "⏳ Thinking…")
 

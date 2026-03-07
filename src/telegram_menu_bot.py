@@ -238,6 +238,9 @@ def callback_handler(call):
         _st._user_mode[cid] = "chat"
         bot.send_message(cid, _t(cid, "chat_enter"), parse_mode="Markdown")
     elif data == "mode_system":
+        if not _is_admin(cid):       # System Chat executes commands — admin only
+            _deny(cid)
+            return
         _st._user_mode[cid] = "system"
         bot.send_message(cid, _t(cid, "system_enter"), parse_mode="Markdown")
 
@@ -633,7 +636,12 @@ def text_handler(message):
         _handle_chat_message(cid, message.text)
 
     elif mode == "system":
-        _handle_system_message(cid, message.text)
+        if _is_admin(cid):           # defense-in-depth: guard even at routing level
+            _handle_system_message(cid, message.text)
+        else:
+            _st._user_mode.pop(cid, None)
+            bot.send_message(cid, _t(cid, "security_admin_only"),
+                             reply_markup=_back_keyboard())
 
     elif mode == "voice":
         bot.send_message(cid, _t(cid, "voice_hint"),
