@@ -6,16 +6,16 @@
 
 ## 1. Access & Security
 
-### 1.1 Telegram User Registration Workflow 🔲
+### 1.1 Telegram User Registration Workflow ✅
 
 When a new user sends `/start`, the bot registers them and notifies an admin.
 
-- [ ] Capture Telegram ID, username, and registration timestamp
-- [ ] Store registration status: `pending` / `approved` / `blocked`
-- [ ] Send admin notification on new registration request
-- [ ] Admin Telegram UI: list all registered users (pending / active / blocked)
-- [ ] Admin actions per user: approve, block, unblock, remove
-- [ ] Unregistered users get guest mode (limited access) until approved
+- [x] Capture Telegram ID, username, and registration timestamp
+- [x] Store registration status: `pending` / `approved` / `blocked`
+- [x] Send admin notification on new registration request
+- [x] Admin Telegram UI: list all pending registrations with approve/block buttons
+- [x] Admin actions per user: approve, block (badge count on admin panel button)
+- [x] Unregistered users get registration flow (pending/blocked/approved messages)
 
 ### 1.2 Role-Based Access Control (RBAC) 🔲
 

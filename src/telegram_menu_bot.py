@@ -106,8 +106,10 @@ def _parse_admin_users() -> set[int]:
     return ids if ids else set(ALLOWED_USERS)
 
 ADMIN_USERS: set[int] = _parse_admin_users()
-USERS_FILE       = os.environ.get("USERS_FILE",
-                       os.path.expanduser("~/.picoclaw/users.json"))
+USERS_FILE            = os.environ.get("USERS_FILE",
+                           os.path.expanduser("~/.picoclaw/users.json"))
+REGISTRATIONS_FILE    = os.environ.get("REGISTRATIONS_FILE",
+                           os.path.expanduser("~/.picoclaw/registrations.json"))
 PICOCLAW_BIN     = os.environ.get("PICOCLAW_BIN", "/usr/bin/picoclaw")
 PICOCLAW_CONFIG  = os.environ.get("PICOCLAW_CONFIG",
                        os.path.expanduser("~/.picoclaw/config.json"))
@@ -119,7 +121,7 @@ LAST_DIGEST_FILE = os.environ.get("LAST_DIGEST_FILE",
                                    os.path.expanduser("~/.picoclaw/last_digest.txt"))
 
 # Bot version — bump this string with every deployment so admins get notified
-BOT_VERSION           = "2026.3.14"
+BOT_VERSION           = "2026.3.15"
 RELEASE_NOTES_FILE    = os.environ.get(
     "RELEASE_NOTES_FILE",
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "release_notes.json"),
@@ -149,6 +151,80 @@ def _save_dynamic_users() -> None:
 
 # Populated after logging is set up (see bottom of config section)
 _dynamic_users: set[int] = set()
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Registration workflow (pending / approved / blocked)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _load_registrations() -> list[dict]:
+    """Load registration list from disk."""
+    try:
+        data = _json_mod.loads(Path(REGISTRATIONS_FILE).read_text(encoding="utf-8"))
+        return data.get("registrations", [])
+    except Exception:
+        return []
+
+
+def _save_registrations(regs: list[dict]) -> None:
+    try:
+        Path(REGISTRATIONS_FILE).write_text(
+            _json_mod.dumps({"registrations": regs}, indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
+    except Exception as e:
+        log.warning(f"[Reg] save failed: {e}")
+
+
+def _find_registration(chat_id: int) -> dict | None:
+    for r in _load_registrations():
+        if r.get("chat_id") == chat_id:
+            return r
+    return None
+
+
+def _upsert_registration(chat_id: int, username: str, name: str,
+                         status: str = "pending") -> None:
+    """Add a new registration or update status/name if it already exists."""
+    import datetime
+    regs = _load_registrations()
+    for r in regs:
+        if r.get("chat_id") == chat_id:
+            r["status"]   = status
+            r["username"] = username
+            r["name"]     = name
+            _save_registrations(regs)
+            return
+    regs.append({
+        "chat_id":   chat_id,
+        "username":  username,
+        "name":      name,
+        "timestamp": datetime.datetime.now().isoformat(timespec="seconds"),
+        "status":    status,
+    })
+    _save_registrations(regs)
+
+
+def _set_reg_status(chat_id: int, status: str) -> None:
+    regs = _load_registrations()
+    for r in regs:
+        if r.get("chat_id") == chat_id:
+            r["status"] = status
+            _save_registrations(regs)
+            return
+
+
+def _get_pending_registrations() -> list[dict]:
+    return [r for r in _load_registrations() if r.get("status") == "pending"]
+
+
+def _is_blocked_reg(chat_id: int) -> bool:
+    r = _find_registration(chat_id)
+    return r is not None and r.get("status") == "blocked"
+
+
+def _is_pending_reg(chat_id: int) -> bool:
+    r = _find_registration(chat_id)
+    return r is not None and r.get("status") == "pending"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Voice session config (mirrors defaults from voice_assistant.py)
@@ -645,7 +721,11 @@ def _escape_md(text: str) -> str:
 
 def _admin_keyboard() -> InlineKeyboardMarkup:
     kb = InlineKeyboardMarkup(row_width=1)
+    pending_count = len(_get_pending_registrations())
+    pending_badge = f"  ({pending_count} new)" if pending_count else ""
     kb.add(
+        InlineKeyboardButton(f"👥  Pending Requests{pending_badge}",
+                             callback_data="admin_pending_users"),
         InlineKeyboardButton("➕  Add user",       callback_data="admin_add_user"),
         InlineKeyboardButton("📋  List users",     callback_data="admin_list_users"),
         InlineKeyboardButton("🗑   Remove user",    callback_data="admin_remove_user"),
@@ -744,6 +824,79 @@ def _finish_admin_remove_user(admin_id: int, text: str) -> None:
         bot.send_message(admin_id, _t(admin_id, "user_not_found", uid=uid),
                          parse_mode="Markdown", reply_markup=_admin_keyboard())
     _user_mode.pop(admin_id, None)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Registration — admin actions: approve / block
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _handle_admin_pending_users(chat_id: int) -> None:
+    """Show all pending registration requests with approve/block buttons."""
+    pending = _get_pending_registrations()
+    if not pending:
+        bot.send_message(chat_id, _t(chat_id, "no_pending_regs"),
+                         parse_mode="Markdown", reply_markup=_admin_keyboard())
+        return
+    for reg in pending:
+        uid  = reg.get("chat_id")
+        uname = reg.get("username", "")
+        name  = reg.get("name", "")
+        ts    = reg.get("timestamp", "")[:16].replace("T", " ")
+        uname_disp = f"@{uname}" if uname else "_(no username)_"
+        kb = InlineKeyboardMarkup(row_width=2)
+        kb.add(
+            InlineKeyboardButton("✅  Approve", callback_data=f"reg_approve:{uid}"),
+            InlineKeyboardButton("🚫  Block",   callback_data=f"reg_block:{uid}"),
+        )
+        bot.send_message(
+            chat_id,
+            f"👤 *Pending registration*\n\n"
+            f"ID: `{uid}`\n"
+            f"Username: {uname_disp}\n"
+            f"Name: {name or '_(not set)_'}\n"
+            f"Time: {ts}",
+            parse_mode="Markdown",
+            reply_markup=kb,
+        )
+
+
+def _do_approve_registration(admin_id: int, target_id: int) -> None:
+    """Approve a pending registration: add to guests and notify user."""
+    reg = _find_registration(target_id)
+    if not reg:
+        bot.send_message(admin_id, f"ℹ️ Registration for `{target_id}` not found.",
+                         parse_mode="Markdown", reply_markup=_admin_keyboard())
+        return
+    if reg.get("status") == "approved":
+        bot.send_message(admin_id, f"ℹ️ User `{target_id}` is already approved.",
+                         parse_mode="Markdown", reply_markup=_admin_keyboard())
+        return
+    _set_reg_status(target_id, "approved")
+    _dynamic_users.add(target_id)
+    _save_dynamic_users()
+    log.info(f"[Reg] Admin {admin_id} approved user {target_id}")
+    bot.send_message(admin_id, f"✅ User `{target_id}` approved and added as guest.",
+                     parse_mode="Markdown", reply_markup=_admin_keyboard())
+    try:
+        bot.send_message(target_id, _t(target_id, "reg_approved"),
+                         parse_mode="Markdown",
+                         reply_markup=_menu_keyboard(target_id))
+    except Exception as e:
+        log.warning(f"[Reg] Cannot notify approved user {target_id}: {e}")
+
+
+def _do_block_registration(admin_id: int, target_id: int) -> None:
+    """Block a registration request: mark blocked and optionally notify user."""
+    _set_reg_status(target_id, "blocked")
+    _dynamic_users.discard(target_id)
+    _save_dynamic_users()
+    log.info(f"[Reg] Admin {admin_id} blocked user {target_id}")
+    bot.send_message(admin_id, f"🚫 User `{target_id}` blocked.",
+                     parse_mode="Markdown", reply_markup=_admin_keyboard())
+    try:
+        bot.send_message(target_id, _t(target_id, "reg_declined"))
+    except Exception as e:
+        log.warning(f"[Reg] Cannot notify blocked user {target_id}: {e}")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1693,13 +1846,53 @@ def _handle_voice_message(chat_id: int, voice_obj) -> None:
 
 @bot.message_handler(commands=["start"])
 def cmd_start(message):
-    if not _is_allowed(message.chat.id):
-        _deny(message.chat.id)
-        return
-    _set_lang(message.chat.id, message.from_user)
     cid = message.chat.id
+    _set_lang(cid, message.from_user)
+
+    if not _is_allowed(cid):
+        # Unknown user — run registration flow
+        username = getattr(message.from_user, "username", "") or ""
+        first    = getattr(message.from_user, "first_name", "") or ""
+        last     = getattr(message.from_user, "last_name", "") or ""
+        name     = f"{first} {last}".strip()
+
+        if _is_blocked_reg(cid):
+            bot.send_message(cid, _t(cid, "reg_blocked"))
+        elif _is_pending_reg(cid):
+            bot.send_message(cid, _t(cid, "reg_pending_exists"))
+        else:
+            _upsert_registration(cid, username, name, "pending")
+            bot.send_message(cid, _t(cid, "reg_waiting"))
+            log.info(f"[Reg] New request: chat_id={cid} username={username!r} name={name!r}")
+            _notify_admins_new_registration(cid, username, name)
+        return
+
     bot.send_message(cid, _t(cid, "welcome"), parse_mode="Markdown",
                      reply_markup=_menu_keyboard(cid))
+
+
+def _notify_admins_new_registration(chat_id: int, username: str, name: str) -> None:
+    """Send approve/block buttons to all admins when a new user registers."""
+    uname_disp = f"@{username}" if username else "_(no username)_"
+    for admin_id in ADMIN_USERS:
+        try:
+            kb = InlineKeyboardMarkup(row_width=2)
+            kb.add(
+                InlineKeyboardButton("✅  Approve", callback_data=f"reg_approve:{chat_id}"),
+                InlineKeyboardButton("🚫  Block",   callback_data=f"reg_block:{chat_id}"),
+            )
+            bot.send_message(
+                admin_id,
+                f"👤 *New registration request*\n\n"
+                f"ID: `{chat_id}`\n"
+                f"Username: {uname_disp}\n"
+                f"Name: {name or '_(not set)_'}",
+                parse_mode="Markdown",
+                reply_markup=kb,
+            )
+            log.info(f"[Reg] Notified admin {admin_id} of registration from {chat_id}")
+        except Exception as e:
+            log.warning(f"[Reg] Notify admin {admin_id} failed: {e}")
 
 
 @bot.message_handler(commands=["menu"])
@@ -1869,6 +2062,26 @@ def callback_handler(call):
             bot.send_message(cid, _t(cid, "admin_only"))
         else:
             _handle_admin_changelog(cid)
+
+    elif data == "admin_pending_users":
+        if not _is_admin(cid):
+            bot.send_message(cid, _t(cid, "admin_only"))
+        else:
+            _handle_admin_pending_users(cid)
+
+    elif data.startswith("reg_approve:"):
+        if not _is_admin(cid):
+            bot.answer_callback_query(call.id, _t(cid, "admin_only"))
+        else:
+            target_id = int(data.split(":", 1)[1])
+            _do_approve_registration(cid, target_id)
+
+    elif data.startswith("reg_block:"):
+        if not _is_admin(cid):
+            bot.answer_callback_query(call.id, _t(cid, "admin_only"))
+        else:
+            target_id = int(data.split(":", 1)[1])
+            _do_block_registration(cid, target_id)
 
     elif data == "cancel":
         _pending_cmd.pop(cid, None)
