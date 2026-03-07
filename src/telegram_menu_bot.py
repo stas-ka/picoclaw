@@ -928,10 +928,19 @@ def _tts_to_ogg(text: str) -> Optional[bytes]:
     Sequential approach: piper → raw PCM bytes → ffmpeg → OGG bytes.
     Text is truncated to TTS_MAX_CHARS to keep synthesis fast on Pi 3.
     """
-    TTS_MAX_CHARS = 400   # ~50 words, ~25s audio on Pi 3 — fits well within 90s
+    TTS_MAX_CHARS = 200   # ~25 words — reduces piper synthesis time on Pi 3
+
+    # Strip Markdown formatting — asterisks/underscores confuse piper phonemizer
+    import re as _re
+    tts_text = text.strip()
+    tts_text = _re.sub(r'\*+([^*]+)\*+', r'\1', tts_text)   # **bold** / *italic*
+    tts_text = _re.sub(r'_+([^_]+)_+', r'\1', tts_text)     # __bold__ / _italic_
+    tts_text = _re.sub(r'`[^`]+`', '', tts_text)             # `code` — drop inline code
+    tts_text = _re.sub(r'```.*?```', '', tts_text, flags=_re.DOTALL)  # code blocks
+    tts_text = _re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', tts_text)    # [link](url)
+    tts_text = tts_text.strip()
 
     # Trim to whole sentences where possible, hard-cap at TTS_MAX_CHARS
-    tts_text = text.strip()
     if len(tts_text) > TTS_MAX_CHARS:
         # Try to cut at last sentence boundary before the limit
         cut = tts_text[:TTS_MAX_CHARS]
@@ -942,13 +951,16 @@ def _tts_to_ogg(text: str) -> Optional[bytes]:
                 break
         tts_text = cut.strip()
 
+    if not tts_text:
+        return None
+
     try:
         # ── Step 1: Piper TTS → raw S16LE PCM ──────────────────────────────
         piper_result = subprocess.run(
             [PIPER_BIN, "--model", PIPER_MODEL, "--output-raw"],
             input=tts_text.encode("utf-8"),
             capture_output=True,
-            timeout=60,
+            timeout=120,   # increased: Pi 3 under memory pressure takes longer
         )
         raw_pcm = piper_result.stdout
         if not raw_pcm:
