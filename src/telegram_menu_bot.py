@@ -274,6 +274,26 @@ _STRINGS: dict[str, dict[str, str]] = {
         "fetching":         "⏳ Загружаю письма…",
         "digest_fresh":     "📧 *Свежий дайджест*\n\n",
         "digest_no_out":    "Нет данных от скрипта дайджеста.",
+        # help
+        "btn_help":         "❓  Справка",
+        "help_text":        (
+            "❓ *Справка — Pico Bot*\n\n"
+            "*Режимы:*\n"
+            "📧 *Почта* — дайджест Gmail за 24ч. Нажмите 🔄 для обновления.\n"
+            "💬 *Чат* — свободный разговор с ИИ. Задайте любой вопрос.\n"
+            "🖥️ *Системный чат* — состояние Pi: диск, температура, сервисы, логи.\n"
+            "_Примеры: \"температура CPU\", \"покажи диск\", \"список сервисов\", \"последние 20 строк лога\"_\n"
+            "🎤 *Голосовой запрос* — нажмите 🎤 в поле ввода, запишите вопрос. Ответ — текст и аудио.\n"
+            "🔐 *Админ* — управление гостевыми пользователями.\n\n"
+            "*Команды:*\n"
+            "`/start` — приветствие и меню\n"
+            "`/menu` — открыть меню\n"
+            "`/status` — статус режима и сервисов\n\n"
+            "*Роли:*\n"
+            "👑 Admin — полный доступ + управление пользователями\n"
+            "👤 Full — все режимы кроме Админ\n"
+            "👥 Guest — Почта, Чат, Голос"
+        ),
     },
     "en": {
         # menu buttons
@@ -327,6 +347,26 @@ _STRINGS: dict[str, dict[str, str]] = {
         "fetching":         "⏳ Fetching emails…",
         "digest_fresh":     "📧 *Fresh digest*\n\n",
         "digest_no_out":    "No output from digest script.",
+        # help
+        "btn_help":         "❓  Help",
+        "help_text":        (
+            "❓ *Pico Bot Help*\n\n"
+            "*Modes:*\n"
+            "📧 *Mail Digest* — summarises Gmail inbox for the last 24h. Tap 🔄 to refresh.\n"
+            "💬 *Free Chat* — open-ended conversation with the AI. Ask anything.\n"
+            "🖥️ *System Chat* — query Pi status: disk, CPU temp, services, logs.\n"
+            "_Examples: \"show disk\", \"CPU temperature\", \"list services\", \"last 20 lines of log\"_\n"
+            "🎤 *Voice Session* — tap 🎤 in the input bar, record a question. Reply arrives as text and audio.\n"
+            "🔐 *Admin* — manage guest user access.\n\n"
+            "*Commands:*\n"
+            "`/start` — welcome screen and menu\n"
+            "`/menu` — open main menu\n"
+            "`/status` — current mode and service status\n\n"
+            "*Roles:*\n"
+            "👑 Admin — full access + user management\n"
+            "👤 Full — all modes except Admin\n"
+            "👥 Guest — Mail, Chat, Voice"
+        ),
     },
 }
 
@@ -362,6 +402,7 @@ def _menu_keyboard(chat_id: int = 0) -> InlineKeyboardMarkup:
     if not _is_guest(chat_id):
         kb.add(InlineKeyboardButton(_t(chat_id, "btn_system"), callback_data="mode_system"))
     kb.add(InlineKeyboardButton(_t(chat_id, "btn_voice"),   callback_data="voice_session"))
+    kb.add(InlineKeyboardButton(_t(chat_id, "btn_help"),    callback_data="help"))
     if _is_admin(chat_id):
         kb.add(InlineKeyboardButton(_t(chat_id, "btn_admin"),  callback_data="admin_menu"))
     return kb
@@ -1064,6 +1105,11 @@ def callback_handler(call):
 
     elif data == "voice_session":
         _start_voice_session(cid)
+
+    elif data == "help":
+        bot.send_message(cid, _t(cid, "help_text"),
+                         parse_mode="Markdown",
+                         reply_markup=_back_keyboard())
 
     elif data == "admin_menu":
         if not _is_admin(cid):
