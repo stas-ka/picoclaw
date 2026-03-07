@@ -75,7 +75,7 @@ NOTES_DIR           = os.environ.get("NOTES_DIR",
 # Bot version — bump on every user-visible deployment
 # ─────────────────────────────────────────────────────────────────────────────
 
-BOT_VERSION        = "2026.3.19"
+BOT_VERSION        = "2026.3.20"
 RELEASE_NOTES_FILE = os.environ.get(
     "RELEASE_NOTES_FILE",
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "release_notes.json"),

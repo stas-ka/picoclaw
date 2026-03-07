@@ -167,7 +167,7 @@ The picoclaw gateway also handles Telegram messages independently of the voice a
 
 ### 7. Telegram Menu Bot (`telegram_menu_bot.py`)
 
-Interactive Telegram bot (`BOT_VERSION = "2026.3.19"`) with mode switching, voice sessions, notes, admin panel, and internationalization (Russian / English).
+Interactive Telegram bot (`BOT_VERSION = "2026.3.20"`) with mode switching, voice sessions, notes, admin panel, and internationalization (Russian / English).
 
 #### User modes (inline keyboard)
 
@@ -260,7 +260,7 @@ The bot tracks its own version and notifies admins exactly once per version bump
 
 | Item | Value |
 |---|---|
-| Constant | `BOT_VERSION = "2026.3.19"` in `telegram_menu_bot.py` |
+| Constant | `BOT_VERSION = "2026.3.20"` in `telegram_menu_bot.py` |
 | Changelog source | `release_notes.json` (deployed alongside bot script) |
 | Tracking file | `~/.picoclaw/last_notified_version.txt` (auto-created; stores last notified version) |
 | Trigger | On bot startup: if `BOT_VERSION != last_notified`, send changelog entry to all admins via Telegram |

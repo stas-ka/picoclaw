@@ -33,7 +33,7 @@ Hostname: `OpenClawPI`, user: `stas`.
 | Piper TTS | 2023.11.14-2 (aarch64) |
 | Piper voice | ru_RU-irina-medium |
 | Vosk model | vosk-model-small-ru-0.22 |
-| telegram_menu_bot.py | BOT_VERSION 2026.3.19 |
+| telegram_menu_bot.py | BOT_VERSION 2026.3.20 |
 
 ---
 

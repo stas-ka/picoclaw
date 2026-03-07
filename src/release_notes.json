@@ -1,5 +1,11 @@
 [
   {
+    "version": "2026.3.20",
+    "date": "2026-03-07",
+    "title": "Notes UX: in-place edit, raw text view, read aloud",
+    "notes": "- Note edit: current content shown via ForceReply — edit directly in Telegram input bar without rewriting from scratch\n- Raw text view: new Raw text button shows note body without Markdown rendering (useful for copying raw content)\n- Read aloud: new Read aloud button synthesises note body via Piper TTS and sends as a voice message with note title as caption\n- Voice input during note creation and edit flows is routed into the note state machine instead of going to the LLM\n- Note open keyboard: Edit / Delete / Raw text / Read aloud / All Notes / Menu"
+  },
+  {
     "version": "2026.3.19",
     "date": "2026-03-07",
     "title": "§5.3 Voice pipeline improvements as optional toggles",
