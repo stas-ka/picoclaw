@@ -72,6 +72,7 @@ from bot_handlers import (
     _handle_notes_menu, _handle_note_list, _start_note_create,
     _handle_note_open, _handle_note_raw, _start_note_edit, _handle_note_delete,
     _notes_menu_keyboard,
+    _handle_profile,
 )
 
 # ─── Calendar ─────────────────────────────────────────────────────────────────
@@ -264,7 +265,10 @@ def callback_handler(call):
         bot.send_message(cid, _t(cid, key),
                          parse_mode="Markdown",
                          reply_markup=_back_keyboard())
-
+    # ── User profile ───────────────────────────────────────────────────────────
+    elif data == "profile":
+        if not _is_allowed(cid): return _deny(cid)
+        _handle_profile(cid)
     # ── Admin panel ────────────────────────────────────────────────────────
     elif data == "admin_menu":
         if _is_admin(cid):

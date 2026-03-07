@@ -21,12 +21,12 @@ from bot_config import (
 )
 from bot_instance import bot
 from bot_access import (
-    _t, _is_admin, _with_lang, _escape_md, _truncate,
+    _t, _is_admin, _is_allowed, _with_lang, _escape_md, _truncate,
     _safe_edit, _back_keyboard, _run_subprocess, _ask_picoclaw,
 )
 from bot_users import (
     _list_notes_for, _load_note_text, _save_note_file, _delete_note_file,
-    _slug,
+    _slug, _find_registration,
 )
 
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
@@ -182,6 +182,68 @@ def _handle_note_delete(chat_id: int, slug: str) -> None:
     else:
         bot.send_message(chat_id, _t(chat_id, "note_not_found"),
                          reply_markup=_notes_menu_keyboard(chat_id))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# User profile
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _handle_profile(chat_id: int) -> None:
+    """Show the user's own profile: name, username, chat ID, role, registration date, mail."""
+    from bot_mail_creds import _load_creds  # deferred — avoids circular import at module level
+
+    reg = _find_registration(chat_id)
+
+    # — Name ——————————————————————————————————————————————————————————
+    if reg:
+        name = reg.get("name") or " ".join(
+            filter(None, [reg.get("first_name", ""), reg.get("last_name", "")])
+        ).strip() or str(chat_id)
+    else:
+        name = str(chat_id)
+
+    # — Username ——————————————————————————————————————————————————
+    uname = (reg.get("username", "") if reg else "")
+    username_line = f"@{uname}" if uname else _t(chat_id, "profile_no_username")
+
+    # — Role ———————————————————————————————————————————————————————
+    if _is_admin(chat_id):
+        role = _t(chat_id, "profile_role_admin")
+    elif _is_allowed(chat_id):
+        role = _t(chat_id, "profile_role_user")
+    else:
+        role = _t(chat_id, "profile_role_guest")
+
+    # — Registration date ———————————————————————————————————————————
+    if reg and reg.get("timestamp"):
+        try:
+            from datetime import datetime
+            reg_date = datetime.fromisoformat(reg["timestamp"]).strftime("%d.%m.%Y")
+        except Exception:
+            reg_date = str(reg["timestamp"])[:10]
+    else:
+        reg_date = _t(chat_id, "profile_not_registered")
+
+    # — Email (masked) ——————————————————————————————————————————————
+    creds = _load_creds(chat_id)
+    if creds and creds.get("email"):
+        addr   = creds["email"]
+        parts  = addr.split("@", 1)
+        masked = (parts[0][:3] + "\u2022\u2022\u2022" + "@" + parts[1]) if len(parts) == 2 else addr
+        email_line = f"`{masked}`"
+    else:
+        email_line = _t(chat_id, "profile_no_email")
+
+    text = _t(chat_id, "profile_msg",
+              name=_escape_md(name),
+              username_line=username_line,
+              chat_id=chat_id,
+              role=role,
+              reg_date=reg_date,
+              email_line=email_line)
+
+    bot.send_message(chat_id, text, parse_mode="Markdown",
+                     reply_markup=_back_keyboard())
 
 
 # ─────────────────────────────────────────────────────────────────────────────

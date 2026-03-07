@@ -87,6 +87,15 @@
     "note_voice_default_title":     "голосовая заметка",
 
     "btn_calendar":                 "🗓  Календарь",
+    "btn_profile":                  "👤  Профиль",
+
+    "profile_msg":              "👤 *Ваш профиль*\n\n*Имя:* {name}\n*Username:* {username_line}\n*Chat ID:* `{chat_id}`\n*Роль:* {role}\n*Зарегистрирован:* {reg_date}\n\n📧 *Почта:* {email_line}",
+    "profile_role_admin":       "👑 Администратор",
+    "profile_role_user":        "✅ Пользователь",
+    "profile_role_guest":       "👥 Гость",
+    "profile_no_username":      "_не задан_",
+    "profile_no_email":         "_не настроена_",
+    "profile_not_registered":   "_нет данных_",
 
     "mail_nocreds_msg":    "📧 *Дайджест почты*\n\n⛔ Доступ к почте не настроен.\n\nЧтобы получать дайджест вашей личной почты, настройте доступ к почтовому ящику. Каждый пользователь управляет собственными данными — ваш ящик доступен только вам.",
     "mail_btn_setup":      "⚙️  Настроить доступ к почте",
@@ -208,6 +217,15 @@
     "note_voice_default_title":     "voice note",
 
     "btn_calendar":                 "🗓  Calendar",
+    "btn_profile":                  "👤  Profile",
+
+    "profile_msg":              "👤 *Your Profile*\n\n*Name:* {name}\n*Username:* {username_line}\n*Chat ID:* `{chat_id}`\n*Role:* {role}\n*Registered:* {reg_date}\n\n📧 *Mail:* {email_line}",
+    "profile_role_admin":       "👑 Administrator",
+    "profile_role_user":        "✅ User",
+    "profile_role_guest":       "👥 Guest",
+    "profile_no_username":      "_not set_",
+    "profile_no_email":         "_not configured_",
+    "profile_not_registered":   "_no data_",
 
     "mail_nocreds_msg":    "📧 *Mail Digest*\n\n⛔ Mail access not configured.\n\nTo receive your personal mail digest, set up access to your mailbox. Each user manages their own credentials — your mailbox is only accessible to you.",
     "mail_btn_setup":      "⚙️  Set up mail access",
