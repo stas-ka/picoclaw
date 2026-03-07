@@ -78,8 +78,7 @@ from bot_handlers import (
 from bot_calendar import (
     _handle_calendar_menu, _handle_cal_event_detail,
     _start_cal_add, _finish_cal_add, _handle_cal_cancel_event,    _cal_do_confirm_save, _show_cal_confirm,
-    _cal_prompt_edit_field, _cal_handle_edit_input,    _cal_reschedule_all, _cal_morning_briefing_loop,
-    _pending_cal,
+    _cal_prompt_edit_field, _cal_handle_edit_input,    _cal_reschedule_all, _cal_morning_briefing_loop,    _handle_cal_event_tts, _handle_cal_confirm_tts,    _pending_cal,
 )
 
 # ─── Mail credentials ──────────────────────────────────────────────────────────
@@ -461,7 +460,13 @@ def callback_handler(call):
     elif data.startswith("cal_edit_remind:"):
         if not _is_guest(cid):
             _cal_prompt_edit_field(cid, "remind", ev_id=data[len("cal_edit_remind:"):])
+    elif data.startswith("cal_tts:"):
+        if not _is_guest(cid):
+            _handle_cal_event_tts(cid, data[len("cal_tts:"):])
 
+    elif data == "cal_confirm_tts":
+        if not _is_guest(cid) and cid in _pending_cal:
+            _handle_cal_confirm_tts(cid)
     # ── Confirm / cancel system command ────────────────────────────────────
     elif data == "cancel":
         _st._pending_cmd.pop(cid, None)

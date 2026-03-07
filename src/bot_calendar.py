@@ -171,6 +171,10 @@ def _cal_confirm_keyboard(chat_id: int) -> InlineKeyboardMarkup:
         ),
     )
     kb.add(InlineKeyboardButton(
+        "🔊  " + ("Прочитать вслух" if lang == "ru" else "Read aloud"),
+        callback_data="cal_confirm_tts",
+    ))
+    kb.add(InlineKeyboardButton(
         "✏️  " + ("Изменить название" if lang == "ru" else "Edit title"),
         callback_data="cal_confirm_edit_title",
     ))
@@ -204,7 +208,11 @@ def _cal_event_keyboard(chat_id: int, ev_id: str) -> InlineKeyboardMarkup:
         callback_data=f"cal_edit_remind:{ev_id}",
     ))
     kb.add(InlineKeyboardButton(
-        "🗑  " + ("Удалить" if lang == "ru" else "Delete"),
+        "�  " + ("Прочитать вслух" if lang == "ru" else "Read aloud"),
+        callback_data=f"cal_tts:{ev_id}",
+    ))
+    kb.add(InlineKeyboardButton(
+        "�🗑  " + ("Удалить" if lang == "ru" else "Delete"),
         callback_data=f"cal_del:{ev_id}",
     ))
     kb.add(InlineKeyboardButton(
@@ -589,6 +597,88 @@ def _cal_handle_edit_input(chat_id: int, text: str, field: str) -> None:
         # Back to confirmation screen
         _pending_cal[chat_id] = draft
         _show_cal_confirm(chat_id)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Read aloud (TTS) for events
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _cal_tts_text(title: str, dt_iso: str, lang: str) -> str:
+    """Build TTS string for an event."""
+    dt = datetime.fromisoformat(dt_iso)
+    dt_fmt = dt.strftime("%d %B %H:%M") if lang == "ru" else dt.strftime("%B %d at %H:%M")
+    if lang == "ru":
+        return f"Событие: {title}. Дата: {dt_fmt}."
+    return f"Event: {title}. Date: {dt_fmt}."
+
+
+def _handle_cal_event_tts(chat_id: int, ev_id: str) -> None:
+    """Synthesise and send a voice note for a saved event."""
+    lang = _st._user_lang.get(chat_id, "ru")
+    events = _cal_load(chat_id)
+    ev = next((e for e in events if e.get("id") == ev_id), None)
+    if not ev:
+        _handle_calendar_menu(chat_id)
+        return
+    tts_text = _cal_tts_text(ev["title"], ev["dt_iso"], lang)
+    placeholder = bot.send_message(
+        chat_id,
+        "🔊 " + ("Генерирую аудио…" if lang == "ru" else "Generating audio…"),
+    )
+    try:
+        from bot_voice import _tts_to_ogg  # noqa: PLC0415
+        ogg = _tts_to_ogg(tts_text)
+        if ogg:
+            bot.delete_message(chat_id, placeholder.message_id)
+            dt = datetime.fromisoformat(ev["dt_iso"])
+            caption = f"🗓 *{_escape_md(ev['title'])}* — {dt.strftime('%d.%m.%Y %H:%M')}"
+            bot.send_voice(chat_id, ogg, caption=caption, parse_mode="Markdown")
+        else:
+            bot.edit_message_text(
+                "❌ " + ("Ошибка синтеза речи." if lang == "ru" else "TTS error."),
+                chat_id, placeholder.message_id,
+            )
+    except Exception as e:
+        log.warning(f"[Cal] TTS event failed: {e}")
+        bot.edit_message_text(
+            "❌ " + ("Ошибка синтеза речи." if lang == "ru" else "TTS error."),
+            chat_id, placeholder.message_id,
+        )
+
+
+def _handle_cal_confirm_tts(chat_id: int) -> None:
+    """Synthesise and send a voice note for the pending (not yet saved) event."""
+    lang = _st._user_lang.get(chat_id, "ru")
+    draft = _pending_cal.get(chat_id, {})
+    title  = draft.get("title")
+    dt_iso = draft.get("dt_iso")
+    if not title or not dt_iso:
+        return
+    tts_text = _cal_tts_text(title, dt_iso, lang)
+    placeholder = bot.send_message(
+        chat_id,
+        "🔊 " + ("Генерирую аудио…" if lang == "ru" else "Generating audio…"),
+    )
+    try:
+        from bot_voice import _tts_to_ogg  # noqa: PLC0415
+        ogg = _tts_to_ogg(tts_text)
+        if ogg:
+            bot.delete_message(chat_id, placeholder.message_id)
+            dt = datetime.fromisoformat(dt_iso)
+            caption = (f"🗓 *{_escape_md(title)}* — {dt.strftime('%d.%m.%Y %H:%M')}"
+                       + "\n" + ("_(не сохранено)_" if lang == "ru" else "_(not saved yet)_"))
+            bot.send_voice(chat_id, ogg, caption=caption, parse_mode="Markdown")
+        else:
+            bot.edit_message_text(
+                "❌ " + ("Ошибка синтеза речи." if lang == "ru" else "TTS error."),
+                chat_id, placeholder.message_id,
+            )
+    except Exception as e:
+        log.warning(f"[Cal] TTS confirm failed: {e}")
+        bot.edit_message_text(
+            "❌ " + ("Ошибка синтеза речи." if lang == "ru" else "TTS error."),
+            chat_id, placeholder.message_id,
+        )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
