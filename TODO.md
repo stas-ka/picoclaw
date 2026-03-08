@@ -29,6 +29,18 @@
 - [ ] Replace hardcoded names in `strings.json` with `{bot_name}` placeholder; inject via `_t()` kwargs
 - [ ] Grep for stragglers: `grep -rn "Pico\b\|picoclaw" src/ --include="*.py"`
 
+### 0.3 Note edit loses existing content 🔲
+
+**Observed (2026-03-08):** When a user taps ✏️ Edit on a note, the current note body is sent back as a Telegram quote (Zitat/ForceReply), but whatever the user types **replaces** the note entirely — the old content is lost. There is no way to edit only part of the note.
+
+**Root cause:** `_start_note_edit()` in `src/bot_handlers.py` sends the current body via `ForceReply` for display only; when the reply arrives, `_save_note_file()` overwrites the file with the new text verbatim. There is no merge/patch step.
+
+- [ ] Send current note body as pre-filled text the user can modify (Telegram `ForceReply` does not support pre-filled text — need a different UX)
+- [ ] Option A: send note body in a code block + instruct user to copy-edit-paste; note is saved only when the reply contains the full replacement text (current behaviour, but clarify in UI)
+- [ ] Option B: add inline edit buttons — ➕ Append / 🔄 Replace / ✂️ Prepend — so the user explicitly chooses whether to replace or add to existing content
+- [ ] Option C: support a simple diff syntax — lines starting with `+` are appended, other lines replace (power-user only)
+- [ ] Recommended: implement Option B (Append / Replace) as it covers the most common cases with no learning curve
+
 ---
 
 ## 1. Access & Security
