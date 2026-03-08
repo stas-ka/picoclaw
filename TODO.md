@@ -22,6 +22,27 @@ path issue on the Pi), the entire function throws and `telebot` swallows the exc
 - [ ] Add fallback: if import fails, set `email_line = _t(chat_id, "profile_no_email")` and log warning
 - [ ] Verify on Pi: `journalctl -u picoclaw-telegram -n 50 | grep -i profile` to see actual exception
 
+### 0.2 Rename bot / assistant — centralise all user-facing name references 🔲
+
+**Request (2026-03-08):** The assistant is currently named "Pico" in user-facing messages and
+"picoclaw" in voice/LLM status strings. The name should be configurable via a single env var
+(`BOT_NAME`) rather than scattered hardcoded strings.
+
+**Affected locations:**
+- `src/strings.json` — `welcome` (RU line 10, EN line 140), `help_text` / `help_text_admin` /
+  `help_text_guest` contain "Pico Bot" · `you_said` + `no_answer` contain "picoclaw"
+- `src/bot_config.py` — add `BOT_NAME = os.environ.get("BOT_NAME", "Pico")` constant
+- `src/bot_access.py` — any hardcoded name in `_ask_picoclaw()` output labels or prompts
+- `src/bot_security.py` — `SECURITY_PREAMBLE` may reference bot identity
+- `TODO.md` header — "Pico Bot — TODO & Roadmap"
+
+**Recommended approach:**
+- [ ] Add `BOT_NAME=Pico` to `src/setup/bot.env.example` and document in `doc/architecture.md`
+- [ ] Add `BOT_NAME = os.environ.get("BOT_NAME", "Pico")` to `bot_config.py`
+- [ ] Replace hardcoded name strings in `strings.json` with `{bot_name}` placeholder;
+      inject `bot_name=BOT_NAME` via `_t()` kwargs at send time
+- [ ] Grep for stragglers: `grep -rn "Pico\b\|picoclaw" src/ --include="*.py"` after refactor
+
 ---
 
 ## 1. Access & Security
