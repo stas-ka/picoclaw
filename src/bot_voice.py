@@ -283,8 +283,10 @@ def _stt_whisper(raw_pcm: bytes, sample_rate: int) -> Optional[str]:
         result = subprocess.run(
             [WHISPER_BIN, "-m", WHISPER_MODEL, "-f", tmp_path,
              "-l", "ru", "--no-timestamps", "-otxt",
-             "--entropy-thold", "1.8",   # reject hallucinated output
-             "--no-speech-thold", "0.6"],  # reject silence/noise segments
+             "--threads", "4",            # use all Pi 3 cores
+             "--suppress-blank",          # don't output blank/silence segments
+             "--entropy-thold", "1.8",    # reject hallucinated output
+             "--no-speech-thold", "0.6"], # reject silence/noise segments
             capture_output=True, text=True,
             encoding="utf-8", errors="replace",
             timeout=60,
@@ -304,7 +306,24 @@ def _stt_whisper(raw_pcm: bytes, sample_rate: int) -> Optional[str]:
 
         # Strip whisper.cpp timestamp markers: [00:00:00.000 --> 00:00:05.000]
         text = _re_w.sub(r"\[[\d:.]+ --> [\d:.]+\]\s*", "", text).strip()
-        return text if text else None
+        if not text:
+            return None
+
+        # Sanity check: Whisper hallucinates short garbled phrases on unclear
+        # audio.  Expected Russian speech rate ~3 words/s; if output is way
+        # below that for audio longer than 2 s, discard and let Vosk handle it.
+        duration_s = len(raw_pcm) / (sample_rate * 2)
+        if duration_s > 2.0:
+            min_expected = max(2, int(duration_s * 2.0))
+            actual_words = len(text.split())
+            if actual_words < min_expected:
+                log.warning(
+                    f"[WhisperSTT] output too sparse ({actual_words} words for "
+                    f"{duration_s:.1f}s audio, expected >={min_expected}) — discarding"
+                )
+                return None
+
+        return text
 
     except FileNotFoundError:
         log.debug(f"[WhisperSTT] binary not found: {WHISPER_BIN}")
