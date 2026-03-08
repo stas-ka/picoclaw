@@ -14,6 +14,15 @@
       "clean_ref": null,
       "max_wer": null
     },
+    "audio_2026-03-08_08-34-23.ogg": {
+      "description": "Russian speech — 'Где я сейчас нахожусь и сколько у меня сейчас времени', ~3.1s, Telegram OGG Opus",
+      "raw_vosk_ref": null,
+      "clean_ref": "где я сейчас нахожусь и сколько у меня сейчас времени",
+      "max_wer": 0.35,
+      "whisper_hallucination": "ражусь без кокомиец часолим",
+      "_note": "Whisper base hallucinates 4 words for 3.1s audio (expected >=6). Guard must discard Whisper and fall back to Vosk.",
+      "min_words_vosk": 4
+    },
     "audio_2026-03-07_21-20-14.ogg": {
       "description": "Russian speech — calendar event: work on 9th, start 7am, return 18:00, ~12s",
       "raw_vosk_ref": null,

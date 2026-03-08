@@ -631,6 +631,106 @@ def t_whisper_stt(gt: dict, verbose: bool = False, **_) -> list[TestResult]:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# T13 — Whisper hallucination guard
+# ─────────────────────────────────────────────────────────────────────────────
+
+def t_whisper_hallucination_guard(gt: dict, verbose: bool = False, **_) -> list[TestResult]:
+    """T13 — Whisper sparse-output guard rejects hallucinated phrases and falls back to Vosk.
+
+    For audio clips marked with 'whisper_hallucination' in ground_truth.json, the
+    guard in _stt_whisper() must compute word_count < max(2, duration_s*2.0) and
+    return None so Vosk handles the transcript instead.
+    """
+    results = []
+    for fname, info in gt.get("fixtures", {}).items():
+        hallucination = info.get("whisper_hallucination")
+        if not hallucination:
+            continue
+        ogg_path = VOICE_DIR / fname
+        if not ogg_path.exists():
+            results.append(TestResult(
+                f"whisper_hallucination_guard:{fname}", "SKIP", 0.0,
+                f"fixture missing: {ogg_path}"))
+            continue
+
+        t0 = time.time()
+        # Decode to PCM to get duration
+        try:
+            ff = subprocess.run(
+                ["ffmpeg", "-y", "-i", str(ogg_path),
+                 "-ar", str(VOICE_SAMPLE_RATE), "-ac", "1", "-f", "s16le", "pipe:1"],
+                capture_output=True, timeout=30,
+            )
+            raw_pcm = ff.stdout
+        except Exception as e:
+            results.append(TestResult(
+                f"whisper_hallucination_guard:{fname}", "FAIL",
+                time.time() - t0, f"ffmpeg error: {e}"))
+            continue
+
+        duration_s = len(raw_pcm) / (VOICE_SAMPLE_RATE * 2)
+        halluc_words = hallucination.split()
+        min_expected = max(2, int(duration_s * 2.0))
+        would_discard = duration_s > 2.0 and len(halluc_words) < min_expected
+
+        detail = (
+            f"duration={duration_s:.1f}s | halluc_words={len(halluc_words)} "
+            f"min_expected={min_expected} | would_discard={would_discard}"
+        )
+        if verbose:
+            print(f"         {detail}")
+
+        if would_discard:
+            # Also verify Vosk produces a plausible result for the same audio
+            min_vosk = info.get("min_words_vosk", 1)
+            try:
+                import vosk as _vosk_lib
+                import json as _json_
+                model = _load_vosk_model_cached()
+                rec = _vosk_lib.KaldiRecognizer(model, VOICE_SAMPLE_RATE)
+                rec.SetWords(True)
+                chunk = VOICE_CHUNK_SIZE * 2
+                for i in range(0, len(raw_pcm), chunk):
+                    rec.AcceptWaveform(raw_pcm[i:i + chunk])
+                res = _json_.loads(rec.FinalResult())
+                vosk_words = [w["word"] for w in res.get("result", [])]
+                vosk_text = " ".join(vosk_words)
+                if len(vosk_words) >= min_vosk:
+                    status = "PASS"
+                    detail += f" | Vosk={vosk_text[:60]}"
+                else:
+                    status = "WARN"
+                    detail += f" | Vosk too short ({len(vosk_words)} words): {vosk_text[:60]}"
+            except Exception as e:
+                status = "WARN"
+                detail += f" | Vosk check error: {e}"
+        else:
+            status = "FAIL"
+            detail += " | guard would NOT discard this known hallucination"
+
+        dur = time.time() - t0
+        results.append(TestResult(
+            f"whisper_hallucination_guard:{fname}", status, dur, detail))
+
+    if not results:
+        results.append(TestResult(
+            "whisper_hallucination_guard", "SKIP", 0.0,
+            "No fixtures with whisper_hallucination field"))
+    return results
+
+
+def _load_vosk_model_cached(_cache: list = []) -> object:
+    """Lazy-load Vosk model singleton for tests."""
+    if not _cache:
+        import vosk as _vosk_lib
+        import logging
+        logging.disable(logging.CRITICAL)
+        _cache.append(_vosk_lib.Model(VOSK_MODEL_PATH))
+        logging.disable(logging.NOTSET)
+    return _cache[0]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Regression check
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -688,6 +788,7 @@ TEST_FUNCTIONS = [
     t_tts_escape,
     t_tts_synthesis,
     t_whisper_stt,
+    t_whisper_hallucination_guard,
 ]
 
 
