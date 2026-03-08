@@ -79,19 +79,18 @@ plink -pw "%HOSTPWD%" -batch stas@OpenClawPI "python3 /home/stas/.picoclaw/tests
 
 | ID | Test | What it checks |
 |---|---|---|
-| T01 | `model_files_required` | Vosk model, Piper binary, .onnx, .onnx.json, ffmpeg all present |
-| T02 | `model_files_optional` | Whisper binary, whisper model, piper-low present (SKIP if absent) |
-| T03 | `piper_json_present` | `.onnx.json` config alongside every `.onnx` in use |
-| T04 | `tmpfs_model_complete` | Both `.onnx` + `.onnx.json` in `/dev/shm/piper/` when tmpfs_model enabled |
-| T05 | `ogg_decode` | ffmpeg decodes OGG fixtures to S16LE PCM; measures latency |
-| T06 | `vad_filter` | WebRTC VAD strips non-speech frames; measures retained fraction + latency |
-| T07 | `vosk_stt` | Vosk transcribes fixture audio; WER ≤ 30% vs ground truth; measures latency |
-| T08 | `confidence_strip` | `[?word] → word` regex is exact (7 test cases) |
-| T09 | `tts_escape` | `_escape_tts()` removes emoji + Markdown before Piper (6 cases) |
-| T10 | `tts_piper` | Piper synthesizes Russian test text; measures latency |
-| T11 | `tts_ffmpeg_encode` | ffmpeg encodes PCM → OGG Opus; non-empty output |
-| T12 | `whisper_stt` | whisper.cpp transcribes; WER ≤ 40% vs ground truth (SKIP if binary absent) |
-| T13 | `regression_check` | All timings within 30% of saved baseline |
+| T01 | `model_files_present` | Vosk model, Piper binary, .onnx, .onnx.json, ffmpeg + optional binaries all checked |
+| T02 | `piper_json_present` | `.onnx.json` config alongside every `.onnx` in use |
+| T03 | `tmpfs_model_complete` | Both `.onnx` + `.onnx.json` in `/dev/shm/piper/` when tmpfs_model enabled |
+| T04 | `ogg_decode` | ffmpeg decodes OGG fixtures to S16LE PCM; measures latency |
+| T05 | `vad_filter` | WebRTC VAD strips non-speech frames; measures retained fraction + latency |
+| T06 | `vosk_stt` | Vosk transcribes fixture audio; WER ≤ 30% vs ground truth; measures latency |
+| T07 | `confidence_strip` | `[?word] → word` regex is exact (7 test cases) |
+| T08 | `tts_escape` | `_escape_tts()` removes emoji + Markdown before Piper (6 cases) |
+| T09 | `tts_synthesis` | Piper synthesizes Russian test text + ffmpeg OGG encode; measures latency |
+| T10 | `whisper_stt` | whisper.cpp transcribes; WER ≤ 40% vs ground truth (SKIP if binary absent) |
+| T11 | `whisper_hallucination_guard` | Sparse-output guard rejects hallucinated phrases; Vosk fallback produces real words |
+| T12 | `regression_check` | All timings within 30% of saved baseline |
 
 ---
 

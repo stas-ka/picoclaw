@@ -1,6 +1,6 @@
 # Picoclaw Bot — Architecture
 
-**Version:** `2026.3.23` · **Last updated:** March 2026
+**Version:** `2026.3.24` · **Last updated:** March 2026
 
 ## 1. Overview
 
@@ -189,6 +189,7 @@ All `false` by default. Persisted in `~/.picoclaw/voice_opts.json`.
 | `whisper_stt` | Use `whisper.cpp` (ggml-base.bin) instead of Vosk for STT |
 | `piper_low_model` | Use `ru_RU-irina-low.onnx` (faster TTS, lower quality) |
 | `persistent_piper` | Keep a warm Piper subprocess alive; holds ONNX in page cache |
+| `voice_timing_debug` | Show per-stage ⏱ timing breakdown in voice replies (debug) |
 
 ---
 
@@ -297,7 +298,8 @@ Telegram OGG Opus voice note
   ├── [Vosk]   default              ← vosk-model-small-ru (48 MB, offline)
   │            KaldiRecognizer → transcript + [?word] confidence strip
   └── [Whisper] if whisper_stt opt  ← whisper-cpp ggml-base.bin (142 MB)
-                better WER, ~2× slower
+                better WER, ~2× slower; hallucination guard discards
+                sparse output (< 2 words/s) and falls back to Vosk
       │
       ▼
  SECURITY_PREAMBLE + lang hint
@@ -382,9 +384,11 @@ default:  ~/.picoclaw/ru_RU-irina-medium.onnx
 | Property | Vosk (default) | Whisper (opt: `whisper_stt=true`) |
 |---|---|---|
 | Model | `vosk-model-small-ru` (48 MB) | `ggml-base.bin` (142 MB) |
-| Latency on Pi 3 | ~15 s / 5 s audio | ~30 s / 5 s audio |
+| Latency on Pi 3 | ~15 s / 5 s audio | ~30–35 s / 5 s audio |
 | WER (Russian) | ~25% | ~18% |
 | Confidence filter | strips `[?word]` → `word` | n/a |
+| Hallucination guard | n/a | discards output with < 2 words/s; falls back to Vosk |
+| Parallel threads | single-threaded | `--threads 4` (all Pi 3 cores) |
 
 ---
 

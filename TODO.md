@@ -143,7 +143,7 @@ Lightweight offline-capable knowledge base for personal/technical documents.
 
 All items added as optional voice opts toggles (all default OFF, existing behaviour unchanged):
 - **`vad_prefilter`** — webrtcvad noise gate before Vosk STT
-- **`whisper_stt`** — whisper.cpp tiny model instead of Vosk (needs binary + `~/.picoclaw/ggml-tiny.bin`)
+- **`whisper_stt`** — whisper.cpp base model instead of Vosk (needs binary + `~/.picoclaw/ggml-base.bin`); includes hallucination guard that discards sparse output (< 2 words/s) and falls back to Vosk
 - **`piper_low_model`** — ru\_RU-irina-low.onnx for faster TTS (needs model download)
 - **`persistent_piper`** — keepalive Piper subprocess holds ONNX in page cache
 

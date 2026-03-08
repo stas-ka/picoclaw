@@ -47,7 +47,7 @@ No imports from other `bot_*` modules. Root of the dependency tree.
 | `PIPER_MODEL_TMPFS` | `/dev/shm/piper/...` (RAM-disk copy) |
 | `PIPER_MODEL_LOW` | `~/.picoclaw/ru_RU-irina-low.onnx` |
 | `WHISPER_BIN` | `/usr/local/bin/whisper-cpp` |
-| `WHISPER_MODEL` | `~/.picoclaw/ggml-tiny.bin` |
+| `WHISPER_MODEL` | `~/.picoclaw/ggml-base.bin` |
 | `VOSK_MODEL_PATH` | `~/.picoclaw/vosk-model-small-ru/` |
 | `NOTES_DIR` | `~/.picoclaw/notes/` |
 | `_PENDING_TTS_FILE` | `~/.picoclaw/pending_tts.json` |
@@ -215,7 +215,8 @@ Imports: `bot_config`, `bot_state`, `bot_instance`, `bot_access`, `bot_users`.
 | Function | Purpose |
 |---|---|
 | `_vad_filter_pcm(raw_pcm, sample_rate)` | WebRTC VAD: strip non-speech frames (§5.3) |
-| `_stt_whisper(raw_pcm, sample_rate)` | whisper.cpp STT, returns transcript or `None` (§5.3) |
+| `_stt_whisper(raw_pcm, sample_rate)` | whisper.cpp STT + hallucination guard (sparse-output check); returns transcript or `None` |
+| `_load_vosk_model_cached()` | Test helper: lazy Vosk model singleton (used by T11) |
 
 ### Session + pipeline
 
@@ -319,6 +320,11 @@ Imports: `bot_config`, `bot_state`, `bot_instance`, `bot_access`, `bot_users`.
 
 | Function | Purpose |
 |---|---|
+| `_EMOJI_RE` | Compiled regex matching all Unicode emoji and symbol code points |
+| `_SYMBOL_CATEGORIES` | frozenset of Unicode categories stripped from LLM output before bash execution |
+| `_strip_symbols(text)` | Remove emoji + symbol characters from a string |
+| `_PROSE_REJECT` | Regex matching prose openers ("Sure, here is…") to skip non-command lines |
+| `_extract_bash_cmd(raw)` | Extract the first valid bash command from LLM output; strips markdown, emoji, prose |
 | `_handle_system_message(chat_id, user_text)` | NL → bash command via LLM → confirm gate |
 | `_execute_pending_cmd(chat_id)` | Run confirmed bash command on Pi |
 
