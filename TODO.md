@@ -165,6 +165,31 @@ All items added as optional voice opts toggles (all default OFF, existing behavi
 | ✅ 8 | Piper low model (opt) | Low | TTS −13 s | ~14 s |
 | ✅ 9 | Persistent Piper Popen (opt) | High | TTS −20 s | ~10 s |
 
+### 5.6 Known Bottleneck — TTS 110 s for Short Responses 🔲
+
+**Observed (2026-03-08):** voice_timing_debug shows `TTS 110s` for a 23-second audio reply — even for
+responses that are not particularly long. This is reproduced with all `warm_piper` / `tmpfs_model` /
+`persistent_piper` opts **OFF** (factory defaults).
+
+**Root cause breakdown:**
+- Cold Piper ONNX model load from microSD: ~15 s
+- ONNX inference for ~600 chars (TTS_MAX_CHARS ceiling): ~80–95 s on Pi 3 B+ Cortex-A53
+
+**Recommended fixes (in order of priority):**
+
+| Priority | Fix | Opt toggle | Expected TTS |
+|---|---|---|---|
+| 🔴 High | Enable `persistent_piper` (keepalive Popen, ONNX stays in page cache) | Admin → Voice Opts → `persistent_piper` | ~25–35 s |
+| 🔴 High | Enable `tmpfs_model` (copy ONNX to `/dev/shm` RAM disk) | Admin → Voice Opts → `tmpfs_model` | cold load: 0 s |
+| 🟡 Med | Enable `piper_low_model` (smaller model, ~half inference time) | Admin → Voice Opts → `piper_low_model` | −13 s |
+| 🟡 Med | Reduce `TTS_MAX_CHARS` below 600 for voice replies | `bot_config.py` constant | proportional |
+| 🟢 Low | Add cap for voice replies only: truncate at sentence boundary ≤ 300 chars | `_tts_to_ogg()` optional param | −50% inference |
+
+- [ ] Turn on `persistent_piper` + `tmpfs_model` opts by default for admin, document in bot help
+- [ ] Investigate adding a shorter `TTS_VOICE_MAX_CHARS = 300` constant separate from the read-aloud
+      `TTS_CHUNK_CHARS` so real-time voice replies are capped at ~30 s speech (≈ 300 chars)
+- [ ] Consider auto-truncating at last sentence boundary within the char limit (avoid mid-sentence cuts)
+
 ---
 
 ## 6. Infrastructure & Operations
