@@ -113,21 +113,25 @@ def _cal_mark_reminded(chat_id: int, ev_id: str) -> None:
 
 def _fmt_countdown(dt: datetime, lang: str) -> str:
     """Return a short countdown string like '⏰ через 2д 3ч' or 'now!'."""
+    from bot_access import _STRINGS
+    def s(key, **kw):
+        text = _STRINGS.get(lang, _STRINGS.get("en", {})).get(key, key)
+        return text.format(**kw) if kw else text
     total_s = int((dt - datetime.now()).total_seconds())
     if total_s < 0:
-        return "⏰ " + ("прошло" if lang == "ru" else "passed")
+        return "⏰ " + s("cal_passed")
     if total_s < 60:
-        return "⏰ " + ("сейчас!" if lang == "ru" else "now!")
+        return "⏰ " + s("cal_now")
     if total_s < 3600:
         mins = total_s // 60
-        return "⏰ " + (f"через {mins} мин" if lang == "ru" else f"in {mins} min")
+        return "⏰ " + s("cal_in_mins", mins=mins)
     if total_s < 86400:
         h = total_s // 3600
         m = (total_s % 3600) // 60
-        return "⏰ " + (f"через {h}ч {m}м" if lang == "ru" else f"in {h}h {m}m")
+        return "⏰ " + s("cal_in_hours", h=h, m=m)
     days = total_s // 86400
     h = (total_s % 86400) // 3600
-    return "⏰ " + (f"через {days}д {h}ч" if lang == "ru" else f"in {days}d {h}h")
+    return "⏰ " + s("cal_in_days", days=days, h=h)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -149,95 +153,39 @@ def _calendar_keyboard(chat_id: int, events: list) -> InlineKeyboardMarkup:
         dt_str = dt.strftime("%d.%m %H:%M")
         label = f"🗓 {ev['title']} · {dt_str}  {cdown}"
         kb.add(InlineKeyboardButton(label, callback_data=f"cal_event:{ev['id']}"))
-    kb.add(InlineKeyboardButton(
-        "➕  " + ("Добавить событие" if lang == "ru" else "Add event"),
-        callback_data="cal_add",
-    ))
-    kb.add(InlineKeyboardButton(
-        "💬  " + ("Консоль" if lang == "ru" else "Console"),
-        callback_data="cal_console",
-    ))
-    kb.add(InlineKeyboardButton(
-        "🔙  " + ("Меню" if lang == "ru" else "Menu"),
-        callback_data="menu",
-    ))
+    kb.add(InlineKeyboardButton(_t(chat_id, "cal_btn_add"), callback_data="cal_add"))
+    kb.add(InlineKeyboardButton(_t(chat_id, "cal_btn_console"), callback_data="cal_console"))
+    kb.add(InlineKeyboardButton(_t(chat_id, "btn_back"), callback_data="menu"))
     return kb
 
 
 def _cal_confirm_keyboard(chat_id: int) -> InlineKeyboardMarkup:
     """Keyboard shown after LLM parses a new event — confirm or edit before saving."""
-    lang = _st._user_lang.get(chat_id, "ru")
     kb = InlineKeyboardMarkup(row_width=2)
     kb.add(
-        InlineKeyboardButton(
-            "✅  " + ("Сохранить" if lang == "ru" else "Save"),
-            callback_data="cal_confirm_save",
-        ),
-        InlineKeyboardButton(
-            "❌  " + ("Отмена" if lang == "ru" else "Cancel"),
-            callback_data="cancel",
-        ),
+        InlineKeyboardButton(_t(chat_id, "cal_btn_save"), callback_data="cal_confirm_save"),
+        InlineKeyboardButton(_t(chat_id, "cal_btn_cancel"), callback_data="cancel"),
     )
-    kb.add(InlineKeyboardButton(
-        "🔊  " + ("Прочитать вслух" if lang == "ru" else "Read aloud"),
-        callback_data="cal_confirm_tts",
-    ))
-    kb.add(InlineKeyboardButton(
-        "✏️  " + ("Изменить название" if lang == "ru" else "Edit title"),
-        callback_data="cal_confirm_edit_title",
-    ))
-    kb.add(InlineKeyboardButton(
-        "📅  " + ("Изменить дату/время" if lang == "ru" else "Edit date/time"),
-        callback_data="cal_confirm_edit_dt",
-    ))
-    kb.add(InlineKeyboardButton(
-        "⏰  " + ("Изменить напоминание" if lang == "ru" else "Edit reminder"),
-        callback_data="cal_confirm_edit_remind",
-    ))
+    kb.add(InlineKeyboardButton(_t(chat_id, "cal_btn_read_aloud"), callback_data="cal_confirm_tts"))
+    kb.add(InlineKeyboardButton(_t(chat_id, "cal_btn_edit_title"), callback_data="cal_confirm_edit_title"))
+    kb.add(InlineKeyboardButton(_t(chat_id, "cal_btn_edit_dt"), callback_data="cal_confirm_edit_dt"))
+    kb.add(InlineKeyboardButton(_t(chat_id, "cal_btn_edit_remind"), callback_data="cal_confirm_edit_remind"))
     return kb
 
 
 def _cal_event_keyboard(chat_id: int, ev_id: str) -> InlineKeyboardMarkup:
     """Event detail keyboard: edit, reschedule, delete + back."""
-    lang = _st._user_lang.get(chat_id, "ru")
     kb = InlineKeyboardMarkup(row_width=2)
     kb.add(
-        InlineKeyboardButton(
-            "✏️  " + ("Изменить" if lang == "ru" else "Edit"),
-            callback_data=f"cal_edit_title:{ev_id}",
-        ),
-        InlineKeyboardButton(
-            "📅  " + ("Перенести" if lang == "ru" else "Reschedule"),
-            callback_data=f"cal_edit_dt:{ev_id}",
-        ),
+        InlineKeyboardButton(_t(chat_id, "cal_btn_edit"), callback_data=f"cal_edit_title:{ev_id}"),
+        InlineKeyboardButton(_t(chat_id, "cal_btn_reschedule"), callback_data=f"cal_edit_dt:{ev_id}"),
     )
-    kb.add(InlineKeyboardButton(
-        "⏰  " + ("Изм. напоминание" if lang == "ru" else "Edit reminder"),
-        callback_data=f"cal_edit_remind:{ev_id}",
-    ))
-    kb.add(InlineKeyboardButton(
-        "�  " + ("Прочитать вслух" if lang == "ru" else "Read aloud"),
-        callback_data=f"cal_tts:{ev_id}",
-    ))
-    kb.add(InlineKeyboardButton(
-        "�🗑  " + ("Удалить" if lang == "ru" else "Delete"),
-        callback_data=f"cal_del:{ev_id}",
-    ))
-    kb.add(InlineKeyboardButton(
-        "�  " + ("Отправить по e-mail" if lang == "ru" else "Send as email"),
-        callback_data=f"cal_email:{ev_id}",
-    ))
-    kb.add(InlineKeyboardButton(
-        "�🔙  " + ("Назад" if lang == "ru" else "Back"),
-        callback_data="menu_calendar",
-    ))
+    kb.add(InlineKeyboardButton(_t(chat_id, "cal_btn_edit_remind_short"), callback_data=f"cal_edit_remind:{ev_id}"))
+    kb.add(InlineKeyboardButton(_t(chat_id, "cal_btn_read_aloud"), callback_data=f"cal_tts:{ev_id}"))
+    kb.add(InlineKeyboardButton(_t(chat_id, "cal_btn_delete"), callback_data=f"cal_del:{ev_id}"))
+    kb.add(InlineKeyboardButton(_t(chat_id, "cal_btn_send_email"), callback_data=f"cal_email:{ev_id}"))
+    kb.add(InlineKeyboardButton(_t(chat_id, "cal_btn_back"), callback_data="menu_calendar"))
     return kb
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Calendar menu handler
-# ─────────────────────────────────────────────────────────────────────────────
-
 def _handle_calendar_menu(chat_id: int) -> None:
     """Show the calendar: summary of upcoming events + action buttons."""
     lang = _st._user_lang.get(chat_id, "ru")
@@ -248,11 +196,9 @@ def _handle_calendar_menu(chat_id: int) -> None:
         key=lambda e: e["dt_iso"],
     )
     if not future:
-        header = ("🗓 *Календарь*\n\n_Событий пока нет. Добавьте первое!_"
-                  if lang == "ru" else
-                  "🗓 *Calendar*\n\n_No events yet. Add your first!_")
+        header = _t(chat_id, "cal_empty")
     else:
-        lines = ["🗓 *" + ("Календарь" if lang == "ru" else "Calendar") + "*\n"]
+        lines = ["🗓 *" + _t(chat_id, "cal_header") + "*\n"]
         for ev in future[:5]:
             dt = datetime.fromisoformat(ev["dt_iso"])
             cdown = _fmt_countdown(dt, lang)
@@ -285,31 +231,12 @@ def _handle_cal_event_detail(chat_id: int, ev_id: str) -> None:
 
 def _start_cal_add(chat_id: int) -> None:
     """Enter calendar-add mode: prompt user for free-form event description."""
-    lang = _st._user_lang.get(chat_id, "ru")
     _pending_cal[chat_id] = {"step": "input"}
     _st._user_mode[chat_id] = "calendar"
 
-    if lang == "ru":
-        prompt = (
-            "✏️ *Добавить событие*\n\n"
-            "Опишите в свободной форме, например:\n"
-            "_«завтра в 10 встреча с командой»_\n"
-            "_«напомни через час позвонить Ивану»_\n"
-            "_«13 апреля в 15:00 врач»_"
-        )
-    else:
-        prompt = (
-            "✏️ *Add event*\n\n"
-            "Describe freely, for example:\n"
-            "_«tomorrow at 10 team meeting»_\n"
-            "_«remind me in an hour to call Ivan»_\n"
-            "_«April 13 at 15:00 doctor»_"
-        )
+    prompt = _t(chat_id, "cal_add_prompt_ru")
     kb = InlineKeyboardMarkup()
-    kb.add(InlineKeyboardButton(
-        "❌  " + ("Отмена" if lang == "ru" else "Cancel"),
-        callback_data="cancel",
-    ))
+    kb.add(InlineKeyboardButton(_t(chat_id, "cal_btn_cancel"), callback_data="cancel"))
     bot.send_message(chat_id, prompt, parse_mode="Markdown", reply_markup=kb)
 
 
@@ -337,7 +264,7 @@ def _finish_cal_add(chat_id: int, text: str) -> None:
 
     thinking_msg = bot.send_message(
         chat_id,
-        "⏳ " + ("Разбираю событие(я)…" if lang == "ru" else "Parsing event(s)…"),
+        _t(chat_id, "cal_parsing"),
     )
     raw = _ask_picoclaw(prompt, timeout=30)
     try:
@@ -348,8 +275,7 @@ def _finish_cal_add(chat_id: int, text: str) -> None:
     if not raw:
         bot.send_message(
             chat_id,
-            "❌ " + ("Нет ответа от LLM. Попробуйте ещё раз." if lang == "ru"
-                     else "No LLM response. Please try again."),
+            _t(chat_id, "cal_no_llm"),
             reply_markup=_calendar_keyboard(chat_id, _cal_load(chat_id)),
         )
         return
@@ -381,16 +307,7 @@ def _finish_cal_add(chat_id: int, text: str) -> None:
 
     except Exception as e:
         log.warning(f"[Cal] LLM parse failed for chat {chat_id}: {e}  raw={raw[:200]!r}")
-        fail_msg = (
-            "❌ Не смог разобрать дату. Напишите иначе, например:\n"
-            "_«5 апреля в 14:00 встреча с врачом»_\n"
-            "_«завтра в 10 — команда, в 15 — врач»_"
-            if lang == "ru" else
-            "❌ Could not parse date. Try:\n"
-            "_«April 5 at 14:00 doctor appointment»_\n"
-            "_«tomorrow 10am team, 3pm doctor»_"
-        )
-        bot.send_message(chat_id, fail_msg, parse_mode="Markdown",
+        bot.send_message(chat_id, _t(chat_id, "cal_parse_fail"), parse_mode="Markdown",
                          reply_markup=_calendar_keyboard(chat_id, _cal_load(chat_id)))
         return
 
@@ -421,18 +338,11 @@ def _show_cal_confirm(chat_id: int) -> None:
     cdown = _fmt_countdown(dt, lang)
     dt_fmt = dt.strftime("%d.%m.%Y %H:%M")
 
-    if lang == "ru":
-        header  = "📋 *Проверьте событие перед сохранением:*"
-        t_label = "📌 Название"
-        d_label = "📅 Дата/время"
-        r_label = "⏰ Напоминание"
-        remind_str = f"за {remind_min} мин"
-    else:
-        header  = "📋 *Review event before saving:*"
-        t_label = "📌 Title"
-        d_label = "📅 Date/time"
-        r_label = "⏰ Reminder"
-        remind_str = f"{remind_min} min before"
+    header  = _t(chat_id, "cal_confirm_header")
+    t_label = _t(chat_id, "cal_confirm_label_title")
+    d_label = _t(chat_id, "cal_confirm_label_dt")
+    r_label = _t(chat_id, "cal_confirm_label_remind")
+    remind_str = _t(chat_id, "cal_confirm_remind_str", min=remind_min)
 
     text = (
         f"{header}\n\n"
@@ -446,26 +356,13 @@ def _show_cal_confirm(chat_id: int) -> None:
 
 def _cal_confirm_keyboard_multi(chat_id: int, idx: int, total: int) -> InlineKeyboardMarkup:
     """Keyboard for multi-event batch confirmation (N of M flow)."""
-    lang = _st._user_lang.get(chat_id, "ru")
     kb = InlineKeyboardMarkup(row_width=2)
     kb.add(
-        InlineKeyboardButton(
-            "✅  " + ("Сохранить" if lang == "ru" else "Save"),
-            callback_data="cal_multi_save_one",
-        ),
-        InlineKeyboardButton(
-            "⏭  " + ("Пропустить" if lang == "ru" else "Skip"),
-            callback_data="cal_multi_skip",
-        ),
+        InlineKeyboardButton(_t(chat_id, "cal_btn_save"), callback_data="cal_multi_save_one"),
+        InlineKeyboardButton(_t(chat_id, "cal_btn_skip"), callback_data="cal_multi_skip"),
     )
-    kb.add(InlineKeyboardButton(
-        "✅✅  " + ("Сохранить все" if lang == "ru" else "Save all"),
-        callback_data="cal_multi_save_all",
-    ))
-    kb.add(InlineKeyboardButton(
-        "❌  " + ("Отмена" if lang == "ru" else "Cancel"),
-        callback_data="cancel",
-    ))
+    kb.add(InlineKeyboardButton(_t(chat_id, "cal_btn_save_all"), callback_data="cal_multi_save_all"))
+    kb.add(InlineKeyboardButton(_t(chat_id, "cal_btn_cancel"), callback_data="cancel"))
     return kb
 
 
@@ -489,18 +386,11 @@ def _show_cal_confirm_multi(chat_id: int) -> None:
     cdown      = _fmt_countdown(dt, lang)
     dt_fmt     = dt.strftime("%d.%m.%Y %H:%M")
 
-    if lang == "ru":
-        header     = f"📋 *Событие {idx + 1} из {total} — проверьте перед сохранением:*"
-        t_label    = "📌 Название"
-        d_label    = "📅 Дата/время"
-        r_label    = "⏰ Напоминание"
-        remind_str = f"за {remind_min} мин"
-    else:
-        header     = f"📋 *Event {idx + 1} of {total} — review before saving:*"
-        t_label    = "📌 Title"
-        d_label    = "📅 Date/time"
-        r_label    = "⏰ Reminder"
-        remind_str = f"{remind_min} min before"
+    header     = _t(chat_id, "cal_multi_confirm_header", idx=idx + 1, total=total)
+    t_label    = _t(chat_id, "cal_confirm_label_title")
+    d_label    = _t(chat_id, "cal_confirm_label_dt")
+    r_label    = _t(chat_id, "cal_confirm_label_remind")
+    remind_str = _t(chat_id, "cal_confirm_remind_str", min=remind_min)
 
     text = (
         f"{header}\n\n"
@@ -527,7 +417,7 @@ def _cal_multi_save_one(chat_id: int) -> None:
         cdown = _fmt_countdown(dt, lang)
         bot.send_message(
             chat_id,
-            f"✅ *{'Записал' if lang == 'ru' else 'Saved'}:* {_escape_md(draft['title'])} — {dt.strftime('%d.%m %H:%M')} {cdown}",
+            f"✅ *{_t(chat_id, 'cal_saved_prefix')}:* {_escape_md(draft['title'])} — {dt.strftime('%d.%m %H:%M')} {cdown}",
             parse_mode="Markdown",
         )
 
@@ -549,7 +439,7 @@ def _cal_multi_skip(chat_id: int) -> None:
         skipped = events[idx].get("title", "")
         bot.send_message(
             chat_id,
-            f"⏭ *{'Пропущено' if lang == 'ru' else 'Skipped'}:* {_escape_md(skipped)}",
+            f"⏭ *{_t(chat_id, 'cal_skipped_prefix')}:* {_escape_md(skipped)}",
             parse_mode="Markdown",
         )
     state["idx"] = idx + 1
@@ -573,9 +463,7 @@ def _cal_multi_save_all(chat_id: int) -> None:
         _schedule_reminder(chat_id, ev)
         saved += 1
 
-    summary = (f"✅ *{'Сохранено событий' if lang == 'ru' else 'Saved'}: {saved}*"
-               if lang == "ru" else
-               f"✅ *Saved {saved} event(s)*")
+    summary = _t(chat_id, "cal_saved_count", n=saved)
     bot.send_message(chat_id, summary, parse_mode="Markdown")
     _handle_calendar_menu(chat_id)
 
@@ -1001,13 +889,13 @@ def _cal_handle_edit_input(chat_id: int, text: str, field: str) -> None:
 # Read aloud (TTS) for events
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _cal_tts_text(title: str, dt_iso: str, lang: str) -> str:
+def _cal_tts_text(chat_id: int, ev: dict) -> str:
     """Build TTS string for an event."""
-    dt = datetime.fromisoformat(dt_iso)
-    dt_fmt = dt.strftime("%d %B %H:%M") if lang == "ru" else dt.strftime("%B %d at %H:%M")
-    if lang == "ru":
-        return f"Событие: {title}. Дата: {dt_fmt}."
-    return f"Event: {title}. Date: {dt_fmt}."
+    lang = _st._user_lang.get(chat_id, "ru")
+    from bot_access import _STRINGS
+    tmpl = _STRINGS.get(lang, _STRINGS.get("en", {})).get("cal_tts_event_text", "Event: {title}. Date: {dt_fmt}.")
+    dt_fmt = ev["dt"].strftime("%d %B %Y %H:%M")
+    return tmpl.format(title=ev["title"], dt_fmt=dt_fmt)
 
 
 def _handle_cal_event_tts(chat_id: int, ev_id: str) -> None:
@@ -1021,7 +909,7 @@ def _handle_cal_event_tts(chat_id: int, ev_id: str) -> None:
     tts_text = _cal_tts_text(ev["title"], ev["dt_iso"], lang)
     placeholder = bot.send_message(
         chat_id,
-        "🔊 " + ("Генерирую аудио…" if lang == "ru" else "Generating audio…"),
+        _t(chat_id, "cal_tts_generating"),
     )
     try:
         from bot_voice import _tts_to_ogg  # noqa: PLC0415
@@ -1033,13 +921,13 @@ def _handle_cal_event_tts(chat_id: int, ev_id: str) -> None:
             bot.send_voice(chat_id, ogg, caption=caption, parse_mode="Markdown")
         else:
             bot.edit_message_text(
-                "❌ " + ("Ошибка синтеза речи." if lang == "ru" else "TTS error."),
+                _t(chat_id, "cal_tts_error"),
                 chat_id, placeholder.message_id,
             )
     except Exception as e:
         log.warning(f"[Cal] TTS event failed: {e}")
         bot.edit_message_text(
-            "❌ " + ("Ошибка синтеза речи." if lang == "ru" else "TTS error."),
+            _t(chat_id, "cal_tts_error"),
             chat_id, placeholder.message_id,
         )
 
@@ -1052,10 +940,10 @@ def _handle_cal_confirm_tts(chat_id: int) -> None:
     dt_iso = draft.get("dt_iso")
     if not title or not dt_iso:
         return
-    tts_text = _cal_tts_text(title, dt_iso, lang)
+    tts_text = _cal_tts_text(chat_id, {"title": title, "dt": datetime.fromisoformat(dt_iso), "dt_iso": dt_iso})
     placeholder = bot.send_message(
         chat_id,
-        "🔊 " + ("Генерирую аудио…" if lang == "ru" else "Generating audio…"),
+        _t(chat_id, "cal_tts_generating"),
     )
     try:
         from bot_voice import _tts_to_ogg  # noqa: PLC0415
@@ -1064,17 +952,17 @@ def _handle_cal_confirm_tts(chat_id: int) -> None:
             bot.delete_message(chat_id, placeholder.message_id)
             dt = datetime.fromisoformat(dt_iso)
             caption = (f"🗓 *{_escape_md(title)}* — {dt.strftime('%d.%m.%Y %H:%M')}"
-                       + "\n" + ("_(не сохранено)_" if lang == "ru" else "_(not saved yet)_"))
+                       + "\n" + _t(chat_id, "cal_not_saved"))
             bot.send_voice(chat_id, ogg, caption=caption, parse_mode="Markdown")
         else:
             bot.edit_message_text(
-                "❌ " + ("Ошибка синтеза речи." if lang == "ru" else "TTS error."),
+                _t(chat_id, "cal_tts_error"),
                 chat_id, placeholder.message_id,
             )
     except Exception as e:
         log.warning(f"[Cal] TTS confirm failed: {e}")
         bot.edit_message_text(
-            "❌ " + ("Ошибка синтеза речи." if lang == "ru" else "TTS error."),
+            _t(chat_id, "cal_tts_error"),
             chat_id, placeholder.message_id,
         )
 
@@ -1099,7 +987,7 @@ def _handle_cal_delete_confirmed(chat_id: int, ev_id: str) -> None:
         if old_timer:
             old_timer.cancel()
         title = ev.get("title", ev_id) if ev else ev_id
-        msg = f"🗑 {'Удалено' if lang == 'ru' else 'Deleted'}: *{_escape_md(title)}*"
+        msg = f"🗑 {_t(chat_id, 'cal_deleted')}: *{_escape_md(title)}*"
         bot.send_message(chat_id, msg, parse_mode="Markdown",
                          reply_markup=_calendar_keyboard(chat_id, _cal_load(chat_id)))
     else:
@@ -1115,9 +1003,7 @@ def _send_reminder(chat_id: int, ev_id: str, title: str, dt_iso: str) -> None:
     try:
         lang = _st._user_lang.get(chat_id, "ru")
         dt_fmt = datetime.fromisoformat(dt_iso).strftime("%H:%M")
-        tts_text = (f"Напоминаю: {title} в {dt_fmt}"
-                    if lang == "ru" else
-                    f"Reminder: {title} at {dt_fmt}")
+        tts_text = _t(chat_id, "cal_reminder_text_ru").format(title=title, dt_fmt=dt_fmt)
         msg_text = f"🔔 *{_escape_md(tts_text)}*"
         bot.send_message(chat_id, msg_text, parse_mode="Markdown")
         _cal_mark_reminded(chat_id, ev_id)
@@ -1226,9 +1112,8 @@ def _cal_morning_briefing_loop() -> None:
                     continue
 
                 lang = _st._user_lang.get(chat_id, "ru")
-                greeting = ("☀️ *Доброе утро! Сегодня:*\n\n"
-                            if lang == "ru" else
-                            "☀️ *Good morning! Today:*\n\n")
+                from bot_access import _STRINGS
+                greeting = _STRINGS.get(lang, _STRINGS.get("en", {})).get("cal_morning_greeting", "☀️ *Good morning! Today:*\n\n")
                 lines = []
                 for ev in today_evs:
                     dt = datetime.fromisoformat(ev["dt_iso"])
@@ -1242,7 +1127,7 @@ def _cal_morning_briefing_loop() -> None:
                 # Optional TTS voice briefing
                 try:
                     from bot_voice import _tts_to_ogg  # noqa: PLC0415  deferred
-                    tts_text = ("Доброе утро. " if lang == "ru" else "Good morning. ")
+                    tts_text = _STRINGS.get(lang, _STRINGS.get("en", {})).get("cal_morning_tts_prefix", "Good morning. ")
                     for ev in today_evs:
                         dt = datetime.fromisoformat(ev["dt_iso"])
                         tts_text += f"{ev['title']} в {dt.strftime('%H:%M')}. "

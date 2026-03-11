@@ -49,7 +49,7 @@ def _is_guest(chat_id: int) -> bool:
 
 
 def _deny(chat_id: int) -> None:
-    bot.send_message(chat_id, "⛔ Access denied.")
+    bot.send_message(chat_id, _t(chat_id, "access_denied"))
     log.warning(f"[Access] denied chat_id={chat_id}")
 
 
@@ -354,9 +354,9 @@ def _menu_keyboard(chat_id: int = 0) -> InlineKeyboardMarkup:
     return kb
 
 
-def _back_keyboard() -> InlineKeyboardMarkup:
+def _back_keyboard(chat_id: int = 0) -> InlineKeyboardMarkup:
     kb = InlineKeyboardMarkup()
-    kb.add(InlineKeyboardButton("🔙  Menu", callback_data="menu"))
+    kb.add(InlineKeyboardButton(_t(chat_id, "btn_back"), callback_data="menu"))
     return kb
 
 
@@ -365,9 +365,9 @@ def _voice_back_keyboard(chat_id: int) -> InlineKeyboardMarkup:
     kb = InlineKeyboardMarkup()
     if _voice_opts.get("user_audio_toggle"):
         audio_on = _user_audio.get(chat_id, True)
-        lbl = "🔇  Mute audio" if audio_on else "🔊  Unmute audio"
+        lbl = _t(chat_id, "btn_mute_audio") if audio_on else _t(chat_id, "btn_unmute_audio")
         kb.add(InlineKeyboardButton(lbl, callback_data="voice_audio_toggle"))
-    kb.add(InlineKeyboardButton("🔙  Menu", callback_data="menu"))
+    kb.add(InlineKeyboardButton(_t(chat_id, "btn_back"), callback_data="menu"))
     return kb
 
 

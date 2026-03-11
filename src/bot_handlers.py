@@ -44,7 +44,7 @@ def _notes_menu_keyboard(chat_id: int) -> InlineKeyboardMarkup:
     kb.add(
         InlineKeyboardButton(_t(chat_id, "note_btn_create"),  callback_data="note_create"),
         InlineKeyboardButton(_t(chat_id, "note_btn_list"),    callback_data="note_list"),
-        InlineKeyboardButton("🔙  Menu",                       callback_data="menu"),
+        InlineKeyboardButton(_t(chat_id, "btn_back"),           callback_data="menu"),
     )
     return kb
 
@@ -57,11 +57,11 @@ def _notes_list_keyboard(chat_id: int, notes: list[dict]) -> InlineKeyboardMarku
         title = note["title"][:30]
         kb.add(InlineKeyboardButton(f"📄 {title}", callback_data=f"note_open:{slug}"))
         kb.row(
-            InlineKeyboardButton("✏️ Edit",  callback_data=f"note_edit:{slug}"),
-            InlineKeyboardButton("🗑 Delete", callback_data=f"note_delete:{slug}"),
+            InlineKeyboardButton(_t(chat_id, "btn_edit"),   callback_data=f"note_edit:{slug}"),
+            InlineKeyboardButton(_t(chat_id, "btn_delete"), callback_data=f"note_delete:{slug}"),
         )
     kb.add(InlineKeyboardButton(_t(chat_id, "note_btn_create"), callback_data="note_create"))
-    kb.add(InlineKeyboardButton("🔙  Menu", callback_data="menu"))
+    kb.add(InlineKeyboardButton(_t(chat_id, "btn_back"), callback_data="menu"))
     return kb
 
 
@@ -106,19 +106,19 @@ def _handle_note_open(chat_id: int, slug: str) -> None:
         return
     kb = InlineKeyboardMarkup(row_width=2)
     kb.row(
-        InlineKeyboardButton("✏️ Edit",    callback_data=f"note_edit:{slug}"),
-        InlineKeyboardButton("🗑 Delete",  callback_data=f"note_delete:{slug}"),
+        InlineKeyboardButton(_t(chat_id, "btn_edit"),    callback_data=f"note_edit:{slug}"),
+        InlineKeyboardButton(_t(chat_id, "btn_delete"),  callback_data=f"note_delete:{slug}"),
     )
     kb.row(
-        InlineKeyboardButton("� Raw text",   callback_data=f"note_raw:{slug}"),
-        InlineKeyboardButton("🔊 Read aloud", callback_data=f"note_tts:{slug}"),
+        InlineKeyboardButton(_t(chat_id, "btn_raw_text"),   callback_data=f"note_raw:{slug}"),
+        InlineKeyboardButton(_t(chat_id, "btn_read_aloud"), callback_data=f"note_tts:{slug}"),
     )
     kb.row(
-        InlineKeyboardButton("� Send as email", callback_data=f"note_email:{slug}"),
+        InlineKeyboardButton(_t(chat_id, "btn_send_email"), callback_data=f"note_email:{slug}"),
     )
     kb.row(
-        InlineKeyboardButton("�📋 All Notes", callback_data="note_list"),
-        InlineKeyboardButton("🔙  Menu",      callback_data="menu"),
+        InlineKeyboardButton(_t(chat_id, "btn_all_notes"), callback_data="note_list"),
+        InlineKeyboardButton(_t(chat_id, "btn_back"),      callback_data="menu"),
     )
     bot.send_message(
         chat_id,
@@ -137,12 +137,12 @@ def _handle_note_raw(chat_id: int, slug: str) -> None:
         return
     kb = InlineKeyboardMarkup(row_width=2)
     kb.row(
-        InlineKeyboardButton("✏️ Edit",      callback_data=f"note_edit:{slug}"),
-        InlineKeyboardButton("🗑 Delete",    callback_data=f"note_delete:{slug}"),
+        InlineKeyboardButton(_t(chat_id, "btn_edit"),      callback_data=f"note_edit:{slug}"),
+        InlineKeyboardButton(_t(chat_id, "btn_delete"),    callback_data=f"note_delete:{slug}"),
     )
     kb.row(
-        InlineKeyboardButton("🔊 Read aloud", callback_data=f"note_tts:{slug}"),
-        InlineKeyboardButton("🔙  Back",       callback_data=f"note_open:{slug}"),
+        InlineKeyboardButton(_t(chat_id, "btn_read_aloud"), callback_data=f"note_tts:{slug}"),
+        InlineKeyboardButton(_t(chat_id, "btn_back_short"),    callback_data=f"note_open:{slug}"),
     )
     # Send without parse_mode — every character appears exactly as stored
     bot.send_message(chat_id, text, reply_markup=kb)

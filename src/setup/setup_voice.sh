@@ -129,6 +129,38 @@ fi
 # Update symlink so voice_assistant.py default path resolves correctly
 ln -sf "${PICOCLAW_DIR}/ru_RU-irina-medium.onnx" "${PICOCLAW_DIR}/ru_RU-ruslan-medium.onnx" 2>/dev/null || true
 
+# ── German voice models (optional — only if DE users present) ──
+echo ""
+echo "[4c/6] German voice models (optional)..."
+VOSK_DE_DIR="$HOME/.picoclaw/vosk-model-small-de"
+if [ ! -d "$VOSK_DE_DIR" ]; then
+    echo "⬇ Vosk German STT model (31 MB)..."
+    wget -q --show-progress \
+        "https://alphacephei.com/vosk/models/vosk-model-small-de-0.15.zip" \
+        -O /tmp/vosk-model-small-de.zip
+    unzip -q /tmp/vosk-model-small-de.zip -d "$HOME/.picoclaw/"
+    mv "$HOME/.picoclaw/vosk-model-small-de-0.15" "$VOSK_DE_DIR"
+    rm /tmp/vosk-model-small-de.zip
+    echo "✓ Vosk DE model installed."
+else
+    echo "✓ Vosk DE model already present."
+fi
+
+PIPER_DE="$HOME/.picoclaw/de_DE-thorsten-medium.onnx"
+PIPER_DE_JSON="$HOME/.picoclaw/de_DE-thorsten-medium.onnx.json"
+if [ ! -f "$PIPER_DE" ]; then
+    echo "⬇ Piper German TTS voice (Thorsten, medium, 66 MB)..."
+    wget -q --show-progress \
+        "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/de/de_DE/thorsten/medium/de_DE-thorsten-medium.onnx" \
+        -O "$PIPER_DE"
+    wget -q \
+        "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/de/de_DE/thorsten/medium/de_DE-thorsten-medium.onnx.json" \
+        -O "$PIPER_DE_JSON"
+    echo "✓ Piper DE voice installed."
+else
+    echo "✓ Piper DE voice already present."
+fi
+
 # ------------------------------------------------------------------------------
 # 5. RB-TalkingPI (Joy-IT) I2S audio driver setup
 #    The RB-TalkingPI uses I2S (Google AIY Voice HAT compatible)

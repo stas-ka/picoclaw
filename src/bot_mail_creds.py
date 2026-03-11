@@ -61,6 +61,10 @@ PROVIDERS: dict[str, dict] = {
             "Use a Google *App Password* — not your main account password.\n"
             "Google Settings → Security → App Passwords."
         ),
+        "hint_de": (
+            "Verwenden Sie ein Google *App-Passwort* — nicht Ihr Hauptkontokennwort.\n"
+            "Google-Einstellungen → Sicherheit → App-Passwörter."
+        ),
     },
     "yandex": {
         "label":       "Яндекс.Почта",
@@ -74,6 +78,10 @@ PROVIDERS: dict[str, dict] = {
         "hint_en": (
             "Enable IMAP in Yandex Mail settings.\n"
             "You can use an app password or your main password."
+        ),
+        "hint_de": (
+            "Aktivieren Sie IMAP in den Yandex Mail-Einstellungen.\n"
+            "Sie können ein App-Passwort oder Ihr Hauptpasswort verwenden."
         ),
     },
     "mailru": {
@@ -89,6 +97,10 @@ PROVIDERS: dict[str, dict] = {
             "Enable IMAP in Mail.ru settings.\n"
             "Use an app password (recommended)."
         ),
+        "hint_de": (
+            "Aktivieren Sie IMAP in den Mail.ru-Einstellungen.\n"
+            "Verwenden Sie ein App-Passwort (empfohlen)."
+        ),
     },
     "custom": {
         "label":       "Custom IMAP",
@@ -97,6 +109,7 @@ PROVIDERS: dict[str, dict] = {
         "spam_folder": None,
         "hint_ru": "Адрес IMAP-сервера будет запрошен на следующем шаге.",
         "hint_en": "You will enter the IMAP server address in the next step.",
+        "hint_de": "Die IMAP-Serveradresse wird im nächsten Schritt abgefragt.",
     },
 }
 
@@ -327,21 +340,14 @@ def _run_refresh_thread(chat_id: int, msg_id: int) -> None:
 
 def _mail_main_keyboard(chat_id: int) -> InlineKeyboardMarkup:
     """Keyboard shown alongside a digest — Refresh + Read aloud + Settings + Menu."""
-    lang = _st._user_lang.get(chat_id, "ru")
     kb = InlineKeyboardMarkup(row_width=2)
     kb.add(
         InlineKeyboardButton(_t(chat_id, "btn_refresh_now"),   callback_data="digest_refresh"),
         InlineKeyboardButton(_t(chat_id, "mail_btn_settings"), callback_data="mail_settings"),
     )
-    kb.add(InlineKeyboardButton(
-        "🔊  " + ("Прочитать вслух" if lang == "ru" else "Read aloud"),
-        callback_data="digest_tts",
-    ))
-    kb.add(InlineKeyboardButton(
-        "📧  " + ("Отправить по e-mail" if lang == "ru" else "Send as email"),
-        callback_data="digest_email",
-    ))
-    kb.add(InlineKeyboardButton("🔙  Menu", callback_data="menu"))
+    kb.add(InlineKeyboardButton(_t(chat_id, "btn_read_aloud"), callback_data="digest_tts"))
+    kb.add(InlineKeyboardButton(_t(chat_id, "btn_send_email"), callback_data="digest_email"))
+    kb.add(InlineKeyboardButton(_t(chat_id, "btn_back"), callback_data="menu"))
     return kb
 
 
@@ -350,7 +356,7 @@ def _mail_nocreds_keyboard(chat_id: int) -> InlineKeyboardMarkup:
     kb = InlineKeyboardMarkup(row_width=1)
     kb.add(
         InlineKeyboardButton(_t(chat_id, "mail_btn_setup"), callback_data="mail_consent"),
-        InlineKeyboardButton("🔙  Menu",                     callback_data="menu"),
+        InlineKeyboardButton(_t(chat_id, "btn_back"),        callback_data="menu"),
     )
     return kb
 
@@ -368,7 +374,7 @@ def _mail_provider_keyboard(chat_id: int) -> InlineKeyboardMarkup:
     kb = InlineKeyboardMarkup(row_width=1)
     for key, p in PROVIDERS.items():
         kb.add(InlineKeyboardButton(p["label"], callback_data=f"mail_provider:{key}"))
-    kb.add(InlineKeyboardButton("🔙  " + _t(chat_id, "cancelled"), callback_data="menu"))
+    kb.add(InlineKeyboardButton(_t(chat_id, "btn_back"), callback_data="menu"))
     return kb
 
 
@@ -377,7 +383,7 @@ def _mail_settings_keyboard(chat_id: int) -> InlineKeyboardMarkup:
     kb = InlineKeyboardMarkup(row_width=1)
     kb.add(
         InlineKeyboardButton(_t(chat_id, "mail_btn_delete"), callback_data="mail_del_creds"),
-        InlineKeyboardButton("🔙  Menu",                     callback_data="menu"),
+        InlineKeyboardButton(_t(chat_id, "btn_back"),        callback_data="menu"),
     )
     return kb
 
@@ -463,7 +469,7 @@ def handle_mail_consent_agree(chat_id: int) -> None:
 def handle_mail_provider(chat_id: int, provider_key: str) -> None:
     """User picked a provider — start the setup wizard."""
     if provider_key not in PROVIDERS:
-        bot.send_message(chat_id, "❌ Unknown provider.", reply_markup=_back_keyboard())
+        bot.send_message(chat_id, _t(chat_id, "unknown_provider"), reply_markup=_back_keyboard(chat_id))
         return
 
     prov = PROVIDERS[provider_key]
@@ -481,7 +487,7 @@ def handle_mail_provider(chat_id: int, provider_key: str) -> None:
         )
     else:
         lang = _st._user_lang.get(chat_id, "ru")
-        hint = prov["hint_ru"] if lang == "ru" else prov["hint_en"]
+        hint = prov.get("hint_de", prov["hint_en"]) if lang == "de" else (prov["hint_ru"] if lang == "ru" else prov["hint_en"])
         bot.send_message(
             chat_id,
             f"{hint}\n\n" + _t(chat_id, "mail_enter_email"),
