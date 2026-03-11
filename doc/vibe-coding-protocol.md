@@ -116,11 +116,13 @@ Each session block contains a table with one row per completed request:
 | 07:06 | Check stored checkpoint | 1 | 2 | claude-sonnet-4.6 | — | done |
 | 07:06 | Create vibe coding protocol file | 2 | 1 | claude-sonnet-4.6 | doc/vibe-coding-protocol.md | done |
 | 07:12 | Audit German language completeness across all files | 2 | 2 | claude-sonnet-4.6 | — | done |
-| 07:18 | Complete German language implementation (Phase 2) | 5 | wip | claude-sonnet-4.6 | bot_calendar.py, bot_handlers.py, bot_mail_creds.py, telegram_menu_bot.py, bot_access.py, strings.json, setup_voice.sh | wip |
+| 07:18 | Complete German language implementation (Phase 2) | 5 | wip+cont | claude-sonnet-4.6 | bot_calendar.py, bot_handlers.py, bot_mail_creds.py, bot_access.py, strings.json | done |
+| 09:38 | Resume from hung CLI — complete Phase 2 bot_calendar.py migration | 3 | 3 | claude-sonnet-4.6 | bot_calendar.py | done |
 | 07:22 | Add vibe coding protocol rule to AGENTS.md + reformat protocol | 2 | 2 | claude-sonnet-4.6 | AGENTS.md, doc/vibe-coding-protocol.md | done |
 | 07:35 | Add §14 Multilanguage Support to architecture.md; deploy/test status check | 2 | 4 | claude-sonnet-4.6 | doc/architecture.md | done |
+| 09:47 | Deploy Phase 2 to Pi, update architecture.md §14 to complete, git push | 2 | 3 | claude-sonnet-4.6 | doc/architecture.md, doc/vibe-coding-protocol.md | done |
 
-**Session 5 total (so far): 9 items, ~22 requests**
+**Session 5 total: 11 items, ~25 requests**
 
 ---
 
