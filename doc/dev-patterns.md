@@ -346,3 +346,114 @@ in `_piper_model_path()` (line 1726).
 - Complete: collapse all `[x]` bullets into `✅ Implemented (vX.Y.Z)` — one line only
 - Update TODO.md **in the same session** as implementing the feature
 - Check TODO.md at session start to understand current state
+
+---
+
+## 14. Adding a Calendar Feature
+
+All new calendar operations follow this pattern: **prompt → LLM parse → confirmation card → execute**.
+
+### Add a new calendar action (e.g. "duplicate event")
+
+**Step 1 — Handler function in `bot_calendar.py`**
+
+```python
+def _handle_cal_my_action(chat_id: int, ev_id: str) -> None:
+    lang   = _st._user_lang.get(chat_id, "ru")
+    events = _cal_load(chat_id)
+    ev     = next((e for e in events if e.get("id") == ev_id), None)
+    if not ev:
+        _handle_calendar_menu(chat_id)
+        return
+    # ... build confirmation card ...
+    kb = InlineKeyboardMarkup(row_width=2)
+    kb.add(
+        InlineKeyboardButton("✅ Confirm" if lang == "en" else "✅ Подтвердить",
+                             callback_data=f"cal_my_action_confirm:{ev_id}"),
+        InlineKeyboardButton("❌ Cancel"  if lang == "en" else "❌ Отмена",
+                             callback_data="menu_calendar"),
+    )
+    bot.send_message(chat_id, "...", reply_markup=kb)
+
+def _handle_cal_my_action_confirmed(chat_id: int, ev_id: str) -> None:
+    # ... actual mutation ...
+    _handle_calendar_menu(chat_id)
+```
+
+**Step 2 — Button in `_cal_event_keyboard()`**
+
+```python
+kb.add(InlineKeyboardButton(
+    "⬛  " + ("Моя функция" if lang == "ru" else "My action"),
+    callback_data=f"cal_my_action:{ev_id}",
+))
+```
+
+**Step 3 — Callbacks in `telegram_menu_bot.py`**
+
+```python
+elif data.startswith("cal_my_action:"):
+    if not _is_guest(cid):
+        _handle_cal_my_action(cid, data[len("cal_my_action:"):])
+
+elif data.startswith("cal_my_action_confirm:"):
+    if not _is_guest(cid):
+        _handle_cal_my_action_confirmed(cid, data[len("cal_my_action_confirm:"):])
+```
+
+**Step 4 — Update imports in `telegram_menu_bot.py`**
+
+```python
+from bot_calendar import (
+    ...,
+    _handle_cal_my_action, _handle_cal_my_action_confirmed,
+)
+```
+
+**Step 5 — Update `doc/bot-code-map.md` callback key table**
+
+```markdown
+| `cal_my_action:<id>`         | `_handle_cal_my_action`           |
+| `cal_my_action_confirm:<id>` | `_handle_cal_my_action_confirmed` |
+```
+
+### Multi-event batch state shape (`_pending_cal`)
+
+```python
+# Single confirm (step "confirm")
+_pending_cal[chat_id] = {
+    "step":              "confirm",
+    "title":             "Meeting",
+    "dt_iso":            "2026-04-01T10:00",
+    "remind_before_min": 15,
+}
+
+# Multi-event confirm (step "multi_confirm")
+_pending_cal[chat_id] = {
+    "step":   "multi_confirm",
+    "events": [
+        {"title": "Meeting", "dt_iso": "2026-04-01T10:00", "remind_before_min": 15},
+        {"title": "Doctor",  "dt_iso": "2026-04-01T15:00", "remind_before_min": 15},
+    ],
+    "idx": 0,   # index of event currently being confirmed
+}
+```
+
+### NL date range query pattern
+
+```python
+_handle_calendar_query(chat_id, user_text)
+# LLM returns {"from": "YYYY-MM-DD", "to": "YYYY-MM-DD", "label": "..."}
+# Falls back to: from=today, to=today+7, label="next 7 days"
+```
+
+### Console intent classification pattern
+
+```python
+# LLM prompt returns one of:
+{"intent": "add"}
+{"intent": "query"}
+{"intent": "delete", "ev_id": "<id or empty>"}
+{"intent": "edit",   "ev_id": "<id or empty>"}
+# Unknown ev_id → _cal_find_by_text(chat_id, user_text) for fuzzy title match
+```

@@ -4,6 +4,52 @@
 - Keep persistent operational knowledge in this file so future sessions can continue quickly.
 - Use this file as the first reference for recurring document/accounting tasks.
 
+## Remote Host Access
+
+| Key | Value |
+|---|---|
+| `TARGETHOST` | `OpenClawPI` |
+| `HOSTUSER` | `stas` |
+| `HOSTPWD` | *(see `.env`)* |
+| `TAILSCALE_IP` | `100.81.143.126` |
+| `TAILSCALE_HOST` | `openclawpi` |
+
+- **LAN only:** `ssh stas@OpenClawPI` (works only on home network)
+- **Remote (anywhere):** `plink -pw "%HOSTPWD%" -batch stas@100.81.143.126 "<cmd>"`
+- Tailscale account: `stas.ulmer@` — Tailscale must be running on both devices
+- Tailscale installed on Pi: v1.94.2 (installed 2026-03-10, service `tailscaled` auto-starts)
+
+## Current Bot Version
+
+`BOT_VERSION = "2026.3.25"` — deployed 2026-03-10
+
+## Calendar Features (v2026.3.25)
+
+### New: Multi-Event Add
+- LLM prompt returns `{"events": [{title, dt}, ...]}` (always an array)
+- 1 event → normal single confirm flow
+- N events → sequential "1 of N" confirmation with **Save / Skip / Save All**
+- `_pending_cal[chat_id]` step `"multi_confirm"` holds `{events: list, idx: int}`
+
+### New: NL Query
+- `_handle_calendar_query(chat_id, text)` — LLM extracts `{from, to, label}` date range
+- Activated from console mode or callable directly
+- Filters `_cal_load()` and displays countdown list
+
+### New: Delete Confirmation
+- `cal_del:<id>` → `_handle_cal_delete_request()` — shows confirmation card
+- `cal_del_confirm:<id>` → `_handle_cal_delete_confirmed()` — actual deletion
+- All calendar deletes require explicit confirmation
+
+### New: Calendar Console Mode
+- Button **💬 Консоль** in calendar menu → `_start_cal_console()`
+- `_user_mode = "cal_console"` — free-form text processed by `_handle_cal_console()`
+- LLM classifies intent: `add | query | delete | edit`
+- All mutations still go through confirmation step
+
+### Rule: All Calendar Mutations Need Confirmation
+Apply this rule when adding new calendar features: add → confirm card → save; delete → confirm card → delete; edit → show updated card → confirm.
+
 ## Recurring Accounting Task (Slovenia, Sintaris d.o.o.)
 - Source directory to review: `G:\My Drive\Stas\SI\`
 - Main source subfolders previously observed:
@@ -30,7 +76,7 @@
 - Credentials must be kept in `.env` only (already git-ignored).
 - Never store secrets/passwords in this file.
 - `.env` contains placeholders/fields for:
-  - Host access credentials
+  - Host access credentials (LAN + Tailscale)
   - `cloud.dev2null.de` deployment credentials
   - Google account mail credentials (IMAP/SMTP + app passwords)
   - Optional Google OAuth credentials
