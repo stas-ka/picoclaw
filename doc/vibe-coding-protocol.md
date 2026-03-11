@@ -126,6 +126,17 @@ Each session block contains a table with one row per completed request:
 
 ---
 
+### Session 6 — 2026-03-11 (UTC+1, continued)
+
+| Time (UTC) | Request | Complexity | Requests | Model | Files changed | Status |
+|---|---|---|---|---|---|---|
+| 09:56 | Test on target — run regression suite T01–T12, verify Phase 2 deploy | 1 | 2 | claude-sonnet-4.6 | — | done |
+| 10:01 | Implement T13–T16 multilingual regression tests (i18n GUI, lang routing, DE TTS, DE Vosk) | 3 | 4 | claude-sonnet-4.6 | src/tests/test_voice_regression.py, src/tests/voice/ground_truth.json, .github/copilot-instructions.md | done |
+
+**Session 6 total: 2 items, ~6 requests**
+
+---
+
 ## Summary Table (all sessions)
 
 | Session | Date | Items | Requests | Avg complexity | Model |
@@ -135,7 +146,8 @@ Each session block contains a table with one row per completed request:
 | 3 | 2026-03-09 | 2 | ~5 | 3.0 | unknown (pre-protocol) |
 | 4 | 2026-03-11 AM | 5 | ~16 | 3.8 | unknown (pre-protocol) |
 | 5 | 2026-03-11 | 9 | ~22 | 2.4 | claude-sonnet-4.6 |
-| **Total** | | **39** | **~80** | | |
+| 6 | 2026-03-11 | 2 | ~6 | 2.0 | claude-sonnet-4.6 |
+| **Total** | | **41** | **~86** | | |
 
 ---
 
