@@ -41,6 +41,32 @@
 - [ ] Option C: support a simple diff syntax — lines starting with `+` are appended, other lines replace (power-user only)
 - [ ] Recommended: implement Option B (Append / Replace) as it covers the most common cases with no learning curve
 
+### 0.4 🔴 Calendar: voice reply deleted before user can hear it 🔲
+
+**Observed (2026-03-12):** After the bot sends an audio voice message in the calendar context (e.g. reading back an event or TTS confirmation), the message is automatically deleted before the user has a chance to listen to it.
+
+**Likely cause:** `_save_pending_tts()` / orphan-cleanup logic in `bot_voice.py` (`_cleanup_orphaned_tts()`) is erroneously marking the calendar TTS message as an orphan and deleting it on the next bot restart or cleanup pass. Alternatively, the calendar handler deletes the "Generating audio…" placeholder but also inadvertently removes the final voice message.
+
+- [ ] Reproduce: add a calendar event via voice → note the message ID of the sent voice note → check if it is deleted
+- [ ] Check `_cleanup_orphaned_tts()` — ensure it only deletes "Generating audio…" spinner messages, not completed voice notes
+- [ ] Check `_clear_pending_tts()` call sites in `bot_calendar.py` — confirm it is called **after** `bot.send_voice()` returns, not before
+- [ ] Add a guard: only delete the pending TTS record after the voice message is confirmed sent (non-None file_id)
+
+### 0.5 🔴 Calendar console ignores "add event" requests — LLM refuses with policy message 🔲
+
+**Observed (2026-03-12):** Sending a multi-event natural language request via the calendar console:
+
+> "добавь сегодня обед в двенадцать тридцать обед заканчивается в тринадцать тридцать и завтра я начинаю работать в восемь часов утра"
+
+The assistant responds with a refusal ("Я не могу добавлять события или управлять расписанием…") instead of extracting and adding the events.
+
+**Root cause:** `_handle_cal_console()` → `_ask_picoclaw()` calls the LLM without any system prompt override.  The **security preamble** (`SECURITY_PREAMBLE`) instructs the model not to perform actions — so the model correctly refuses when the calendar intent is sent as a plain user message. The calendar console must call `_finish_cal_add()` **directly** (local Python logic) rather than asking the LLM to "add the event" in free-form chat mode.
+
+- [ ] In `_handle_cal_console()` (`bot_calendar.py`): after LLM classifies intent as `"add"`, call `_finish_cal_add(chat_id, text)` immediately — do **not** re-route through `_ask_picoclaw()` for the add step
+- [ ] Verify the intent-classification prompt returns a clean `{"intent": "add"}` without also asking the LLM to perform the action
+- [ ] Test with the exact Russian phrase above — should produce a multi-event confirmation card, not a refusal
+- [ ] Also test `"query"` and `"delete"` intents to ensure they are similarly safe from the security preamble block
+
 ---
 
 ## 1. Access & Security
