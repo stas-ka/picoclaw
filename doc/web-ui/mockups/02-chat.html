@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pico Bot — Free Chat</title>
+<link rel="stylesheet" href="shared.css">
+</head>
+<body>
+<div class="app-shell">
+
+  <!-- ── Sidebar ── -->
+  <aside class="sidebar">
+    <div class="sidebar-header">
+      <div class="sidebar-logo">🤖</div>
+      <div>
+        <div class="sidebar-title">Pico Bot</div>
+        <div class="sidebar-subtitle">v2026.3.26</div>
+      </div>
+    </div>
+    <nav class="sidebar-nav">
+      <div class="nav-section">
+        <div class="nav-section-label">Main</div>
+        <a class="nav-item" href="01-main-menu.html">
+          <span class="icon">🏠</span> Dashboard
+        </a>
+        <a class="nav-item active" href="02-chat.html">
+          <span class="icon">💬</span> Free Chat
+        </a>
+        <a class="nav-item" href="03-notes.html">
+          <span class="icon">📝</span> Notes
+          <span class="badge">3</span>
+        </a>
+        <a class="nav-item" href="04-calendar.html">
+          <span class="icon">🗓</span> Calendar
+        </a>
+        <a class="nav-item" href="06-mail-digest.html">
+          <span class="icon">📧</span> Mail Digest
+        </a>
+        <a class="nav-item" href="07-voice.html">
+          <span class="icon">🎤</span> Voice
+        </a>
+      </div>
+      <div class="nav-section">
+        <div class="nav-section-label">Account</div>
+        <a class="nav-item" href="#">
+          <span class="icon">👤</span> Profile
+        </a>
+        <a class="nav-item" href="#">
+          <span class="icon">❓</span> Help
+        </a>
+      </div>
+      <div class="nav-section">
+        <div class="nav-section-label">Admin</div>
+        <a class="nav-item" href="05-admin.html">
+          <span class="icon">🔐</span> Admin Panel
+        </a>
+      </div>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="avatar">SU</div>
+      <div>
+        <div style="font-weight: 500;">Stas Ulmer</div>
+        <div class="text-xs text-dim">Admin</div>
+      </div>
+      <span class="status-dot online" style="margin-left: auto"></span>
+    </div>
+  </aside>
+
+  <!-- ── Main Content ── -->
+  <main class="main-content">
+    <div class="topbar">
+      <span class="topbar-title">💬 Free Chat</span>
+      <div class="topbar-actions">
+        <select style="background: var(--bg-input); color: var(--text-primary); border: 1px solid var(--border); 
+          border-radius: var(--radius); padding: 4px 8px; font-size: 13px; cursor: pointer;">
+          <option>GPT-4o-mini</option>
+          <option>GPT-4o</option>
+          <option>Claude 3.5 Sonnet</option>
+        </select>
+        <button class="btn-icon" title="Clear chat">🗑</button>
+      </div>
+    </div>
+
+    <div class="content-area" style="display: flex; flex-direction: column; padding: 0; overflow: hidden;">
+      <!-- Chat messages area -->
+      <div class="chat-messages" style="flex: 1; overflow-y: auto; padding: 16px;">
+
+        <!-- Bot welcome -->
+        <div class="msg-bot">
+          <div class="msg-avatar">🤖</div>
+          <div class="msg-content">
+            <div class="msg-bubble">
+              Hello, Stas! I'm your personal AI assistant. How can I help you today?
+            </div>
+            <div class="msg-time">08:00</div>
+          </div>
+        </div>
+
+        <!-- User message -->
+        <div class="msg-user">
+          <div class="msg-content">
+            <div class="msg-bubble">
+              What is the weather forecast for Berlin tomorrow?
+            </div>
+            <div class="msg-time">08:12</div>
+          </div>
+        </div>
+
+        <!-- Bot response with markdown -->
+        <div class="msg-bot">
+          <div class="msg-avatar">🤖</div>
+          <div class="msg-content">
+            <div class="msg-bubble">
+              <div class="md-content">
+                <p>Here's the weather forecast for <strong>Berlin</strong> tomorrow:</p>
+                <ul>
+                  <li>🌡 Temperature: <strong>12°C – 18°C</strong></li>
+                  <li>🌤 Conditions: Partly cloudy, clearing in the afternoon</li>
+                  <li>💨 Wind: 15 km/h from the West</li>
+                  <li>💧 Precipitation: 10% chance of light rain in the morning</li>
+                </ul>
+                <p>Overall a pleasant spring day — a light jacket should be enough!</p>
+              </div>
+            </div>
+            <div class="msg-time">08:12 · GPT-4o-mini · 1.2s</div>
+          </div>
+        </div>
+
+        <!-- User message -->
+        <div class="msg-user">
+          <div class="msg-content">
+            <div class="msg-bubble">
+              Write me a Python function that counts word frequency in a text
+            </div>
+            <div class="msg-time">08:15</div>
+          </div>
+        </div>
+
+        <!-- Bot response with code -->
+        <div class="msg-bot">
+          <div class="msg-avatar">🤖</div>
+          <div class="msg-content">
+            <div class="msg-bubble">
+              <div class="md-content">
+                <p>Here's a simple word frequency counter:</p>
+                <pre><code>from collections import Counter
+
+def word_frequency(text: str) -> dict[str, int]:
+    words = text.lower().split()
+    return dict(Counter(words).most_common())
+
+# Usage:
+freq = word_frequency("hello world hello python")
+print(freq)
+# {'hello': 2, 'world': 1, 'python': 1}</code></pre>
+                <p>The function normalizes to lowercase and returns a dictionary sorted by frequency.</p>
+              </div>
+            </div>
+            <div class="msg-time">08:15 · GPT-4o-mini · 2.1s</div>
+          </div>
+        </div>
+
+        <!-- User voice message -->
+        <div class="msg-user">
+          <div class="msg-content">
+            <div class="msg-bubble" style="display: flex; flex-direction: column; gap: 8px;">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <span>🎤</span>
+                <div class="audio-player" style="padding: 0; background: none; border: none; flex: 1;">
+                  <div class="audio-waveform" style="height: 24px;">
+                    <div class="waveform-bar" style="height: 30%"></div>
+                    <div class="waveform-bar" style="height: 60%"></div>
+                    <div class="waveform-bar" style="height: 90%"></div>
+                    <div class="waveform-bar" style="height: 45%"></div>
+                    <div class="waveform-bar" style="height: 75%"></div>
+                    <div class="waveform-bar" style="height: 55%"></div>
+                    <div class="waveform-bar" style="height: 80%"></div>
+                    <div class="waveform-bar" style="height: 40%"></div>
+                    <div class="waveform-bar" style="height: 65%"></div>
+                    <div class="waveform-bar" style="height: 30%"></div>
+                    <div class="waveform-bar" style="height: 50%"></div>
+                    <div class="waveform-bar" style="height: 70%"></div>
+                  </div>
+                </div>
+                <span class="text-xs text-dim">0:04</span>
+              </div>
+              <div class="text-xs text-dim" style="font-style: italic;">
+                "Расскажи мне про историю Берлина"
+              </div>
+            </div>
+            <div class="msg-time">08:18 · Voice</div>
+          </div>
+        </div>
+
+        <!-- Bot streaming response -->
+        <div class="msg-bot">
+          <div class="msg-avatar">🤖</div>
+          <div class="msg-content">
+            <div class="msg-bubble">
+              <div class="md-content">
+                <p>Берлин — столица и крупнейший город Германии с богатой историей. Основанный в XIII веке, он прошёл путь от маленького поселения до мировой столицы.</p>
+                <p><strong>Ключевые этапы:</strong></p>
+                <ul>
+                  <li>1237 — первое упоминание Берлина</li>
+                  <li>1701 — столица Прусского королевства</li>
+                  <li>1871 — столица Германской империи</li>
+                  <li>1945–1990 — разделён Берлинской стеной</li>
+                  <li>1990 — воссоединение</li>
+                </ul>
+              </div>
+              <div style="margin-top: 8px;">
+                <div class="audio-player">
+                  <button class="audio-play-btn">▶</button>
+                  <div class="audio-waveform">
+                    <div class="waveform-bar" style="height: 40%"></div>
+                    <div class="waveform-bar" style="height: 70%"></div>
+                    <div class="waveform-bar" style="height: 55%"></div>
+                    <div class="waveform-bar" style="height: 85%"></div>
+                    <div class="waveform-bar" style="height: 60%"></div>
+                    <div class="waveform-bar" style="height: 75%"></div>
+                    <div class="waveform-bar" style="height: 45%"></div>
+                    <div class="waveform-bar" style="height: 90%"></div>
+                    <div class="waveform-bar" style="height: 50%"></div>
+                    <div class="waveform-bar" style="height: 65%"></div>
+                  </div>
+                  <span class="audio-time">0:12</span>
+                </div>
+              </div>
+            </div>
+            <div class="msg-time">08:18 · GPT-4o-mini · 2.8s · TTS: 4.2s</div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Chat input bar -->
+      <div class="chat-input-bar">
+        <button class="btn-icon" title="Attach file" style="font-size: 18px;">📎</button>
+        <input type="text" class="chat-input" placeholder="Type a message… (or hold 🎤 to record)">
+        <button class="btn-icon" title="Voice message" style="font-size: 18px; color: var(--accent);">🎙</button>
+        <button class="btn btn-primary" style="padding: 8px 16px; border-radius: 20px;">Send</button>
+      </div>
+    </div>
+  </main>
+</div>
+
+<div class="mockup-label">MOCKUP — Free Chat</div>
+</body>
+</html>

@@ -313,3 +313,67 @@ With `persistent_piper` + `tmpfs_model` + `piper_low_model` all ON: estimated **
 **Minimum (1 day):** A1 + A2 + B2 + B3 + C3 → shows voice, text, offline status, push notifications, multimedia
 **Extended (2–3 days):** above + B1 + B4 + C1 + C4
 **Flagship (already implemented):** Smart calendar — user says "remind me tomorrow at 10 for a team meeting", bot replies by voice "saved", sends reminder + morning briefing
+
+---
+
+## 8. Web UI & CRM Platform 💡
+
+### 8.1 PicoUI Platform — FastAPI Web Interface 🔲
+
+5-phase rollout: FastAPI + Jinja2 + HTMX + Alpine.js + Pico CSS.
+Full roadmap: `doc/web-ui/roadmap-web-ui.md`. Mockups: `doc/web-ui/mockups-fastapi/`.
+
+| Phase | Scope |
+|---|---|
+| P0 | Extract UI layer (`bot_ui.py` Screen DSL) + `bot_llm.py` (pluggable LLM backend) + `bot_auth.py` (JWT + bcrypt) |
+| P1 | FastAPI app + templates + auth + chat + notes |
+| P2 | Calendar + admin dashboard |
+| P3 | Voice: browser recording + audio playback |
+| P4 | Full migration: all screens unified, PWA, responsive |
+
+### 8.2 Multi-Channel Rendering 🔲
+
+Screen DSL enables write-once, render-anywhere. Priority: Telegram (P0) + Web (P1). Future messengers via thin renderers (~50-100 lines each).
+
+| Renderer | Priority | Status |
+|---|---|---|
+| Telegram (`render_telegram.py`) | P0 | 🔲 Planned |
+| Web (Jinja2 templates) | P1 | 🔲 Planned |
+| WhatsApp | Future | 💡 Idea |
+| Discord | Future | 💡 Idea |
+| Slack | Future | 💡 Idea |
+
+### 8.3 LLM Backend Abstraction 🔲
+
+`bot_llm.py` — pluggable backend switchable via `LLM_BACKEND` env var.
+
+| Backend | Status |
+|---|---|
+| `picoclaw_cli` — current subprocess call | 🔲 Planned (default) |
+| `picoclaw_gateway` — HTTP :18790 | 🔲 Planned |
+| `openclaw_gateway` — HTTP :18789 | 🔲 Planned |
+| `openai_direct` — OpenAI API | 🔲 Planned |
+
+### 8.4 CRM Platform Vision 💡
+
+**Long-term objective.** Current focus: core platform (P0–P1) + prototype for concrete CRM customer projects. CRM-specific modules added per customer need, never speculatively.
+
+| CRM Phase | Scope | Depends on |
+|---|---|---|
+| C0 (current) | Core platform: Screen DSL, auth, multi-channel, LLM backend | P0–P1 |
+| C1 | Contact management: CRUD, search, link to notes/calendar/mail | P2 + C0 |
+| C2 | Deals pipeline: stages, Kanban board in Web UI | C1 |
+| C3 | Custom fields + workflows: admin-defined schema + automation | P4 + C2 |
+| C4 | Customer project template: config-driven customization, white-label UI | C3 |
+
+See: `doc/web-ui/roadmap-web-ui.md` §13 — CRM Platform Vision.
+
+### 8.5 NiceGUI Integration 💡
+
+**Nice to have — after FastAPI web UI is stable.**
+
+Replace Jinja2 templates with NiceGUI for richer interactivity (sliders, live data binding, drag-and-drop). See `doc/web-ui/roadmap-web-ui.md` §12 and `doc/web-ui/mockups-nicegui/` for concept.
+
+- [ ] Evaluate NiceGUI RAM footprint on Pi 3 B+ (~60 MB vs FastAPI ~25 MB)
+- [ ] Prototype single page (e.g. Voice Opts toggles) in NiceGUI
+- [ ] If viable: migrate pages incrementally behind feature flag

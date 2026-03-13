@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pico Bot — Mail Digest</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+  .digest-card { margin-bottom: 16px; }
+  .digest-meta { display: flex; gap: 16px; margin-bottom: 12px; flex-wrap: wrap; }
+  .digest-meta-item { font-size: 12px; color: var(--text-dim); display: flex; align-items: center; gap: 4px; }
+  .mail-item { padding: 12px; border-radius: var(--radius); background: var(--bg-input); margin-bottom: 8px; border-left: 3px solid transparent; }
+  .mail-item.important { border-left-color: var(--danger); }
+  .mail-item.normal { border-left-color: var(--accent); }
+  .mail-item.spam { border-left-color: var(--text-dim); opacity: 0.65; }
+  .mail-from { font-weight: 500; font-size: 14px; }
+  .mail-subject { font-size: 13px; margin-top: 2px; }
+  .mail-summary { font-size: 12px; color: var(--text-dim); margin-top: 4px; line-height: 1.4; }
+  .mail-tag { display: inline-block; font-size: 10px; padding: 1px 6px; border-radius: 3px; margin-left: 6px; }
+  .mail-tag.inbox { background: rgba(66, 165, 245, 0.2); color: #42a5f5; }
+  .mail-tag.spam-tag { background: rgba(239, 83, 80, 0.2); color: #ef5350; }
+  .mail-tag.promo { background: rgba(255, 167, 38, 0.2); color: #ffa726; }
+  .setup-wizard { max-width: 480px; margin: 40px auto; }
+  .provider-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 16px 0; }
+  .provider-btn { padding: 16px; text-align: center; border-radius: var(--radius); background: var(--bg-input); border: 1px solid var(--border); cursor: pointer; transition: all .15s; }
+  .provider-btn:hover { border-color: var(--accent); background: rgba(124, 77, 255, 0.08); }
+  .provider-btn .provider-icon { font-size: 28px; margin-bottom: 6px; }
+  .provider-btn .provider-name { font-size: 14px; font-weight: 500; }
+</style>
+</head>
+<body>
+<div class="app-shell">
+
+  <!-- ── Sidebar ── -->
+  <aside class="sidebar">
+    <div class="sidebar-header">
+      <div class="sidebar-logo">🤖</div>
+      <div><div class="sidebar-title">Pico Bot</div><div class="sidebar-subtitle">v2026.3.26</div></div>
+    </div>
+    <nav class="sidebar-nav">
+      <div class="nav-section">
+        <div class="nav-section-label">Main</div>
+        <a class="nav-item" href="01-main-menu.html"><span class="icon">🏠</span> Dashboard</a>
+        <a class="nav-item" href="02-chat.html"><span class="icon">💬</span> Free Chat</a>
+        <a class="nav-item" href="03-notes.html"><span class="icon">📝</span> Notes</a>
+        <a class="nav-item" href="04-calendar.html"><span class="icon">🗓</span> Calendar</a>
+        <a class="nav-item active" href="06-mail-digest.html"><span class="icon">📧</span> Mail Digest</a>
+        <a class="nav-item" href="07-voice.html"><span class="icon">🎤</span> Voice</a>
+      </div>
+      <div class="nav-section">
+        <div class="nav-section-label">Account</div>
+        <a class="nav-item" href="#"><span class="icon">👤</span> Profile</a>
+        <a class="nav-item" href="#"><span class="icon">❓</span> Help</a>
+      </div>
+      <div class="nav-section">
+        <div class="nav-section-label">Admin</div>
+        <a class="nav-item" href="05-admin.html"><span class="icon">🔐</span> Admin Panel</a>
+      </div>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="avatar">SU</div>
+      <div><div style="font-weight: 500;">Stas Ulmer</div><div class="text-xs text-dim">Admin</div></div>
+      <span class="status-dot online" style="margin-left: auto"></span>
+    </div>
+  </aside>
+
+  <!-- ── Main Content ── -->
+  <main class="main-content">
+    <div class="topbar">
+      <span class="topbar-title">📧 Mail Digest</span>
+      <div class="topbar-actions">
+        <button class="btn btn-sm">⚙️ Settings</button>
+        <button class="btn btn-primary" style="font-size: 13px; padding: 6px 14px;">🔄 Refresh</button>
+      </div>
+    </div>
+
+    <div class="content-area" style="overflow-y: auto;">
+
+      <!-- Digest summary card -->
+      <div class="card digest-card" style="border-left: 3px solid var(--accent);">
+        <div class="card-title">📬 Daily Digest — March 10, 2026</div>
+        <div class="digest-meta">
+          <div class="digest-meta-item">📥 <strong>12</strong> new emails</div>
+          <div class="digest-meta-item">🚨 <strong>2</strong> important</div>
+          <div class="digest-meta-item">📢 <strong>3</strong> promotional</div>
+          <div class="digest-meta-item">🗑 <strong>5</strong> spam filtered</div>
+          <div class="digest-meta-item">🕐 Last refresh: 08:15</div>
+        </div>
+        <div class="md-content" style="font-size: 14px; line-height: 1.6;">
+          <p><strong>Summary:</strong> You received 12 emails since yesterday. Two require attention: a meeting invite from your team lead and a bank notification. Three promotional emails from online shops (seasonal sale). Five spam messages were filtered from your Spam folder.</p>
+        </div>
+        <div style="display: flex; gap: 8px; margin-top: 12px;">
+          <button class="btn btn-sm">🔊 Read Aloud</button>
+          <button class="btn btn-sm">📧 Send as Email</button>
+        </div>
+      </div>
+
+      <!-- Audio player for TTS -->
+      <div class="audio-player" style="margin-bottom: 16px;">
+        <button class="audio-play-btn">▶</button>
+        <div class="audio-waveform">
+          <div class="waveform-bar" style="height: 35%"></div>
+          <div class="waveform-bar" style="height: 55%"></div>
+          <div class="waveform-bar" style="height: 75%"></div>
+          <div class="waveform-bar" style="height: 45%"></div>
+          <div class="waveform-bar" style="height: 85%"></div>
+          <div class="waveform-bar" style="height: 60%"></div>
+          <div class="waveform-bar" style="height: 70%"></div>
+          <div class="waveform-bar" style="height: 40%"></div>
+          <div class="waveform-bar" style="height: 55%"></div>
+          <div class="waveform-bar" style="height: 80%"></div>
+          <div class="waveform-bar" style="height: 50%"></div>
+          <div class="waveform-bar" style="height: 65%"></div>
+          <div class="waveform-bar" style="height: 35%"></div>
+          <div class="waveform-bar" style="height: 90%"></div>
+          <div class="waveform-bar" style="height: 55%"></div>
+        </div>
+        <span class="audio-time">1:24</span>
+      </div>
+
+      <!-- Important emails -->
+      <h3 style="font-size: 14px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px;">🚨 Important</h3>
+
+      <div class="mail-item important">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+          <div>
+            <div class="mail-from">Maria Schneider <span class="mail-tag inbox">Inbox</span></div>
+            <div class="mail-subject"><strong>Meeting tomorrow at 10:00 — Quarterly planning</strong></div>
+            <div class="mail-summary">Hi Stas, please prepare the Q2 roadmap slides. I've shared the template folder in Google Drive. The meeting is at the main conference room, please bring your laptop.</div>
+          </div>
+          <div class="text-xs text-dim" style="white-space: nowrap; margin-left: 12px;">09:42</div>
+        </div>
+      </div>
+
+      <div class="mail-item important">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+          <div>
+            <div class="mail-from">Deutsche Bank <span class="mail-tag inbox">Inbox</span></div>
+            <div class="mail-subject"><strong>Security notification — New login detected</strong></div>
+            <div class="mail-summary">A new login to your online banking was detected from Berlin, DE. If this was you, no action is needed. Otherwise, please contact our support immediately.</div>
+          </div>
+          <div class="text-xs text-dim" style="white-space: nowrap; margin-left: 12px;">07:15</div>
+        </div>
+      </div>
+
+      <!-- Regular emails -->
+      <h3 style="font-size: 14px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1px; margin: 16px 0 10px;">📥 Regular</h3>
+
+      <div class="mail-item normal">
+        <div style="display: flex; justify-content: space-between;">
+          <div>
+            <div class="mail-from">GitHub <span class="mail-tag inbox">Inbox</span></div>
+            <div class="mail-subject">New release: picoclaw v0.3.0</div>
+            <div class="mail-summary">A new version of picoclaw has been released with bug fixes and performance improvements.</div>
+          </div>
+          <div class="text-xs text-dim" style="white-space: nowrap; margin-left: 12px;">06:30</div>
+        </div>
+      </div>
+
+      <div class="mail-item normal">
+        <div style="display: flex; justify-content: space-between;">
+          <div>
+            <div class="mail-from">Alex Petrov</div>
+            <div class="mail-subject">Weekend plans?</div>
+            <div class="mail-summary">Hey, are you free on Saturday? Was thinking we could check out that new restaurant.</div>
+          </div>
+          <div class="text-xs text-dim" style="white-space: nowrap; margin-left: 12px;">Yesterday</div>
+        </div>
+      </div>
+
+      <!-- Promotional -->
+      <h3 style="font-size: 14px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1px; margin: 16px 0 10px;">📢 Promotional</h3>
+
+      <div class="mail-item" style="opacity: 0.7;">
+        <div class="mail-from">Amazon.de <span class="mail-tag promo">Promo</span></div>
+        <div class="mail-subject">Spring Sale — Up to 40% off electronics</div>
+      </div>
+
+      <div class="mail-item" style="opacity: 0.7;">
+        <div class="mail-from">Mediamarkt <span class="mail-tag promo">Promo</span></div>
+        <div class="mail-subject">New arrivals: Raspberry Pi 5 starter kits</div>
+      </div>
+
+      <!-- Spam -->
+      <h3 style="font-size: 14px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1px; margin: 16px 0 10px;">🗑 Spam (filtered)</h3>
+
+      <div class="mail-item spam">
+        <div class="mail-from">no-reply@winner2026.com <span class="mail-tag spam-tag">Spam</span></div>
+        <div class="mail-subject">You've won $1,000,000! Claim now!</div>
+      </div>
+
+      <div class="mail-item spam">
+        <div class="mail-from">crypto-alerts@xyz.io <span class="mail-tag spam-tag">Spam</span></div>
+        <div class="mail-subject">Urgent: Your crypto wallet needs verification</div>
+      </div>
+
+      <div class="text-xs text-dim" style="text-align: center; margin: 16px 0;">
+        + 3 more spam emails filtered
+      </div>
+
+    </div>
+  </main>
+</div>
+
+<div class="mockup-label">MOCKUP — Mail Digest</div>
+</body>
+</html>

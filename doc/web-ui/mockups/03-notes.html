@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pico Bot — Notes Manager</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+  .notes-layout { display: grid; grid-template-columns: 300px 1fr; gap: 0; height: 100%; }
+  .notes-sidebar { border-right: 1px solid var(--border); overflow-y: auto; }
+  .note-item { padding: 12px 16px; cursor: pointer; border-bottom: 1px solid var(--border); transition: background .15s; }
+  .note-item:hover { background: var(--bg-hover); }
+  .note-item.active { background: rgba(124, 77, 255, 0.12); border-left: 3px solid var(--accent); }
+  .note-item-title { font-weight: 500; font-size: 14px; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .note-item-preview { font-size: 12px; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .note-item-date { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+  .note-view { padding: 24px; overflow-y: auto; display: flex; flex-direction: column; }
+  .note-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+  .note-title-input { font-size: 22px; font-weight: 600; background: none; border: none; color: var(--text-primary); width: 100%; outline: none; }
+  .note-actions { display: flex; gap: 6px; }
+  .note-toolbar { display: flex; gap: 4px; padding: 8px 0; border-bottom: 1px solid var(--border); margin-bottom: 16px; }
+  .toolbar-btn { padding: 4px 8px; border-radius: 4px; background: none; border: 1px solid var(--border); color: var(--text-dim); cursor: pointer; font-size: 13px; }
+  .toolbar-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+  .edit-split { display: grid; grid-template-columns: 1fr 1fr; gap: 0; flex: 1; min-height: 0; }
+  .edit-pane { overflow-y: auto; padding: 16px; }
+  .edit-pane textarea { width: 100%; height: 100%; background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text-primary); padding: 12px; font-family: 'JetBrains Mono', 'Cascadia Code', monospace; font-size: 13px; line-height: 1.6; resize: none; outline: none; }
+  .edit-pane textarea:focus { border-color: var(--accent); }
+  .preview-pane { border-left: 1px solid var(--border); padding: 16px; overflow-y: auto; }
+  .preview-label { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: var(--text-dim); margin-bottom: 8px; }
+  @media (max-width: 768px) {
+    .notes-layout { grid-template-columns: 1fr; }
+    .notes-sidebar { max-height: 200px; }
+    .edit-split { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="app-shell">
+
+  <!-- ── Sidebar ── -->
+  <aside class="sidebar">
+    <div class="sidebar-header">
+      <div class="sidebar-logo">🤖</div>
+      <div>
+        <div class="sidebar-title">Pico Bot</div>
+        <div class="sidebar-subtitle">v2026.3.26</div>
+      </div>
+    </div>
+    <nav class="sidebar-nav">
+      <div class="nav-section">
+        <div class="nav-section-label">Main</div>
+        <a class="nav-item" href="01-main-menu.html"><span class="icon">🏠</span> Dashboard</a>
+        <a class="nav-item" href="02-chat.html"><span class="icon">💬</span> Free Chat</a>
+        <a class="nav-item active" href="03-notes.html"><span class="icon">📝</span> Notes <span class="badge">3</span></a>
+        <a class="nav-item" href="04-calendar.html"><span class="icon">🗓</span> Calendar</a>
+        <a class="nav-item" href="06-mail-digest.html"><span class="icon">📧</span> Mail Digest</a>
+        <a class="nav-item" href="07-voice.html"><span class="icon">🎤</span> Voice</a>
+      </div>
+      <div class="nav-section">
+        <div class="nav-section-label">Account</div>
+        <a class="nav-item" href="#"><span class="icon">👤</span> Profile</a>
+        <a class="nav-item" href="#"><span class="icon">❓</span> Help</a>
+      </div>
+      <div class="nav-section">
+        <div class="nav-section-label">Admin</div>
+        <a class="nav-item" href="05-admin.html"><span class="icon">🔐</span> Admin Panel</a>
+      </div>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="avatar">SU</div>
+      <div>
+        <div style="font-weight: 500;">Stas Ulmer</div>
+        <div class="text-xs text-dim">Admin</div>
+      </div>
+      <span class="status-dot online" style="margin-left: auto"></span>
+    </div>
+  </aside>
+
+  <!-- ── Main Content ── -->
+  <main class="main-content">
+    <div class="topbar">
+      <span class="topbar-title">📝 Notes</span>
+      <div class="topbar-actions">
+        <button class="btn btn-primary" style="font-size: 13px; padding: 6px 14px;">
+          ＋ New Note
+        </button>
+      </div>
+    </div>
+
+    <div class="content-area" style="padding: 0; overflow: hidden;">
+      <div class="notes-layout" style="height: 100%;">
+
+        <!-- Notes list sidebar -->
+        <div class="notes-sidebar">
+          <div style="padding: 12px 16px; border-bottom: 1px solid var(--border);">
+            <input type="text" class="form-input" placeholder="Search notes…" style="font-size: 13px; padding: 8px 12px;">
+          </div>
+
+          <div class="note-item active">
+            <div class="note-item-title">📋 Shopping List</div>
+            <div class="note-item-preview">Milk, bread, eggs, cheese, apples...</div>
+            <div class="note-item-date">Today, 08:30</div>
+          </div>
+
+          <div class="note-item">
+            <div class="note-item-title">💡 Project Ideas</div>
+            <div class="note-item-preview">1. Smart home automation 2. Recipe bot...</div>
+            <div class="note-item-date">Yesterday, 14:22</div>
+          </div>
+
+          <div class="note-item">
+            <div class="note-item-title">📖 Meeting Notes — March 10</div>
+            <div class="note-item-preview">Discussed Q2 roadmap, action items: ...</div>
+            <div class="note-item-date">Mar 10, 11:00</div>
+          </div>
+        </div>
+
+        <!-- Note editor / view -->
+        <div class="note-view">
+          <div class="note-header">
+            <input type="text" class="note-title-input" value="📋 Shopping List">
+            <div class="note-actions">
+              <button class="btn btn-sm" title="Read aloud">🔊 TTS</button>
+              <button class="btn btn-sm" title="Send as email">📧 Email</button>
+              <button class="btn btn-sm btn-danger" title="Delete">🗑</button>
+            </div>
+          </div>
+
+          <div class="note-toolbar">
+            <button class="toolbar-btn"><b>B</b></button>
+            <button class="toolbar-btn"><i>I</i></button>
+            <button class="toolbar-btn"><s>S</s></button>
+            <button class="toolbar-btn">H1</button>
+            <button class="toolbar-btn">H2</button>
+            <button class="toolbar-btn">—</button>
+            <button class="toolbar-btn">📋</button>
+            <button class="toolbar-btn">🔗</button>
+            <span style="flex: 1;"></span>
+            <span class="text-xs text-dim" style="align-self: center;">Markdown · Auto-saved</span>
+          </div>
+
+          <div class="edit-split">
+            <!-- Editor pane -->
+            <div class="edit-pane">
+              <div class="preview-label">Editor</div>
+              <textarea># Shopping List
+
+## Groceries
+- [ ] Milk (2L)
+- [x] Bread (whole wheat)
+- [ ] Eggs (12 pcs)
+- [ ] Cheese (Gouda)
+- [ ] Apples (1 kg)
+
+## Household
+- [ ] Dishwasher tabs
+- [ ] Paper towels
+- [x] Light bulbs (LED, warm)
+
+> Remember: farmers market is on **Saturday** only!</textarea>
+            </div>
+
+            <!-- Preview pane -->
+            <div class="preview-pane">
+              <div class="preview-label">Preview</div>
+              <div class="md-content">
+                <h1>Shopping List</h1>
+                <h2>Groceries</h2>
+                <ul>
+                  <li>☐ Milk (2L)</li>
+                  <li>☑ <s>Bread (whole wheat)</s></li>
+                  <li>☐ Eggs (12 pcs)</li>
+                  <li>☐ Cheese (Gouda)</li>
+                  <li>☐ Apples (1 kg)</li>
+                </ul>
+                <h2>Household</h2>
+                <ul>
+                  <li>☐ Dishwasher tabs</li>
+                  <li>☐ Paper towels</li>
+                  <li>☑ <s>Light bulbs (LED, warm)</s></li>
+                </ul>
+                <blockquote>Remember: farmers market is on <strong>Saturday</strong> only!</blockquote>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </main>
+</div>
+
+<div class="mockup-label">MOCKUP — Notes Manager</div>
+</body>
+</html>

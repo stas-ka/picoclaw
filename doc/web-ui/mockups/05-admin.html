@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pico Bot — Admin Panel</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+  .admin-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px; }
+  .stat-card { display: flex; align-items: center; gap: 12px; }
+  .stat-icon { font-size: 32px; }
+  .stat-value { font-size: 28px; font-weight: 700; }
+  .stat-label { font-size: 12px; color: var(--text-dim); }
+  .toggle-row { display: flex; align-items: center; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid var(--border); }
+  .toggle-info { flex: 1; }
+  .toggle-label { font-weight: 500; font-size: 14px; }
+  .toggle-desc { font-size: 12px; color: var(--text-dim); margin-top: 2px; }
+  .toggle-gain { font-size: 11px; color: var(--success); margin-top: 2px; }
+  .model-card { display: flex; align-items: center; gap: 12px; padding: 12px; background: var(--bg-input); border-radius: var(--radius); border: 1px solid var(--border); cursor: pointer; }
+  .model-card.active { border-color: var(--accent); background: rgba(124, 77, 255, 0.08); }
+  .model-card:hover { border-color: var(--accent); }
+  .model-radio { width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--border); display: flex; align-items: center; justify-content: center; }
+  .model-card.active .model-radio { border-color: var(--accent); }
+  .model-card.active .model-radio::after { content: ''; width: 10px; height: 10px; border-radius: 50%; background: var(--accent); }
+  @media (max-width: 768px) { .admin-grid { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div class="app-shell">
+
+  <!-- ── Sidebar ── -->
+  <aside class="sidebar">
+    <div class="sidebar-header">
+      <div class="sidebar-logo">🤖</div>
+      <div><div class="sidebar-title">Pico Bot</div><div class="sidebar-subtitle">v2026.3.26</div></div>
+    </div>
+    <nav class="sidebar-nav">
+      <div class="nav-section">
+        <div class="nav-section-label">Main</div>
+        <a class="nav-item" href="01-main-menu.html"><span class="icon">🏠</span> Dashboard</a>
+        <a class="nav-item" href="02-chat.html"><span class="icon">💬</span> Free Chat</a>
+        <a class="nav-item" href="03-notes.html"><span class="icon">📝</span> Notes</a>
+        <a class="nav-item" href="04-calendar.html"><span class="icon">🗓</span> Calendar</a>
+        <a class="nav-item" href="06-mail-digest.html"><span class="icon">📧</span> Mail Digest</a>
+        <a class="nav-item" href="07-voice.html"><span class="icon">🎤</span> Voice</a>
+      </div>
+      <div class="nav-section">
+        <div class="nav-section-label">Account</div>
+        <a class="nav-item" href="#"><span class="icon">👤</span> Profile</a>
+        <a class="nav-item" href="#"><span class="icon">❓</span> Help</a>
+      </div>
+      <div class="nav-section">
+        <div class="nav-section-label">Admin</div>
+        <a class="nav-item active" href="05-admin.html"><span class="icon">🔐</span> Admin Panel</a>
+      </div>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="avatar">SU</div>
+      <div><div style="font-weight: 500;">Stas Ulmer</div><div class="text-xs text-dim">Admin</div></div>
+      <span class="status-dot online" style="margin-left: auto"></span>
+    </div>
+  </aside>
+
+  <!-- ── Main Content ── -->
+  <main class="main-content">
+    <div class="topbar">
+      <span class="topbar-title">🔐 Admin Panel</span>
+    </div>
+
+    <div class="content-area" style="overflow-y: auto;">
+
+      <!-- Stats -->
+      <div class="admin-grid">
+        <div class="card stat-card">
+          <div class="stat-icon">👥</div>
+          <div><div class="stat-value">4</div><div class="stat-label">Total Users</div></div>
+        </div>
+        <div class="card stat-card">
+          <div class="stat-icon">⏳</div>
+          <div><div class="stat-value" style="color: var(--warning);">1</div><div class="stat-label">Pending Registrations</div></div>
+        </div>
+        <div class="card stat-card">
+          <div class="stat-icon">🤖</div>
+          <div><div class="stat-value">GPT-4o-mini</div><div class="stat-label">Active LLM</div></div>
+        </div>
+        <div class="card stat-card">
+          <div class="stat-icon">🏠</div>
+          <div><div class="stat-value" style="color: var(--success);">OK</div><div class="stat-label">Pi Status — 58°C · 48% CPU</div></div>
+        </div>
+      </div>
+
+      <!-- User Management -->
+      <div class="card" style="margin-bottom: 16px;">
+        <div class="card-title" style="display: flex; align-items: center; justify-content: space-between;">
+          👥 User Management
+          <button class="btn btn-primary btn-sm">➕ Add User</button>
+        </div>
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>User</th>
+              <th>Chat ID</th>
+              <th>Role</th>
+              <th>Status</th>
+              <th>Registered</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Stas Ulmer</strong><br><span class="text-xs text-dim">@stas_u</span></td>
+              <td><code>994963580</code></td>
+              <td><span class="badge badge-admin">Admin</span></td>
+              <td><span class="status-dot online"></span> Active</td>
+              <td>2026-01-15</td>
+              <td>—</td>
+            </tr>
+            <tr>
+              <td><strong>Anna M.</strong><br><span class="text-xs text-dim">@anna_m</span></td>
+              <td><code>123456789</code></td>
+              <td><span class="badge badge-user">User</span></td>
+              <td><span class="status-dot online"></span> Active</td>
+              <td>2026-02-20</td>
+              <td>
+                <button class="btn-icon" title="Remove">🗑</button>
+              </td>
+            </tr>
+            <tr>
+              <td><strong>Max K.</strong><br><span class="text-xs text-dim">@max_k</span></td>
+              <td><code>987654321</code></td>
+              <td><span class="badge badge-guest">Guest</span></td>
+              <td><span class="status-dot online"></span> Active</td>
+              <td>2026-03-05</td>
+              <td>
+                <button class="btn-icon" title="Remove">🗑</button>
+              </td>
+            </tr>
+            <tr style="background: rgba(255, 167, 38, 0.06);">
+              <td><strong>Ivan P.</strong><br><span class="text-xs text-dim">@ivan_p</span></td>
+              <td><code>555666777</code></td>
+              <td><span class="badge badge-pending">Pending</span></td>
+              <td>⏳ Awaiting approval</td>
+              <td>2026-03-10</td>
+              <td>
+                <button class="btn btn-sm btn-success">✅</button>
+                <button class="btn btn-sm btn-danger">❌</button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- LLM Model Switcher -->
+      <div class="card" style="margin-bottom: 16px;">
+        <div class="card-title">🤖 LLM Model</div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px;">
+          <div class="model-card active">
+            <div class="model-radio"></div>
+            <div>
+              <div style="font-weight: 500; font-size: 14px;">GPT-4o-mini</div>
+              <div class="text-xs text-dim">OpenRouter · Fast, affordable</div>
+            </div>
+          </div>
+          <div class="model-card">
+            <div class="model-radio"></div>
+            <div>
+              <div style="font-weight: 500; font-size: 14px;">GPT-4o</div>
+              <div class="text-xs text-dim">OpenRouter · High quality</div>
+            </div>
+          </div>
+          <div class="model-card">
+            <div class="model-radio"></div>
+            <div>
+              <div style="font-weight: 500; font-size: 14px;">Claude 3.5 Sonnet</div>
+              <div class="text-xs text-dim">OpenRouter · Balanced</div>
+            </div>
+          </div>
+          <div class="model-card">
+            <div class="model-radio"></div>
+            <div>
+              <div style="font-weight: 500; font-size: 14px;">Qwen2-0.5B</div>
+              <div class="text-xs text-dim">Local · Offline fallback</div>
+            </div>
+          </div>
+        </div>
+
+        <div style="display: flex; gap: 8px; align-items: center;">
+          <input type="password" class="form-input" placeholder="OpenAI API key (sk-...)" style="flex: 1; font-size: 13px;">
+          <button class="btn btn-sm">Save Key</button>
+        </div>
+      </div>
+
+      <!-- Voice Optimization Toggles -->
+      <div class="card">
+        <div class="card-title">⚡ Voice Optimizations</div>
+
+        <div class="toggle-row">
+          <div class="toggle-info">
+            <div class="toggle-label">Persistent Piper</div>
+            <div class="toggle-desc">Keep Piper TTS subprocess warm between calls</div>
+            <div class="toggle-gain">Saves ~15s cold-start</div>
+          </div>
+          <label class="toggle"><input type="checkbox" checked><span class="toggle-slider"></span></label>
+        </div>
+
+        <div class="toggle-row">
+          <div class="toggle-info">
+            <div class="toggle-label">Tmpfs Model</div>
+            <div class="toggle-desc">Copy ONNX model to RAM disk (/dev/shm)</div>
+            <div class="toggle-gain">Saves ~13s model load</div>
+          </div>
+          <label class="toggle"><input type="checkbox" checked><span class="toggle-slider"></span></label>
+        </div>
+
+        <div class="toggle-row">
+          <div class="toggle-info">
+            <div class="toggle-label">Warm Piper Cache</div>
+            <div class="toggle-desc">Pre-run Piper at startup to warm page cache</div>
+            <div class="toggle-gain">Saves ~10s first call</div>
+          </div>
+          <label class="toggle"><input type="checkbox" checked><span class="toggle-slider"></span></label>
+        </div>
+
+        <div class="toggle-row">
+          <div class="toggle-info">
+            <div class="toggle-label">VAD Pre-filter</div>
+            <div class="toggle-desc">WebRTC VAD strips non-speech frames before STT</div>
+            <div class="toggle-gain">Saves ~2s STT</div>
+          </div>
+          <label class="toggle"><input type="checkbox"><span class="toggle-slider"></span></label>
+        </div>
+
+        <div class="toggle-row">
+          <div class="toggle-info">
+            <div class="toggle-label">Piper Low Model</div>
+            <div class="toggle-desc">Use low-quality voice for faster synthesis</div>
+            <div class="toggle-gain">Saves ~10s inference</div>
+          </div>
+          <label class="toggle"><input type="checkbox"><span class="toggle-slider"></span></label>
+        </div>
+
+        <div class="toggle-row">
+          <div class="toggle-info">
+            <div class="toggle-label">Whisper STT</div>
+            <div class="toggle-desc">Use whisper.cpp instead of Vosk (better WER, slower)</div>
+          </div>
+          <label class="toggle"><input type="checkbox"><span class="toggle-slider"></span></label>
+        </div>
+
+        <div class="toggle-row">
+          <div class="toggle-info">
+            <div class="toggle-label">Silence Strip</div>
+            <div class="toggle-desc">Remove silence from input audio before STT</div>
+          </div>
+          <label class="toggle"><input type="checkbox"><span class="toggle-slider"></span></label>
+        </div>
+
+        <div class="toggle-row">
+          <div class="toggle-info">
+            <div class="toggle-label">Low Sample Rate</div>
+            <div class="toggle-desc">Decode at 8 kHz instead of 16 kHz (faster, lower quality)</div>
+          </div>
+          <label class="toggle"><input type="checkbox"><span class="toggle-slider"></span></label>
+        </div>
+
+        <div class="toggle-row" style="border-bottom: none;">
+          <div class="toggle-info">
+            <div class="toggle-label">Voice Timing Debug</div>
+            <div class="toggle-desc">Show per-stage timing breakdown in voice replies</div>
+          </div>
+          <label class="toggle"><input type="checkbox"><span class="toggle-slider"></span></label>
+        </div>
+      </div>
+
+    </div>
+  </main>
+</div>
+
+<div class="mockup-label">MOCKUP — Admin Panel</div>
+</body>
+</html>

@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pico Bot — Main Menu</title>
+<link rel="stylesheet" href="shared.css">
+</head>
+<body>
+<div class="app-shell">
+
+  <!-- ── Sidebar ── -->
+  <aside class="sidebar">
+    <div class="sidebar-header">
+      <div class="sidebar-logo">🤖</div>
+      <div>
+        <div class="sidebar-title">Pico Bot</div>
+        <div class="sidebar-subtitle">v2026.3.26</div>
+      </div>
+    </div>
+    <nav class="sidebar-nav">
+      <div class="nav-section">
+        <div class="nav-section-label">Main</div>
+        <a class="nav-item active" href="01-main-menu.html">
+          <span class="icon">🏠</span> Dashboard
+        </a>
+        <a class="nav-item" href="02-chat.html">
+          <span class="icon">💬</span> Free Chat
+        </a>
+        <a class="nav-item" href="03-notes.html">
+          <span class="icon">📝</span> Notes
+          <span class="badge">3</span>
+        </a>
+        <a class="nav-item" href="04-calendar.html">
+          <span class="icon">🗓</span> Calendar
+          <span class="badge">2</span>
+        </a>
+        <a class="nav-item" href="06-mail-digest.html">
+          <span class="icon">📧</span> Mail Digest
+        </a>
+        <a class="nav-item" href="07-voice.html">
+          <span class="icon">🎤</span> Voice
+        </a>
+      </div>
+      <div class="nav-section">
+        <div class="nav-section-label">Account</div>
+        <a class="nav-item" href="#">
+          <span class="icon">👤</span> Profile
+        </a>
+        <a class="nav-item" href="#">
+          <span class="icon">❓</span> Help
+        </a>
+      </div>
+      <div class="nav-section">
+        <div class="nav-section-label">Admin</div>
+        <a class="nav-item" href="05-admin.html">
+          <span class="icon">🔐</span> Admin Panel
+        </a>
+      </div>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="avatar">SU</div>
+      <div>
+        <div style="font-weight: 500">Stas Ulmer</div>
+        <div class="text-xs text-dim">Admin</div>
+      </div>
+      <span class="status-dot online" style="margin-left: auto" title="Bot online"></span>
+    </div>
+  </aside>
+
+  <!-- ── Main Content ── -->
+  <main class="main-content">
+    <div class="topbar">
+      <span class="topbar-title">Dashboard</span>
+      <div class="topbar-actions">
+        <button class="btn-icon" title="Dark/Light mode">🌙</button>
+        <button class="btn-icon" title="Notifications">🔔</button>
+        <button class="btn-icon" title="Telegram">✈️</button>
+      </div>
+    </div>
+
+    <div class="content-area">
+      <!-- Welcome card -->
+      <div class="card" style="background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); border-color: #2a2a5e;">
+        <div style="display: flex; align-items: center; gap: 16px;">
+          <div style="font-size: 48px;">🤖</div>
+          <div>
+            <h2 style="font-size: 20px; margin-bottom: 4px;">Welcome back, Stas!</h2>
+            <p class="text-muted">Your personal AI assistant is ready. 3 new mails, 2 events today.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Quick Actions -->
+      <h3 style="font-size: 14px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px;">
+        Quick Actions
+      </h3>
+      <div class="grid-4" style="margin-bottom: 24px;">
+        <div class="card" style="cursor: pointer; text-align: center; padding: 20px 12px;">
+          <div style="font-size: 28px; margin-bottom: 8px;">💬</div>
+          <div style="font-weight: 500; font-size: 14px;">Free Chat</div>
+          <div class="text-xs text-dim" style="margin-top: 4px;">Ask anything</div>
+        </div>
+        <div class="card" style="cursor: pointer; text-align: center; padding: 20px 12px;">
+          <div style="font-size: 28px; margin-bottom: 8px;">📝</div>
+          <div style="font-weight: 500; font-size: 14px;">New Note</div>
+          <div class="text-xs text-dim" style="margin-top: 4px;">3 notes total</div>
+        </div>
+        <div class="card" style="cursor: pointer; text-align: center; padding: 20px 12px;">
+          <div style="font-size: 28px; margin-bottom: 8px;">🗓</div>
+          <div style="font-weight: 500; font-size: 14px;">Calendar</div>
+          <div class="text-xs text-dim" style="margin-top: 4px;">2 events today</div>
+        </div>
+        <div class="card" style="cursor: pointer; text-align: center; padding: 20px 12px;">
+          <div style="font-size: 28px; margin-bottom: 8px;">📧</div>
+          <div style="font-weight: 500; font-size: 14px;">Mail Digest</div>
+          <div class="text-xs text-dim" style="margin-top: 4px;">Last: 2h ago</div>
+        </div>
+      </div>
+
+      <!-- Stats row -->
+      <div class="grid-3" style="margin-bottom: 24px;">
+        <div class="card">
+          <div class="card-title"><span style="color: var(--success)">●</span> Bot Status</div>
+          <div style="font-size: 24px; font-weight: 600;">Online</div>
+          <div class="text-xs text-dim" style="margin-top: 4px;">Uptime: 3d 14h 22m</div>
+        </div>
+        <div class="card">
+          <div class="card-title">📊 Today's Activity</div>
+          <div style="font-size: 24px; font-weight: 600;">12</div>
+          <div class="text-xs text-dim" style="margin-top: 4px;">Messages processed</div>
+        </div>
+        <div class="card">
+          <div class="card-title">🤖 Active Model</div>
+          <div style="font-size: 16px; font-weight: 500; margin-top: 4px;">GPT-4o-mini</div>
+          <div class="text-xs text-dim" style="margin-top: 4px;">via OpenRouter</div>
+        </div>
+      </div>
+
+      <!-- Today's Events -->
+      <div class="card">
+        <div class="card-title">🗓 Today's Events</div>
+        <div style="display: flex; flex-direction: column; gap: 10px;">
+          <div style="display: flex; align-items: center; gap: 12px; padding: 10px; background: var(--bg-input); border-radius: var(--radius);">
+            <div style="width: 4px; height: 36px; border-radius: 2px; background: var(--accent);"></div>
+            <div>
+              <div style="font-weight: 500;">Team Meeting</div>
+              <div class="text-xs text-dim">10:00 — 11:00</div>
+            </div>
+            <div class="text-xs text-dim" style="margin-left: auto;">in 2 hours</div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 12px; padding: 10px; background: var(--bg-input); border-radius: var(--radius);">
+            <div style="width: 4px; height: 36px; border-radius: 2px; background: var(--success);"></div>
+            <div>
+              <div style="font-weight: 500;">Doctor Appointment</div>
+              <div class="text-xs text-dim">15:00 — 15:30</div>
+            </div>
+            <div class="text-xs text-dim" style="margin-left: auto;">in 7 hours</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </main>
+</div>
+
+<div class="mockup-label">MOCKUP — Main Menu</div>
+</body>
+</html>
