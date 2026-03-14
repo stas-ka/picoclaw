@@ -352,18 +352,23 @@ Before starting ANY significant update on a target host:
 2. ✅ Target host reachable (`plink -pw "%HOSTPWD%" -batch stas@OpenClawPI "echo ok"`)
 3. ✅ Backup location exists locally (`backup/snapshots/`)
 
-### Step 1 — Create timestamped backup ON the Pi
+### Step 1 — Create backup ON the Pi (named by host, version, timestamp)
+
+Backup filenames encode **target name + SW release + timestamp**:
+`picoclaw_backup_<HOST>_v<VERSION>_<YYYYMMDD_HHmmss>.tar.gz`
 
 ```bat
-rem Set a timestamp variable (PowerShell)
+rem Build backup name: target + BOT_VERSION read from Pi + timestamp
 for /f %%i in ('powershell -c "Get-Date -Format yyyyMMdd_HHmmss"') do set TS=%%i
-echo Backup timestamp: %TS%
+for /f %%v in ('plink -pw "%HOSTPWD%" -batch stas@%TARGETHOST% "grep BOT_VERSION /home/stas/.picoclaw/bot_config.py ^| head -1 ^| cut -d'\"' -f2"') do set VER=%%v
+set BNAME=picoclaw_backup_%TARGETHOST%_v%VER%_%TS%
+echo Backup: %BNAME%
 
 rem Archive all user data and config — excludes large model files
-plink -pw "%HOSTPWD%" -batch stas@OpenClawPI ^
-  "tar czf /tmp/picoclaw_backup_%TS%.tar.gz -C /home/stas/.picoclaw \
-    --exclude=vosk-model-small-ru --exclude=vosk-model-small-de \
-    --exclude='*.onnx' --exclude='ggml-*.bin' \
+plink -pw "%HOSTPWD%" -batch stas@%TARGETHOST% ^
+  "tar czf /tmp/%BNAME%.tar.gz -C /home/stas/.picoclaw ^
+    --exclude=vosk-model-small-ru --exclude=vosk-model-small-de ^
+    --exclude='*.onnx' --exclude='ggml-*.bin' ^
     . 2>/dev/null && echo BACKUP_OK"
 ```
 
@@ -372,8 +377,8 @@ Expected output: `BACKUP_OK`. If not — **stop, do not proceed**.
 ### Step 2 — Verify backup contents
 
 ```bat
-plink -pw "%HOSTPWD%" -batch stas@OpenClawPI ^
-  "tar tzf /tmp/picoclaw_backup_%TS%.tar.gz | grep -E '\.(json|db|txt|env)$' | head -30"
+plink -pw "%HOSTPWD%" -batch stas@%TARGETHOST% ^
+  "tar tzf /tmp/%BNAME%.tar.gz | grep -E '\.(json|db|txt|env)$' | head -30"
 ```
 
 Confirm you see key files: `bot.env`, `config.json`, `registrations.json` or `pico.db`, `voice_opts.json`, calendar and notes entries.
@@ -381,9 +386,9 @@ Confirm you see key files: `bot.env`, `config.json`, `registrations.json` or `pi
 ### Step 3 — Download backup to local machine
 
 ```bat
-if not exist backup\snapshots\%TS% mkdir backup\snapshots\%TS%
-pscp -pw "%HOSTPWD%" stas@OpenClawPI:/tmp/picoclaw_backup_%TS%.tar.gz backup\snapshots\%TS%\
-echo Downloaded to backup\snapshots\%TS%\
+if not exist backup\snapshots\%BNAME% mkdir backup\snapshots\%BNAME%
+pscp -pw "%HOSTPWD%" stas@%TARGETHOST%:/tmp/%BNAME%.tar.gz backup\snapshots\%BNAME%\
+echo Downloaded to backup\snapshots\%BNAME%\
 ```
 
 **The local backup is the safety net. Do not proceed until it is on disk.**
@@ -471,11 +476,11 @@ plink -pw "%HOSTPWD%" -batch stas@OpenClawPI ^
   "echo %HOSTPWD% | sudo -S systemctl stop picoclaw-telegram picoclaw-web 2>/dev/null"
 
 rem 2. Upload the backup back to Pi
-pscp -pw "%HOSTPWD%" backup\snapshots\%TS%\picoclaw_backup_%TS%.tar.gz stas@OpenClawPI:/tmp/
+pscp -pw "%HOSTPWD%" backup\snapshots\%BNAME%\%BNAME%.tar.gz stas@OpenClawPI:/tmp/
 
 rem 3. Restore data files from backup
 plink -pw "%HOSTPWD%" -batch stas@OpenClawPI ^
-  "tar xzf /tmp/picoclaw_backup_%TS%.tar.gz -C /home/stas/.picoclaw --overwrite && echo RESTORE_OK"
+  "tar xzf /tmp/%BNAME%.tar.gz -C /home/stas/.picoclaw --overwrite && echo RESTORE_OK"
 
 rem 4. Redeploy the PREVIOUS version of code from git (last known-good tag)
 plink -pw "%HOSTPWD%" -batch stas@OpenClawPI "echo Restore previous code manually from git"
@@ -658,6 +663,55 @@ Rules:
 - The `architecture.md` "File Layout on Pi", "Process Hierarchy", and component sections must stay in sync with what actually runs.
 - If a new `.service` file is added to `src/services/`, it must appear in the architecture process hierarchy.
 - If new env vars or config keys are introduced, they must be added to the configuration reference table in `architecture.md`.
+
+---
+
+## UI Sync Rule — MANDATORY for any UI change
+
+**Any change to UI functionality (screens, buttons, flows, messages, strings) MUST be applied to ALL UI variants simultaneously and tested before committing.**
+
+### UI variants in this project
+
+| Variant | Location | Technology | Test method |
+|---|---|---|---|
+| **Telegram Bot** | `src/telegram_menu_bot.py` + `src/bot_*.py` + `src/strings.json` | pyTelegramBotAPI inline keyboards | Voice regression tests (T01–T21); manual smoke test |
+| **Web UI** | `src/bot_web.py` + `src/templates/*.html` + `src/static/` | FastAPI + Jinja2 + HTMX | Playwright UI tests (`src/tests/ui/test_ui.py`) |
+
+### Rules
+
+1. **Never update one variant and leave the other outdated.** If a feature (e.g. a new chat mode, a renamed button, a new section) is added to Telegram, it must be reflected in the Web UI — and vice versa.
+2. **Strings and labels must stay in sync.** `src/strings.json` is the canonical source for UI text. Any new key must have translations in all three languages (`ru`, `en`, `de`) and be used in **both** Telegram (`_t()` calls) and Web UI (Jinja2 `{{ t("key") }}` or equivalent).
+3. **Ask the user before deploying:** After implementing a UI change, explicitly ask:
+   > "Which target(s) shall I deploy to? (OpenClawPI / OpenClawPI2 / both)"
+   Then deploy ALL UI variants (Telegram bot files + Web UI templates + static assets) to the chosen target(s) in a single operation.
+4. **Run automated tests after every UI deploy:**
+   ```bat
+   rem Web UI — Playwright (run from local machine against live Pi)
+   py -m pytest src/tests/ui/test_ui.py -v --base-url https://<HOST>:8080 --browser chromium
+
+   rem Telegram — voice regression suite covers i18n + callback coverage
+   plink -pw "%HOSTPWD%" -batch stas@<HOST> "python3 /home/stas/.picoclaw/tests/test_voice_regression.py"
+   ```
+5. **If automated tests are not available for a variant** (e.g. no Playwright test exists for a new screen yet), add a TODO entry in `src/tests/ui/test_ui.py` and note it in the commit message. Do not skip silently.
+6. **Test pass criteria:** All previously passing tests must still pass. New screens must have at least one smoke-test (page loads, no 500 error).
+
+### Deployment template for UI changes
+
+```bat
+rem Deploy Telegram UI files
+pscp -pw "%HOSTPWD%" src\telegram_menu_bot.py src\bot_access.py src\strings.json stas@<HOST>:/home/stas/.picoclaw/
+
+rem Deploy Web UI files
+pscp -pw "%HOSTPWD%" src\bot_web.py stas@<HOST>:/home/stas/.picoclaw/
+pscp -pw "%HOSTPWD%" src\templates\*.html stas@<HOST>:/home/stas/.picoclaw/templates/
+pscp -pw "%HOSTPWD%" src\static\style.css stas@<HOST>:/home/stas/.picoclaw/static/
+
+rem Restart both services
+plink -pw "%HOSTPWD%" -batch stas@<HOST> "echo %HOSTPWD% | sudo -S systemctl restart picoclaw-telegram picoclaw-web"
+
+rem Verify
+plink -pw "%HOSTPWD%" -batch stas@<HOST> "journalctl -u picoclaw-telegram -n 5 --no-pager && journalctl -u picoclaw-web -n 5 --no-pager"
+```
 
 ---
 
