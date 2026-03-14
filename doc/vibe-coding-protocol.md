@@ -159,6 +159,27 @@ Each session block contains a table with one row per completed request:
 
 ---
 
+## Session 9 — 2026-03-13 (Web UI P0–P2 review and bug-fixing, 2-part)
+
+| Time | Request | Complexity | Requests used | Model | Files changed | Status |
+|------|---------|------------|---------------|-------|---------------|--------|
+| ~19:00 | Review and test P0-P2 web UI implementation; fix 7 identified bugs (WEB_ONLY guard, field mismatches, mail refresh, voice opts keys, role badge, admin user dict) | 4 | ~12 | claude-sonnet-4.6 | bot_config.py, bot_web.py, admin.html, mail.html | done |
+| ~22:40 | Fix FileHandler crash on Windows; verify 7 pages 200; fix chat message dict rendering; add status/pending flow for registration; add admin approve/block routes; fix notes namespace; add badge-err CSS + login-info CSS; add info block to register.html | 4 | ~18 | claude-sonnet-4.6 | bot_config.py, bot_auth.py, bot_web.py, _chat_messages.html, admin.html, register.html, style.css | done |
+
+**Session 9 total: 2 items, ~30 requests**
+
+---
+
+## Session 10 — 2026-03-14 (Calendar Web UI console + voice fix)
+
+| Time | Request | Complexity | Requests used | Model | Files changed | Status |
+|------|---------|------------|---------------|-------|---------------|--------|
+| ~06:00 | Fix calendar console + voice not working in Web UI (no LLM API keys on Pi2): add dateutil fallback parser + keyword-based intent detection | 3 | ~6 | claude-sonnet-4.6 | bot_web.py | done |
+
+**Session 10 total: 1 item, ~6 requests**
+
+---
+
 ## Summary Table (all sessions)
 
 | Session | Date | Items | Requests | Avg complexity | Model |
@@ -171,7 +192,9 @@ Each session block contains a table with one row per completed request:
 | 6 | 2026-03-11 | 2 | ~6 | 2.0 | claude-sonnet-4.6 |
 | 7 | 2026-03-12 | 3 | ~17 | 4.0 | claude-opus-4.6 |
 | 8 | 2026-03-12 | 1 | ~2 | 3.0 | claude-opus-4.6 |
-| **Total** | | **45** | **~105** | | |
+| 9 | 2026-03-13 | 2 | ~30 | 4.0 | claude-sonnet-4.6 |
+| 10 | 2026-03-14 | 1 | ~6 | 3.0 | claude-sonnet-4.6 |
+| **Total** | | **47** | **~141** | | |
 
 ---
 
@@ -216,6 +239,91 @@ Each session block contains a table with one row per completed request:
 | — | Align concept-vibe-coding-ui.md with current roadmap: FastAPI-first (not NiceGUI), add bot_llm.py + multi-channel + CRM refs, rewrite §4.5/§5 recommendation, update §7 roadmap to P0–P4, fix appendixes A/B/C | 4 | ~2 | claude-opus-4.6 | doc/web-ui/concept-vibe-coding-ui.md | done |
 
 **Session 10 total: 3 items, ~5 requests**
+
+---
+
+## Session 11 — 2026-03-27 (UTC+1)
+
+**Focus:** Mail IMAP credential configuration via web UI
+
+| Time (UTC) | Request | Complexity | Requests | Model | Files changed | Status |
+|---|---|---|---|---|---|---|
+| — | Add mail IMAP credential config to web UI: provider form (Gmail/Yandex/Mail.ru/Custom), live IMAP connection test, creds summary view, Change/Delete actions | 4 | ~8 | claude-sonnet-4.6 | src/bot_web.py, src/templates/mail.html | done |
+
+**Session 11 total: 1 item, ~8 requests**
+
+---
+
+## Session 12 — 2026-03-13 (UTC+1)
+
+**Focus:** Web UI bug fixes — chat textarea, message rendering, notes editor, mail IMAP refresh, calendar voice, TTS read-aloud; templates/static deploy to Pi2
+
+| Time (UTC) | Request | Complexity | Requests | Model | Files changed | Status |
+|---|---|---|---|---|---|---|
+| — | Fix chat input too small (input→textarea), fix chat message dict rendering bug, fix notes create/edit/save (auto-title, name attr, partial response), add calendar Web Speech API voice, add mail IMAP real-fetch + browser TTS read-aloud, add base.html template blocks; deploy to Pi2 | 4 | ~12 | claude-sonnet-4.6 | src/bot_web.py, src/templates/base.html, src/templates/chat.html, src/templates/_chat_messages.html, src/templates/_note_editor.html, src/templates/calendar.html, src/templates/mail.html, src/static/style.css | done |
+
+**Session 12 total: 1 item, ~12 requests**
+
+---
+
+## Session 13 — 2026-03-13 (UTC+1)
+
+| Time (UTC) | Request | Complexity | Requests | Model | Files changed | Status |
+|---|---|---|---|---|---|---|
+| — | Voice page: TTS/STT endpoints, MediaRecorder API, waveform visualiser, transcript auto-refresh; deploy to Pi2 | 4 | ~8 | claude-sonnet-4.6 | src/bot_web.py, src/templates/voice.html, src/static/style.css | done |
+
+**Session 13 total: 1 item, ~8 requests**
+
+---
+
+## Session 14 — 2026-03-14 (UTC+1)
+
+| Time (UTC) | Request | Complexity | Requests | Model | Files changed | Status |
+|---|---|---|---|---|---|---|
+| — | Fix IMAP error b'[ALERT]…' bytes leaking into UI; add _imap_err_str() with App Password hint | 2 | ~2 | claude-sonnet-4.6 | src/bot_web.py | done |
+| — | Fix chat send button covering textarea (Pico CSS width:100% override) | 2 | ~2 | claude-sonnet-4.6 | src/static/style.css | done |
+| — | Gmail OAuth2 "Connect with Google" flow: OAuth routes (/start, /callback), XOAUTH2 IMAP, Sign-in-with-Google UI in mail.html | 4 | ~6 | claude-sonnet-4.6 | src/bot_web.py, src/templates/mail.html | done |
+
+**Session 14 total: 3 items, ~10 requests**
+
+---
+
+## Session 15 — 2026-03-14 (UTC+1)
+
+**Focus:** Playwright UI test suite + unified assistant chat page
+
+| Time (UTC) | Request | Complexity | Requests | Model | Files changed | Status |
+|---|---|---|---|---|---|---|
+| — | Build 48 Playwright UI tests (TestAuth, TestDashboard, TestChat, TestNotes, TestCalendar, TestVoice, TestMail, TestAdmin, TestNavigation, TestRegistration) + pytest.ini + conftest.py + fixtures | 4 | ~10 | claude-sonnet-4.6 | src/tests/ui/test_ui.py, src/tests/ui/pytest.ini, src/tests/ui/conftest.py | done |
+| — | Fix 6 test failures (calendar id collision, TTS visibility, admin 403, chat message locator) | 3 | ~6 | claude-sonnet-4.6 | src/tests/ui/test_ui.py | done |
+| — | Unified assistant chat: rewrite chat.html into single page with voice mic (MediaRecorder), waveform, pipeline bar (STT→LLM→TTS), action chips rail, audio toggle; update base.html sidebar label; update test selectors | 4 | ~5 | claude-sonnet-4.6 | src/templates/chat.html, src/templates/base.html, src/tests/ui/test_ui.py | done |
+
+**Session 15 total: 3 items, ~21 requests**
+
+---
+
+## Session 16 — 2026-03-14 (UTC+1)
+
+**Focus:** Gen 1.0 multimodal UX concept + interactive HTML mockup
+
+| Time (UTC) | Request | Complexity | Requests | Model | Files changed | Status |
+|---|---|---|---|---|---|---|
+| — | Multimodal UX concept: 8-screen interactive HTML mockup (Hub idle, Listening, Intent card, Note editor+voice, Confirm, Success+WhatsNext, Chat thread, Telegram adaptation) + concept markdown doc | 4 | ~3 | claude-sonnet-4.6 | doc/web-ui/mockups-gen1/index.html, doc/web-ui/concept-multimodal-ux.md | done |
+
+**Session 16 total: 1 item, ~3 requests**
+
+---
+
+## Session 17 — 2026-03-14 (UTC+1)
+
+**Focus:** SQLite spec, Safe Update Protocol, voice language notification in Web UI
+
+| Time (UTC) | Request | Complexity | Requests | Model | Files changed | Status |
+|---|---|---|---|---|---|---|
+| — | SQLite feature spec in TODO.md (decision matrix, 7-table schema, migration plan, bot_db.py spec, tests T22/T23) + Safe Update Protocol in copilot-instructions.md (9-step backup→migrate→test→deploy) | 3 | ~4 | claude-sonnet-4.6 | TODO.md, .github/copilot-instructions.md | done |
+| — | Add Russian-only voice notification to chat.html: empty state info panel + language banner in voice-row + deploy to Pi2 (48/48 tests pass) | 2 | ~3 | claude-sonnet-4.6 | src/templates/chat.html | done |
+
+**Session 17 total: 2 items, ~7 requests**
 
 ---
 

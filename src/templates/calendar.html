@@ -1,0 +1,342 @@
+{% extends "base.html" %}
+{% block title %}Calendar — Pico Bot{% endblock %}
+{% block page_title %}Calendar{% endblock %}
+
+{% block topbar_extra %}
+<div class="flex items-center gap-sm">
+  <span class="fw-bold text-white">{{ month_name }} {{ year }}</span>
+  <button class="btn btn-ghost btn-sm" id="cal-voice-btn" title="Voice: add an event"
+          onclick="startCalVoice()" style="display:flex;align-items:center;gap:4px">
+    <span class="material-icons-round" style="font-size:18px">mic</span> Voice
+  </button>
+  <button id="cal-console-toggle" class="btn btn-ghost btn-sm" onclick="toggleCalConsole()"
+          style="display:flex;align-items:center;gap:4px" title="Natural language console">
+    <span class="material-icons-round" style="font-size:18px">terminal</span> Console
+  </button>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+// ── Toast ────────────────────────────────────────────────────────────────────
+function _calVoiceToast(msg, color) {
+  const t = document.createElement('div');
+  t.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:' +
+    (color || '#333') + ';color:#fff;padding:10px 18px;border-radius:8px;font-size:13px;z-index:9999;max-width:90vw;text-align:center';
+  t.innerHTML = msg;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 5000);
+}
+
+// ── Fill form helpers ────────────────────────────────────────────────────────
+function _fillCalForm(ev) {
+  const titleInput = document.querySelector('input[name="title"]');
+  if (titleInput) titleInput.value = ev.title || '';
+  const dtInput = document.querySelector('input[name="dt_str"]');
+  if (dtInput && ev.dt_iso) dtInput.value = ev.dt_iso;
+  if (ev.remind_min) {
+    const remSelect = document.querySelector('select[name="remind"]');
+    if (remSelect) {
+      const opts = Array.from(remSelect.options);
+      const best = opts.reduce((a, b) =>
+        Math.abs(+b.value - ev.remind_min) < Math.abs(+a.value - ev.remind_min) ? b : a);
+      best.selected = true;
+    }
+  }
+}
+
+function _scrollToAddForm() {
+  const lbl = document.querySelector('.section-label:last-of-type');
+  if (lbl) lbl.scrollIntoView({behavior: 'smooth'});
+}
+
+// ── Voice ────────────────────────────────────────────────────────────────────
+function startCalVoice() {
+  if (location.protocol !== 'https:' &&
+      location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
+    const httpsUrl = location.href.replace(/^http:/, 'https:');
+    _calVoiceToast('🔒 Mic needs HTTPS — <a href="' + httpsUrl +
+      '" style="color:#ffcdd2">switch now</a>', '#c62828');
+    return;
+  }
+  if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+    _calVoiceToast('❌ Voice input not supported in this browser. Try Chrome or Edge.', '#c62828');
+    return;
+  }
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const rec = new SR();
+  rec.lang = navigator.language || 'ru-RU';
+  rec.interimResults = false;
+  rec.maxAlternatives = 1;
+  const btn = document.getElementById('cal-voice-btn');
+  btn.innerHTML = '<span class="material-icons-round" style="font-size:18px;color:#ff5252">mic</span> Listening…';
+  rec.start();
+
+  rec.onresult = function(e) {
+    const text = e.results[0][0].transcript;
+    btn.innerHTML = '<span class="material-icons-round" style="font-size:18px">mic</span> Voice';
+    _calVoiceToast('🎤 Parsing: ' + text + ' …');
+
+    fetch('/calendar/parse-text', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({text: text})
+    })
+    .then(r => r.json())
+    .then(data => {
+      const events = data.events || [];
+      if (events.length === 0) {
+        // Fallback — put raw text in title
+        const titleInput = document.querySelector('input[name="title"]');
+        if (titleInput) titleInput.value = text;
+        _calVoiceToast('🎤 Could not parse event — title filled with recognised text.');
+      } else {
+        _fillCalForm(events[0]);
+        const extra = events.length > 1 ? ' (' + events.length + ' events found, first filled)' : '';
+        _calVoiceToast('✅ Filled: ' + events[0].title + (events[0].dt_iso ? ' @ ' + events[0].dt_iso : '') + extra, '#2e7d32');
+        _scrollToAddForm();
+      }
+    })
+    .catch(() => {
+      const titleInput = document.querySelector('input[name="title"]');
+      if (titleInput) titleInput.value = text;
+      _calVoiceToast('🎤 Recognised: ' + text + ' (AI parse unavailable)');
+    });
+  };
+
+  rec.onerror = function(e) {
+    btn.innerHTML = '<span class="material-icons-round" style="font-size:18px">mic</span> Voice';
+    _calVoiceToast('🎤 Voice error: ' + e.error, '#c62828');
+  };
+  rec.onend = function() {
+    btn.innerHTML = '<span class="material-icons-round" style="font-size:18px">mic</span> Voice';
+  };
+}
+
+// ── Console ──────────────────────────────────────────────────────────────────
+function toggleCalConsole() {
+  const panel = document.getElementById('cal-console-panel');
+  if (!panel) return;
+  const hidden = panel.style.display === 'none' || panel.style.display === '';
+  panel.style.display = hidden ? 'block' : 'none';
+  if (hidden) document.getElementById('cal-console-input').focus();
+}
+
+function submitCalConsole() {
+  const ta  = document.getElementById('cal-console-input');
+  const btn = document.getElementById('cal-console-btn');
+  const res = document.getElementById('cal-console-results');
+  const text = ta.value.trim();
+  if (!text) return;
+
+  btn.disabled = true;
+  btn.textContent = '⏳ …';
+  res.innerHTML = '';
+
+  fetch('/calendar/console', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({text: text})
+  })
+  .then(r => r.json())
+  .then(data => {
+    btn.disabled = false;
+    btn.textContent = '→ Go';
+
+    if (data.action === 'add') {
+      const evs = data.events || [];
+      if (evs.length === 0) {
+        res.innerHTML = '<div style="color:#ff5252;font-size:0.85rem;padding:6px 0">❌ Could not extract event details. Try again with more info.</div>';
+        return;
+      }
+      _fillCalForm(evs[0]);
+      ta.value = '';
+      if (evs.length === 1) {
+        res.innerHTML = '<div style="color:#4caf50;font-size:0.85rem;padding:6px 0">✅ Fields filled — review and click <b>Add Event</b></div>';
+      } else {
+        const list = evs.map((e, i) =>
+          '<li' + (i===0?' style="color:var(--accent)"':'') + '>' + e.title + ' — ' + e.dt_iso + '</li>'
+        ).join('');
+        res.innerHTML = '<div style="font-size:0.85rem;padding:6px 0;color:#ff9800">Found ' + evs.length +
+          ' events; first filled above. Add remaining one by one:<ul style="margin:4px 0 0 16px">' + list + '</ul></div>';
+      }
+      _scrollToAddForm();
+
+    } else if (data.action === 'query') {
+      const evs = data.events || [];
+      if (evs.length === 0) {
+        res.innerHTML = '<div style="color:var(--text-secondary);font-size:0.85rem;padding:6px 0">No upcoming events found.</div>';
+      } else {
+        const rows = evs.map(e =>
+          '<div style="padding:4px 0;border-bottom:1px solid var(--border)">' +
+          '<span style="color:var(--accent);font-size:0.8rem;margin-right:8px">' + e.dt_iso + '</span>' +
+          '<span style="color:var(--text-primary)">' + e.title + '</span>' +
+          '</div>'
+        ).join('');
+        res.innerHTML = '<div style="font-size:0.85rem;padding:6px 0">' + rows + '</div>';
+      }
+
+    } else if (data.action === 'delete') {
+      res.innerHTML = '<div style="font-size:0.85rem;padding:6px 0;color:#ff9800">' +
+        'Delete <b style="color:var(--text-primary)">&quot;' + data.title + '&quot;</b>?&nbsp;&nbsp;' +
+        '<a href="#" onclick="_calDeleteConfirm(\'' + data.ev_id + '\'); return false" ' +
+        'style="color:#ff5252;font-weight:bold">✅ Confirm</a>' +
+        '&nbsp;&nbsp;<a href="#" onclick="document.getElementById(\' cal-console-results\').innerHTML=\'\'; return false"' +
+        ' style="color:var(--text-secondary)">✗ Cancel</a></div>';
+
+    } else if (data.action === 'edit') {
+      _fillCalForm({title: data.title, dt_iso: data.dt_iso, remind_min: data.remind_min});
+      ta.value = '';
+      res.innerHTML = '<div style="color:#4caf50;font-size:0.85rem;padding:6px 0">✏️ Event loaded — edit fields and click <b>Add Event</b> to re-save.</div>';
+      _scrollToAddForm();
+
+    } else {
+      res.innerHTML = '<div style="color:#ff5252;font-size:0.85rem;padding:6px 0">❌ ' + (data.message || 'Unexpected error') + '</div>';
+    }
+  })
+  .catch(err => {
+    btn.disabled = false;
+    btn.textContent = '→ Go';
+    res.innerHTML = '<div style="color:#ff5252;font-size:0.85rem;padding:6px 0">❌ Network error: ' + err + '</div>';
+  });
+}
+
+function _calDeleteConfirm(evId) {
+  fetch('/calendar/' + evId + '/delete', {method: 'POST'})
+    .then(() => location.reload())
+    .catch(err => alert('Delete failed: ' + err));
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+  const ta = document.getElementById('cal-console-input');
+  if (ta) {
+    ta.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        submitCalConsole();
+      }
+    });
+  }
+});
+</script>
+{% endblock %}
+
+{% block content %}
+<div class="calendar-container">
+
+  <!-- ── Calendar grid ───────────── -->
+  <div class="cal-grid">
+    <div class="cal-header">Mon</div>
+    <div class="cal-header">Tue</div>
+    <div class="cal-header">Wed</div>
+    <div class="cal-header">Thu</div>
+    <div class="cal-header">Fri</div>
+    <div class="cal-header">Sat</div>
+    <div class="cal-header">Sun</div>
+
+    {% for week in weeks %}
+      {% for day in week %}
+        {% if day == 0 %}
+          <div class="cal-day cal-empty"></div>
+        {% else %}
+          {% set day_key = "%d-%02d-%02d"|format(year, month, day) %}
+          <div class="cal-day {% if day == today %}cal-today{% endif %}
+                      {% if day_key in events_by_day %}cal-has-events{% endif %}">
+            <span class="cal-num">{{ day }}</span>
+            {% if day_key in events_by_day %}
+              {% for ev in events_by_day[day_key][:3] %}
+              <div class="cal-event" style="background:{{ event_colors[loop.index0 % (event_colors|length)] }}20; color:{{ event_colors[loop.index0 % (event_colors|length)] }}">
+                {{ ev.time }} {{ ev.title[:15] }}
+              </div>
+              {% endfor %}
+            {% endif %}
+          </div>
+        {% endif %}
+      {% endfor %}
+    {% endfor %}
+  </div>
+
+  <!-- ── Upcoming Events ─────────── -->
+  <p class="section-label mt-md">Upcoming Events</p>
+  {% if upcoming_events %}
+  <div class="mb-md">
+    {% for ev in upcoming_events %}
+    <div class="card flex items-center gap-md mb-sm" style="padding:12px 16px">
+      <span style="min-width:130px; font-size:0.8rem; color:var(--accent)">{{ ev.dt }}</span>
+      <span style="flex:1" class="text-white">{{ ev.title }}</span>
+      <form method="post" action="/calendar/{{ ev.id }}/delete" style="display:inline"
+            onsubmit="return confirm('Delete \u201c{{ ev.title }}\u201d?')">
+        <button type="submit"
+                style="background:none; border:none; cursor:pointer; color:#ff5252; font-size:18px; line-height:1; padding:0">🗑</button>
+      </form>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="card text-muted mb-md" style="padding:16px">No upcoming events. Add one below.</div>
+  {% endif %}
+
+  <!-- ── Console ─────────────────── -->
+  <div id="cal-console-panel" style="display:none" class="mb-md">
+    <p class="section-label">AI Console</p>
+    <div class="card">
+      <p style="font-size:0.8rem;color:var(--text-secondary);margin:0 0 10px 0">
+        Type any natural language command — <em>add</em>, <em>list</em>, <em>delete</em>, or <em>edit</em> events.
+        Press <kbd style="background:var(--bg-primary);border:1px solid var(--border);border-radius:3px;padding:1px 5px;font-size:0.75rem">Ctrl+Enter</kbd> to submit.
+      </p>
+      <div class="flex" style="gap:8px;align-items:flex-start">
+        <textarea id="cal-console-input" rows="2" placeholder="e.g. &quot;Add lunch tomorrow at 12:30&quot; or &quot;What&#39;s on this week?&quot;"
+                  style="flex:1;padding:8px 12px;background:var(--bg-primary);border:1px solid var(--border);
+                         border-radius:var(--radius-sm);color:var(--text-primary);font-size:0.9rem;
+                         resize:vertical;min-height:52px;font-family:inherit"></textarea>
+        <button id="cal-console-btn" onclick="submitCalConsole()"
+                style="padding:9px 16px;background:var(--accent);color:#fff;border:none;
+                       border-radius:var(--radius-sm);cursor:pointer;font-size:0.9rem;white-space:nowrap;
+                       align-self:stretch">→ Go</button>
+      </div>
+      <div id="cal-console-results"></div>
+    </div>
+  </div>
+
+  <!-- ── Add Event ───────────────── -->
+  <p class="section-label">Add Event</p>
+  <div class="card mb-md">
+    <form method="post" action="/calendar/add"
+          class="flex flex-wrap items-end" style="gap:12px">
+      <div style="flex:2; min-width:160px">
+        <label style="font-size:0.75rem; color:var(--text-secondary); display:block; margin-bottom:4px">Title</label>
+        <input name="title" type="text" required placeholder="Meeting, Doctor…"
+               style="width:100%; padding:8px 12px; background:var(--bg-primary);
+                      border:1px solid var(--border); border-radius:var(--radius-sm);
+                      color:var(--text-primary); font-size:0.9rem; box-sizing:border-box">
+      </div>
+      <div style="flex:2; min-width:180px">
+        <label style="font-size:0.75rem; color:var(--text-secondary); display:block; margin-bottom:4px">Date &amp; Time</label>
+        <input name="dt_str" type="datetime-local" required
+               style="width:100%; padding:8px 12px; background:var(--bg-primary);
+                      border:1px solid var(--border); border-radius:var(--radius-sm);
+                      color:var(--text-primary); font-size:0.9rem; box-sizing:border-box">
+      </div>
+      <div style="flex:1; min-width:110px">
+        <label style="font-size:0.75rem; color:var(--text-secondary); display:block; margin-bottom:4px">Remind before</label>
+        <select name="remind"
+                style="width:100%; padding:8px 12px; background:var(--bg-primary);
+                       border:1px solid var(--border); border-radius:var(--radius-sm);
+                       color:var(--text-primary); font-size:0.9rem">
+          <option value="5">5 min</option>
+          <option value="15" selected>15 min</option>
+          <option value="30">30 min</option>
+          <option value="60">1 hour</option>
+        </select>
+      </div>
+      <div>
+        <button type="submit"
+                style="padding:9px 20px; background:var(--accent); color:#fff;
+                       border:none; border-radius:var(--radius-sm); cursor:pointer;
+                       font-size:0.9rem; white-space:nowrap">➕ Add Event</button>
+      </div>
+    </form>
+  </div>
+
+</div>
+{% endblock %}

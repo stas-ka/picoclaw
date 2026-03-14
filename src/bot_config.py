@@ -83,7 +83,7 @@ ERROR_PROTOCOL_DIR  = os.environ.get("ERROR_PROTOCOL_DIR",
 # Bot version — bump on every user-visible deployment
 # ─────────────────────────────────────────────────────────────────────────────
 
-BOT_VERSION        = "2026.3.27"
+BOT_VERSION        = "2026.3.28"
 RELEASE_NOTES_FILE = os.environ.get(
     "RELEASE_NOTES_FILE",
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "release_notes.json"),
@@ -157,27 +157,34 @@ _VOICE_OPTS_DEFAULTS: dict = {
 # Validation
 # ─────────────────────────────────────────────────────────────────────────────
 
-if not BOT_TOKEN:
-    raise RuntimeError("BOT_TOKEN not set. Add it to ~/.picoclaw/bot.env")
-if not ALLOWED_USERS and not ADMIN_USERS:
-    raise RuntimeError(
-        "ALLOWED_USERS (or ALLOWED_USER / TELEGRAM_CHAT_ID) not set. "
-        "Set to a comma-separated list of Telegram chat IDs."
+# WEB_ONLY=1 allows bot_auth / bot_llm / bot_web to import without Telegram config.
+# telegram_menu_bot.py performs its own hard check at startup.
+_WEB_ONLY = os.environ.get("WEB_ONLY", "0").lower() in ("1", "true", "yes")
+
+if not _WEB_ONLY:
+    if not BOT_TOKEN:
+        raise RuntimeError("BOT_TOKEN not set. Add it to ~/.picoclaw/bot.env")
+    if not ALLOWED_USERS and not ADMIN_USERS:
+        raise RuntimeError(
+            "ALLOWED_USERS (or ALLOWED_USER / TELEGRAM_CHAT_ID) not set. "
+            "Set to a comma-separated list of Telegram chat IDs."
     )
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Logging — set up once here; all modules use getLogger("pico-tgbot")
 # ─────────────────────────────────────────────────────────────────────────────
 
+_LOG_FILE = os.path.expanduser("~/.picoclaw/telegram_bot.log")
+_log_handlers: list = [logging.StreamHandler()]
+try:
+    os.makedirs(os.path.dirname(_LOG_FILE), exist_ok=True)
+    _log_handlers.append(logging.FileHandler(_LOG_FILE, encoding="utf-8"))
+except OSError:
+    pass  # dev environment without ~/.picoclaw/ — log to console only
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
-    handlers=[
-        logging.StreamHandler(),
-        logging.FileHandler(
-            os.path.expanduser("~/.picoclaw/telegram_bot.log"),
-            encoding="utf-8",
-        ),
-    ],
+    handlers=_log_handlers,
 )
 log = logging.getLogger("pico-tgbot")

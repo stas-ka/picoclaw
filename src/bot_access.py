@@ -347,7 +347,6 @@ def _menu_keyboard(chat_id: int = 0) -> InlineKeyboardMarkup:
     kb.add(InlineKeyboardButton(_t(chat_id, "btn_chat"),    callback_data="mode_chat"))
     if _is_admin(chat_id):    # System Chat is admin-only: executes commands on the Pi
         kb.add(InlineKeyboardButton(_t(chat_id, "btn_system"), callback_data="mode_system"))
-    kb.add(InlineKeyboardButton(_t(chat_id, "btn_voice"),   callback_data="voice_session"))
     if not _is_guest(chat_id):
         kb.add(InlineKeyboardButton(_t(chat_id, "btn_notes"),    callback_data="menu_notes"))
         kb.add(InlineKeyboardButton(_t(chat_id, "btn_calendar"), callback_data="menu_calendar"))

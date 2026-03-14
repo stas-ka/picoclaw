@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — Pico Bot{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
+
+{% block content %}
+
+<!-- ── Welcome card ───────────────────────────────────────── -->
+<div class="card card-highlight mb-md">
+  <div class="flex items-center gap-md">
+    <span style="font-size:36px">🤖</span>
+    <div>
+      <h2 class="mt-0 mb-0" style="font-size:20px">Welcome back, {{ user.username }}!</h2>
+      <p class="text-muted mb-0">Your personal AI assistant is ready. {{ todays_events|length }} events today.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── Quick actions ──────────────────────────────────────── -->
+<p class="section-label">Quick Actions</p>
+<div class="quick-actions mb-md">
+  {% for a in quick_actions %}
+  <a href="{{ a.href }}" class="card quick-card" style="text-decoration:none">
+    <div class="icon">{{ a.icon }}</div>
+    <div class="title">{{ a.title }}</div>
+    <div class="sub">{{ a.sub }}</div>
+  </a>
+  {% endfor %}
+</div>
+
+<!-- ── Today's Events ─────────────────────────────────────── -->
+<p class="section-label">Today's Events</p>
+{% if todays_events %}
+  {% for ev in todays_events %}
+  <div class="card card-accent-left mb-sm">
+    <span style="color:var(--accent); font-weight:700">{{ ev.time }}</span>
+    <span class="fw-bold text-white" style="margin-left:12px">{{ ev.title }}</span>
+  </div>
+  {% endfor %}
+{% else %}
+  <div class="card mb-sm"><span class="text-dim">No events today</span></div>
+{% endif %}
+
+<!-- ── Recent Notes ───────────────────────────────────────── -->
+<p class="section-label mt-md">Recent Notes</p>
+{% if recent_notes %}
+  {% for n in recent_notes %}
+  <div class="card card-accent-left mb-sm">
+    <div class="flex items-center justify-between">
+      <span class="text-white fw-bold">{{ n.title }}</span>
+      <span class="text-dim text-xs">{{ n.date }}</span>
+    </div>
+    <div class="text-muted text-sm" style="margin-top:4px">{{ n.preview }}</div>
+  </div>
+  {% endfor %}
+{% else %}
+  <div class="card mb-sm"><span class="text-dim">No notes yet</span></div>
+{% endif %}
+
+<!-- ── System Status ──────────────────────────────────────── -->
+<p class="section-label mt-md">System Status</p>
+<div class="stat-row">
+  {% for s in system_status %}
+  <div class="card stat-card">
+    <div class="stat-label">{{ s.label }}</div>
+    <div class="stat-value" style="color:{{ s.color }}">{{ s.value }}</div>
+  </div>
+  {% endfor %}
+</div>
+
+{% endblock %}

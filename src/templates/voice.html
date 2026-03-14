@@ -1,0 +1,384 @@
+{% extends "base.html" %}
+{% block title %}Voice Chat — Pico Bot{% endblock %}
+{% block page_title %}🎤 Voice Chat{% endblock %}
+
+{% block content %}
+<style>
+/* ── Voice conversation layout ───────────────────────────────────────────── */
+.vc-box       { display:flex; flex-direction:column; height:460px; border:1px solid var(--border); border-radius:var(--radius); background:var(--bg-card); overflow:hidden; }
+.vc-thread    { flex:1; overflow-y:auto; display:flex; flex-direction:column; gap:10px; padding:14px 12px 8px; }
+.vc-thread::-webkit-scrollbar { width:6px; }
+.vc-thread::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
+.vc-empty     { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; padding:24px; gap:8px; }
+.vc-proc-bar  { padding:8px 12px; border-top:1px solid var(--border); background:var(--bg-primary); display:none; }
+.vc-input-bar { padding:10px 12px; border-top:1px solid var(--border); background:var(--bg-primary); }
+.vc-waveform  { height:36px; display:flex; align-items:flex-end; gap:2px; overflow:hidden; margin-bottom:6px; }
+.stage-pill   { display:inline-flex; align-items:center; gap:4px; padding:2px 10px; border-radius:20px; font-size:11px; font-weight:600; background:var(--bg-card); color:var(--text-dim); border:1px solid var(--border); transition:all .25s; white-space:nowrap; }
+.stage-active { background:var(--accent) !important; color:#fff !important; border-color:var(--accent) !important; box-shadow:0 0 8px rgba(124,77,255,.5); }
+.stage-done   { background:var(--success) !important; color:#fff !important; border-color:var(--success) !important; }
+@keyframes vc-spin { to { transform:rotate(360deg); } }
+.vc-spinner   { display:inline-block; width:13px; height:13px; border:2px solid currentColor; border-top-color:transparent; border-radius:50%; animation:vc-spin .65s linear infinite; vertical-align:middle; }
+</style>
+
+<!-- ── Mini pipeline badges ──────────────────────────────────────────────── -->
+<div class="flex gap-sm mb-md" style="flex-wrap:wrap; align-items:center">
+  {% for stage in pipeline %}
+  <span class="badge {% if stage.status == 'ready' %}badge-ok{% else %}badge-warn{% endif %}"
+        title="{{ stage.detail }}">{{ stage.icon }} {{ stage.name }}: {{ stage.status }}</span>
+  {% endfor %}
+  <span class="badge badge-info" style="margin-left:auto"
+        title="Typical end-to-end latency on Pi 3 B+">⏱ ~30–90 s / turn on Pi 3</span>
+</div>
+
+<!-- ── Conversation box ───────────────────────────────────────────────────── -->
+<div class="vc-box mb-md">
+
+  <!-- thread scrolls internally -->
+  <div id="vc-thread" class="vc-thread">
+    <div id="vc-empty" class="vc-empty">
+      <div style="font-size:48px">🎤</div>
+      <div class="fw-bold text-white" style="font-size:16px">Voice Conversation</div>
+      <div class="text-dim text-sm" style="max-width:340px; line-height:1.5">
+        Press <strong>Record</strong> and speak. Pico will transcribe your voice,
+        ask the LLM, and reply with synthesised speech — the same pipeline as the Telegram bot.
+      </div>
+      <div style="color:#f59e0b; font-size:12px; margin-top:4px">
+        ⚠️ First turn ≈ 30–90 s on Pi 3 B+ (Vosk STT + LLM + Piper TTS)
+      </div>
+    </div>
+    <!-- JS appends chat-bubble elements here -->
+  </div>
+
+  <!-- processing bar — JS shows/hides -->
+  <div id="vc-proc-bar" class="vc-proc-bar">
+    <div class="flex gap-sm items-center mb-sm">
+      <span class="vc-spinner" style="color:var(--accent)"></span>
+      <span id="vc-proc-label" class="text-dim text-sm" style="flex:1">Processing…</span>
+      <span id="vc-proc-timer" class="text-dim text-xs">0 s</span>
+    </div>
+    <div class="flex gap-sm" style="flex-wrap:wrap">
+      <span id="stage-stt" class="stage-pill">🎤 STT</span>
+      <span style="color:var(--text-dim); line-height:24px; font-size:12px">→</span>
+      <span id="stage-llm" class="stage-pill">🤖 LLM</span>
+      <span style="color:var(--text-dim); line-height:24px; font-size:12px">→</span>
+      <span id="stage-tts" class="stage-pill">🔊 TTS</span>
+    </div>
+  </div>
+
+  <!-- waveform + mic button -->
+  <div class="vc-input-bar">
+    <div id="vc-waveform" class="vc-waveform" style="display:none"></div>
+    <div class="flex gap-sm items-center">
+      <span id="vc-status" class="text-dim text-sm" style="flex:1">
+        Press <strong>Record</strong> to start
+      </span>
+      <span id="vc-timer" class="fw-bold text-white"
+            style="display:none; min-width:36px; text-align:right">0:00</span>
+      <button id="vc-btn" class="btn btn-primary" onclick="toggleVoiceChat()"
+              style="min-width:130px; padding:10px 20px; font-size:15px">
+        🎤 Record
+      </button>
+    </div>
+  </div>
+
+</div><!-- /.vc-box -->
+
+
+<!-- ── Collapsible: TTS test + pipeline details ──────────────────────────── -->
+<details class="card mb-md">
+  <summary class="section-label"
+           style="cursor:pointer; user-select:none; margin-bottom:0; padding:4px 0">
+    🔊 TTS Test &amp; Pipeline Details
+  </summary>
+  <div class="mt-md">
+
+    <p class="section-label">Pipeline components</p>
+    <div class="pipeline-grid mb-md">
+      {% for stage in pipeline %}
+      <div class="card pipeline-card">
+        <div class="flex items-center gap-sm mb-sm">
+          <span style="font-size:20px">{{ stage.icon }}</span>
+          <span class="fw-bold text-white">{{ stage.name }}</span>
+          <span class="badge {% if stage.status == 'ready' %}badge-ok{% else %}badge-warn{% endif %}"
+                style="margin-left:auto">{{ stage.status }}</span>
+        </div>
+        <div class="text-dim text-sm">{{ stage.detail }}</div>
+      </div>
+      {% endfor %}
+    </div>
+
+    <p class="section-label">Type text → hear Piper speak</p>
+    <div class="card">
+      <div class="flex gap-sm" style="align-items:flex-start">
+        <textarea id="tts-input" rows="2"
+                  style="flex:1; resize:vertical; min-height:56px"
+                  placeholder="Привет! Как дела? / Hello world…"></textarea>
+        <button id="tts-btn" class="btn btn-primary" style="align-self:flex-start"
+                onclick="testTTS()">🔊 Speak</button>
+      </div>
+      <audio id="tts-player" controls
+             style="margin-top:10px; width:100%; display:none; border-radius:8px"></audio>
+      <div id="tts-status" class="text-dim text-sm mt-sm"></div>
+    </div>
+
+  </div>
+</details>
+
+
+<!-- ── Languages ──────────────────────────────────────────────────────────── -->
+<p class="section-label">Supported languages</p>
+<div class="flex gap-sm mb-md" style="flex-wrap:wrap">
+  {% for lang in languages %}
+  <div class="card" style="flex:1; min-width:90px; text-align:center; padding:16px">
+    <div style="font-size:28px">{{ lang.flag }}</div>
+    <div class="text-white fw-bold mt-sm">{{ lang.name }}</div>
+    <div class="text-dim text-xs mb-sm">{{ lang.code.upper() }}</div>
+    <span class="badge {% if lang.status == 'ready' %}badge-ok{% elif lang.status in ('optional','fallback') %}badge-info{% else %}badge-warn{% endif %}">{{ lang.status }}</span>
+  </div>
+  {% endfor %}
+</div>
+
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+/* ── Voice chat state ─────────────────────────────────────────────────────── */
+let vcRec = null, vcChunks = [], vcInterval = null, vcSeconds = 0;
+let vcAnalyser = null, vcAnimFrame = null, vcAudioCtx = null, vcStream = null;
+let vcBusy = false;
+let vcProcInterval = null, vcProcElapsed = 0;
+
+/* ── Entry point: toggle start / stop ────────────────────────────────────── */
+async function toggleVoiceChat() {
+  if (vcBusy) return;
+  if (vcRec && vcRec.state === 'recording') { vcStopRecord(); }
+  else { await vcStartRecord(); }
+}
+
+/* ── Start recording ──────────────────────────────────────────────────────── */
+async function vcStartRecord() {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    const url = location.href.replace(/^http:/, 'https:');
+    vcSetStatus('❌ Mic requires HTTPS — <a href="' + url
+      + '" style="color:var(--accent);text-decoration:underline">switch →</a>');
+    return;
+  }
+  try { vcStream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
+  catch (e) { vcSetStatus('❌ Mic denied: ' + e.message); return; }
+
+  /* waveform */
+  vcAudioCtx = new AudioContext();
+  vcAnalyser = vcAudioCtx.createAnalyser(); vcAnalyser.fftSize = 64;
+  vcAudioCtx.createMediaStreamSource(vcStream).connect(vcAnalyser);
+  const waveDiv = document.getElementById('vc-waveform');
+  waveDiv.style.display = 'flex';
+  waveDiv.innerHTML = Array(vcAnalyser.frequencyBinCount)
+    .fill('<div style="width:5px;background:var(--accent);border-radius:2px;opacity:0.75;height:4px"></div>')
+    .join('');
+  const bars = waveDiv.querySelectorAll('div');
+  (function draw() {
+    const d = new Uint8Array(vcAnalyser.frequencyBinCount);
+    vcAnalyser.getByteFrequencyData(d);
+    bars.forEach((b, i) => { b.style.height = Math.max(4, Math.min(36, d[i] * 0.35)) + 'px'; });
+    vcAnimFrame = requestAnimationFrame(draw);
+  })();
+
+  /* recorder */
+  const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus'
+             : MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/ogg;codecs=opus';
+  vcRec = new MediaRecorder(vcStream, { mimeType: mime }); vcChunks = [];
+  vcRec.ondataavailable = e => e.data.size > 0 && vcChunks.push(e.data);
+  vcRec.onstop = () => vcSendChat(new Blob(vcChunks, { type: mime }));
+  vcRec.start(200);
+
+  const btn = document.getElementById('vc-btn');
+  btn.textContent = '⏹ Stop'; btn.classList.replace('btn-primary', 'btn-danger');
+  vcSetStatus('🔴 Recording… speak your question');
+  document.getElementById('vc-timer').style.display = '';
+  vcSeconds = 0;
+  vcInterval = setInterval(() => {
+    vcSeconds++;
+    const m = Math.floor(vcSeconds / 60);
+    document.getElementById('vc-timer').textContent =
+      m + ':' + String(vcSeconds % 60).padStart(2, '0');
+    if (vcSeconds >= 60) vcStopRecord();
+  }, 1000);
+}
+
+/* ── Stop recording ───────────────────────────────────────────────────────── */
+function vcStopRecord() {
+  if (vcRec && vcRec.state !== 'inactive') vcRec.stop();
+  clearInterval(vcInterval); cancelAnimationFrame(vcAnimFrame);
+  document.getElementById('vc-timer').style.display = 'none';
+  document.getElementById('vc-waveform').style.display = 'none';
+  if (vcStream) { vcStream.getTracks().forEach(t => t.stop()); vcStream = null; }
+  if (vcAudioCtx) { vcAudioCtx.close(); vcAudioCtx = null; }
+  const btn = document.getElementById('vc-btn');
+  btn.textContent = '🎤 Record'; btn.classList.replace('btn-danger', 'btn-primary');
+  vcSetStatus('⏳ Sending audio to server…');
+}
+
+/* ── Send to /voice/chat — full STT → LLM → TTS pipeline ─────────────────── */
+async function vcSendChat(blob) {
+  vcBusy = true;
+  document.getElementById('vc-btn').disabled = true;
+
+  /* hide the "welcome" empty state on first use */
+  const empty = document.getElementById('vc-empty');
+  if (empty) empty.style.display = 'none';
+
+  /* show processing bar */
+  document.getElementById('vc-proc-bar').style.display = '';
+  vcProcElapsed = 0; vcSetStage('stt'); clearInterval(vcProcInterval);
+  vcProcInterval = setInterval(() => {
+    vcProcElapsed++;
+    document.getElementById('vc-proc-timer').textContent = vcProcElapsed + ' s';
+    /* advance stage indicator based on typical Pi 3 timings */
+    if      (vcProcElapsed <  16) vcSetStage('stt');
+    else if (vcProcElapsed <  22) vcSetStage('llm');
+    else                          vcSetStage('tts');
+  }, 1000);
+
+  /* optimistic "transcribing" placeholder bubble */
+  const waitId = 'vcw-' + Date.now();
+  vcAddRawBubble(waitId, 'user',
+    '<span class="text-dim text-sm">🎤 <em>Transcribing…</em></span>', vcNow());
+  vcScrollThread();
+
+  try {
+    const fd = new FormData();
+    fd.append('audio', blob, 'recording.webm');
+    const controller = new AbortController();
+    const tid = setTimeout(() => controller.abort(), 300_000);  // 5 min hard limit
+    const r = await fetch('/voice/chat', { method: 'POST', body: fd, signal: controller.signal });
+    clearTimeout(tid);
+    const j = await r.json();
+
+    /* remove placeholder */
+    const we = document.getElementById(waitId); if (we) we.remove();
+
+    if (!r.ok) { vcSetStatus('❌ Server error: ' + (j.detail || r.statusText)); return; }
+    if (j.error === 'no_speech' || !j.user_text) {
+      vcSetStatus('⚠️ No speech detected — try speaking closer to the mic');
+      return;
+    }
+
+    vcAddBubble('user', j.user_text, vcNow(), null);
+    vcAddBubble('bot',  j.reply_text, vcNow(), j.audio_b64 || null);
+
+    /* auto-play the reply audio */
+    if (j.audio_b64) {
+      const audEls = document.querySelectorAll('#vc-thread audio');
+      if (audEls.length) audEls[audEls.length - 1].play().catch(() => {});
+    }
+    vcSetStatus('✅ Done — press Record to continue');
+    vcScrollThread();
+
+  } catch (e) {
+    const we = document.getElementById(waitId); if (we) we.remove();
+    vcSetStatus('❌ ' + (e.name === 'AbortError'
+      ? 'Timed out — Pi may be very busy' : e.message));
+  } finally {
+    clearInterval(vcProcInterval);
+    document.getElementById('vc-proc-bar').style.display = 'none';
+    vcResetStages();
+    vcBusy = false;
+    document.getElementById('vc-btn').disabled = false;
+  }
+}
+
+/* ── Helpers ─────────────────────────────────────────────────────────────── */
+function vcAddBubble(role, text, time, audio_b64) {
+  const thread = document.getElementById('vc-thread');
+  const div = document.createElement('div');
+  div.className = 'chat-bubble ' + (role === 'user' ? 'chat-user' : 'chat-bot');
+  let audioHtml = '';
+  if (role === 'bot' && audio_b64) {
+    try {
+      const bin = atob(audio_b64), bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      const url = URL.createObjectURL(new Blob([bytes], { type: 'audio/ogg' }));
+      audioHtml = '<div class="mt-sm"><audio controls src="' + url
+        + '" style="width:100%;height:36px;border-radius:8px"></audio></div>';
+    } catch (_) {}
+  }
+  div.innerHTML =
+    '<div class="chat-avatar">' + (role === 'user' ? '👤' : '🤖') + '</div>' +
+    '<div style="flex:1;min-width:0">' +
+      '<div class="chat-meta">' + time + '</div>' +
+      '<div class="chat-body">' + vcEsc(text) + '</div>' +
+      audioHtml +
+    '</div>';
+  thread.appendChild(div);
+}
+
+function vcAddRawBubble(id, role, inner, time) {
+  const thread = document.getElementById('vc-thread');
+  const div = document.createElement('div');
+  div.id = id;
+  div.className = 'chat-bubble ' + (role === 'user' ? 'chat-user' : 'chat-bot');
+  div.innerHTML =
+    '<div class="chat-avatar">' + (role === 'user' ? '👤' : '🤖') + '</div>' +
+    '<div style="flex:1">' +
+      '<div class="chat-meta">' + time + '</div>' +
+      '<div class="chat-body">' + inner + '</div>' +
+    '</div>';
+  thread.appendChild(div);
+}
+
+const _STAGE_LABELS = {
+  stt: '🎤 Transcribing speech (Vosk STT)…',
+  llm: '🤖 LLM thinking (picoclaw → OpenRouter)…',
+  tts: '🔊 Generating audio reply (Piper TTS)…'
+};
+function vcSetStage(active) {
+  document.getElementById('vc-proc-label').textContent = _STAGE_LABELS[active] || 'Processing…';
+  ['stt', 'llm', 'tts'].forEach(s =>
+    document.getElementById('stage-' + s).classList.toggle('stage-active', s === active));
+}
+function vcResetStages() {
+  ['stt', 'llm', 'tts'].forEach(s =>
+    document.getElementById('stage-' + s).classList.remove('stage-active', 'stage-done'));
+  document.getElementById('vc-proc-label').textContent = 'Processing…';
+  document.getElementById('vc-proc-timer').textContent = '0 s';
+}
+function vcScrollThread() {
+  const t = document.getElementById('vc-thread'); t.scrollTop = t.scrollHeight;
+}
+function vcSetStatus(html) { document.getElementById('vc-status').innerHTML = html; }
+function vcNow() {
+  const d = new Date();
+  return d.getHours() + ':' + String(d.getMinutes()).padStart(2, '0');
+}
+function vcEsc(s) {
+  return String(s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/\n/g, '<br>');
+}
+
+/* ── Standalone TTS test (inside collapsed <details>) ────────────────────── */
+async function testTTS() {
+  const text = document.getElementById('tts-input').value.trim();
+  if (!text) return;
+  const btn = document.getElementById('tts-btn');
+  const status = document.getElementById('tts-status');
+  const player = document.getElementById('tts-player');
+  btn.disabled = true; player.style.display = 'none';
+  status.textContent = '⏳ Synthesising with Piper…';
+  try {
+    const fd = new FormData(); fd.append('text', text);
+    const r = await fetch('/voice/tts', { method: 'POST', body: fd });
+    if (!r.ok) { status.textContent = '❌ TTS failed: ' + await r.text(); return; }
+    const blob = await r.blob();
+    if (player.src) URL.revokeObjectURL(player.src);
+    player.src = URL.createObjectURL(blob);
+    player.style.display = ''; player.play();
+    status.textContent = '✅ Playing via Piper ONNX on Pi';
+  } catch (e) { status.textContent = '❌ Network error: ' + e; }
+  finally { btn.disabled = false; }
+}
+document.getElementById('tts-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); testTTS(); }
+});
+</script>
+{% endblock %}

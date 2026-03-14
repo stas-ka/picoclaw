@@ -1,5 +1,11 @@
 [
   {
+    "version": "2026.3.28",
+    "date":    "2026-03-13",
+    "title":   "Unified Chat+Voice mode",
+    "notes":   "- Removed separate Voice Session button from main menu\n- Free Chat now handles both text and voice messages in one mode\n- Chat welcome message now shows voice availability (Russian only, Vosk + Piper TTS)\n- Simplified menu: fewer buttons, same functionality"
+  },
+  {
     "version": "2026.3.27",
     "date":    "2026-03-13",
     "title":   "Calendar console voice fix",

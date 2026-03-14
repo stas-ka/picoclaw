@@ -907,6 +907,16 @@ def _handle_voice_message(chat_id: int, voice_obj) -> None:
                    _t(chat_id, "you_said", text=_clean_text),
                    parse_mode="Markdown")
 
+        # ── Save last transcript for web UI display ────────────────────────────
+        try:
+            _last_t_path = Path(os.path.expanduser("~/.picoclaw")) / "last_transcript.txt"
+            _last_t_path.write_text(
+                f"[telegram] {time.strftime('%Y-%m-%d %H:%M')}  {_clean_text}",
+                encoding="utf-8",
+            )
+        except Exception:
+            pass
+
         # Security L1: reject injection attempts before sending to LLM
         from bot_security import _check_injection
         _is_inj, _inj_reason = _check_injection(text)

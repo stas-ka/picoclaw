@@ -377,3 +377,182 @@ Replace Jinja2 templates with NiceGUI for richer interactivity (sliders, live da
 - [ ] Evaluate NiceGUI RAM footprint on Pi 3 B+ (~60 MB vs FastAPI ~25 MB)
 - [ ] Prototype single page (e.g. Voice Opts toggles) in NiceGUI
 - [ ] If viable: migrate pages incrementally behind feature flag
+
+---
+
+## 9. SQLite Data Layer 🔲
+
+### 9.1 Decision: SQLite vs Files
+
+Keep this decision matrix in mind when storing any new data:
+
+| Data type | Store in | Reason |
+|---|---|---|
+| User records, roles, registration | ✅ **SQLite** | Filtering by status, relational joins, transactional approval |
+| Calendar events | ✅ **SQLite** | Date-range queries, reminder scheduling, multi-user access |
+| Notes metadata (title, mtime, tags) | ✅ **SQLite** | Fast listing, search/sort by title or date |
+| Notes content | ✅ **files** (.md) | Git-trackable, rendered directly, binary-safe, no advantage in DB |
+| Mail credentials | ✅ **SQLite** | Transactional updates, relational to users, simpler than per-user JSON |
+| Chat history / conversation window | ✅ **SQLite** | Time-ordered queries, per-user windowed retrieval, large volume |
+| Voice opts flags | ✅ **SQLite** | Per-user row in `voice_opts` table, merged with user record |
+| TTS orphan tracker | ✅ **SQLite** | ACID guarantees for cleanup state |
+| Bot secrets (`bot.env`) | ✅ **files** | Version-controlled template, never in DB |
+| picoclaw config (`config.json`) | ✅ **files** | Owned by picoclaw binary, not our schema |
+| LLM model selection (`active_model.txt`) | ✅ **files** | Single global value, changes rarely |
+| Voice/audio model files (`.onnx`, Vosk) | ✅ **files** | Binary blobs, no query benefit |
+| Error protocol bundles | 🔀 **hybrid** | Files stay on disk; manifest metadata row in SQLite |
+| Static assets (CSS, JS, templates) | ✅ **files** | Served directly by FastAPI/Jinja2 |
+
+**Guiding rule:** Use SQLite when you need to filter, sort, join, or update data across multiple users. Use files when data is a blob, config/secret, or benefits from git history.
+
+### 9.2 Database File Location
+
+| Environment | Path |
+|---|---|
+| Pi (production) | `~/.picoclaw/pico.db` |
+| Local dev / tests | `~/.picoclaw/pico_test.db` (or `:memory:`) |
+
+SQLite is ideal for Pi 3 B+: zero server process, single file, ~150 kB library overhead, ACID-safe. For the current user count (<10) and data volume (<10 MB) it is more than sufficient.
+
+### 9.3 Schema Design 🔲
+
+```sql
+-- Core user table (replaces registrations.json + users.json)
+CREATE TABLE IF NOT EXISTS users (
+    chat_id     INTEGER PRIMARY KEY,
+    username    TEXT,
+    name        TEXT,
+    role        TEXT    DEFAULT 'pending',  -- pending | approved | blocked | admin
+    language    TEXT    DEFAULT 'ru',
+    audio_on    INTEGER DEFAULT 0,
+    created_at  TEXT    DEFAULT (datetime('now')),
+    approved_at TEXT
+);
+
+-- Voice optimisation flags (replaces voice_opts.json)
+CREATE TABLE IF NOT EXISTS voice_opts (
+    chat_id          INTEGER PRIMARY KEY REFERENCES users(chat_id),
+    silence_strip    INTEGER DEFAULT 0,
+    low_sample_rate  INTEGER DEFAULT 0,
+    warm_piper       INTEGER DEFAULT 0,
+    parallel_tts     INTEGER DEFAULT 0,
+    user_audio_toggle INTEGER DEFAULT 0,
+    tmpfs_model      INTEGER DEFAULT 0,
+    vad_prefilter    INTEGER DEFAULT 0,
+    whisper_stt      INTEGER DEFAULT 0,
+    piper_low_model  INTEGER DEFAULT 0,
+    persistent_piper INTEGER DEFAULT 0,
+    voice_timing_debug INTEGER DEFAULT 0
+);
+
+-- Calendar events (replaces calendar/<chat_id>.json)
+CREATE TABLE IF NOT EXISTS calendar_events (
+    id                TEXT    PRIMARY KEY,
+    chat_id           INTEGER REFERENCES users(chat_id),
+    title             TEXT    NOT NULL,
+    dt_iso            TEXT    NOT NULL,
+    remind_before_min INTEGER DEFAULT 15,
+    reminded          INTEGER DEFAULT 0,
+    created_at        TEXT    DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_calendar_chat_dt ON calendar_events(chat_id, dt_iso);
+
+-- Notes metadata index (content stays in .md files)
+CREATE TABLE IF NOT EXISTS notes_index (
+    slug        TEXT,
+    chat_id     INTEGER REFERENCES users(chat_id),
+    title       TEXT    NOT NULL,
+    created_at  TEXT    DEFAULT (datetime('now')),
+    updated_at  TEXT    DEFAULT (datetime('now')),
+    PRIMARY KEY (slug, chat_id)
+);
+
+-- Per-user mail credentials (replaces mail_creds/<chat_id>.json)
+CREATE TABLE IF NOT EXISTS mail_creds (
+    chat_id      INTEGER PRIMARY KEY REFERENCES users(chat_id),
+    provider     TEXT,
+    email        TEXT,
+    imap_host    TEXT,
+    imap_port    INTEGER DEFAULT 993,
+    password_enc TEXT,     -- base64-encoded (obfuscation only; key in bot.env)
+    target_email TEXT,
+    updated_at   TEXT    DEFAULT (datetime('now'))
+);
+
+-- Conversation history per user (new — needed for memory feature)
+CREATE TABLE IF NOT EXISTS chat_history (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    chat_id    INTEGER REFERENCES users(chat_id),
+    role       TEXT    NOT NULL,  -- 'user' | 'assistant'
+    content    TEXT    NOT NULL,
+    created_at TEXT    DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_history_chat_time ON chat_history(chat_id, created_at);
+
+-- TTS orphan cleanup tracker (replaces pending_tts.json)
+CREATE TABLE IF NOT EXISTS tts_pending (
+    chat_id    INTEGER PRIMARY KEY,
+    msg_id     INTEGER NOT NULL,
+    created_at TEXT    DEFAULT (datetime('now'))
+);
+```
+
+### 9.4 Migration Plan (files → SQLite) 🔲
+
+Migration uses a **dual-write / read-prefer-DB** strategy to avoid data loss:
+
+| Phase | Description | Risk |
+|---|---|---|
+| **Phase 1** — Schema creation | `CREATE TABLE IF NOT EXISTS` on startup; existing files untouched | Zero |
+| **Phase 2** — Dual-write | New writes go to both DB and legacy files; reads from DB with file fallback | Zero |
+| **Phase 3** — Migrate existing data | `src/setup/migrate_to_db.py --source=~/.picoclaw` reads all JSON files, inserts into DB | Low (idempotent) |
+| **Phase 4** — DB-only reads | Remove file fallback; legacy files kept as read-only backup | Low |
+| **Phase 5** — Archive legacy files | Move old JSONs to `~/.picoclaw/legacy_json_backup/` | Zero |
+
+- [ ] Create `src/bot_db.py` — SQLite connection singleton, all CRUD helpers, `init_db()`, `migrate_from_files()`
+- [ ] Schema: all 7 tables above with `CREATE TABLE IF NOT EXISTS` in `init_db()`
+- [ ] `migrate_from_files()` — idempotent: skip rows that already exist in DB
+- [ ] Call `init_db()` in `main()` before any handler registration
+- [ ] Phase 2: dual-write wrappers for `_upsert_registration`, `_save_voice_opts`, `_cal_save`, `_save_note_file`, mail creds
+- [ ] Phase 3: `src/setup/migrate_to_db.py` script (run once on first deploy with DB support)
+- [ ] Add `pico.db` to `.gitignore` (runtime data — never committed)
+
+### 9.5 New `bot_db.py` Module 🔲
+
+```python
+# Dependency chain position: bot_config → bot_db → bot_state → ...
+import sqlite3, threading
+_DB_PATH = os.path.join(PICOCLAW_DIR, 'pico.db')
+_local = threading.local()   # per-thread connection (telebot uses threadpool)
+
+def get_db() -> sqlite3.Connection:
+    """Return thread-local SQLite connection, creating it if needed."""
+    if not getattr(_local, 'conn', None):
+        _local.conn = sqlite3.connect(_DB_PATH, check_same_thread=False)
+        _local.conn.row_factory = sqlite3.Row
+    return _local.conn
+
+def init_db() -> None:
+    """Create all tables on startup. Safe to call every time."""
+    conn = get_db()
+    conn.executescript(SCHEMA_SQL)   # SCHEMA_SQL = all CREATE TABLE IF NOT EXISTS
+    conn.commit()
+```
+
+- [ ] `get_user(chat_id)` → Row or None
+- [ ] `upsert_user(chat_id, username, name, role)` → replaces `_upsert_registration()`
+- [ ] `get_voice_opts(chat_id)` → dict with defaults if no row
+- [ ] `set_voice_opt(chat_id, key, value)` → replaces `_save_voice_opts()`
+- [ ] `get_calendar_events(chat_id, from_dt, to_dt)` → list
+- [ ] `upsert_calendar_event(chat_id, ev_dict)` → replaces `_cal_save()`
+- [ ] `delete_calendar_event(ev_id)` → returns bool
+- [ ] `get_chat_history(chat_id, limit=15)` → list of dicts (role, content)
+- [ ] `append_history(chat_id, role, content)` → insert row
+- [ ] `trim_history(chat_id, keep=15)` → delete oldest beyond window
+
+### 9.6 Testing Changes 🔲
+
+- [ ] Add voice regression test **T22 `sqlite_schema`**: `init_db()` creates all tables; `get_user()` / `upsert_user()` round-trips correctly; `get_calendar_events()` with date filter returns correct subset
+- [ ] Add **T23 `migration_idempotent`**: run `migrate_from_files()` twice on same source → no duplicate rows, no error
+- [ ] Update T18 (`profile_resilience`) to test that `_handle_profile()` reads from DB when available
+- [ ] All existing tests must pass with DB initialised (use `:memory:` DB for test isolation)

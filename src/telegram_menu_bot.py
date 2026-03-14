@@ -44,7 +44,7 @@ from bot_users import (
 
 # ─── Voice pipeline ───────────────────────────────────────────────────────────
 from bot_voice import (
-    _handle_voice_message, _start_voice_session, _handle_note_read_aloud, _handle_digest_tts,
+    _handle_voice_message, _handle_note_read_aloud, _handle_digest_tts,
     _warm_piper_cache, _start_persistent_piper, _setup_tmpfs_model,
     _cleanup_orphaned_tts,
 )
@@ -265,8 +265,6 @@ def callback_handler(call):
         bot.send_message(cid, _t(cid, "system_enter"), parse_mode="Markdown")
 
     # ── Voice ──────────────────────────────────────────────────────────────
-    elif data == "voice_session":
-        _start_voice_session(cid)
     elif data == "voice_audio_toggle":
         _st._user_audio[cid] = not _st._user_audio.get(cid, True)
 
@@ -807,11 +805,6 @@ def text_handler(message):
             _st._user_mode.pop(cid, None)
             bot.send_message(cid, _t(cid, "security_admin_only"),
                              reply_markup=_back_keyboard())
-
-    elif mode == "voice":
-        bot.send_message(cid, _t(cid, "voice_hint"),
-                         parse_mode="Markdown",
-                         reply_markup=_back_keyboard())
 
 
 # ─────────────────────────────────────────────────────────────────────────────

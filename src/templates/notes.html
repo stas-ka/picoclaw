@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Notes — Pico Bot{% endblock %}
+{% block page_title %}Notes{% endblock %}
+
+{% block topbar_extra %}
+<button class="btn btn-accent btn-sm"
+        hx-post="/notes/create" hx-target="#note-list" hx-swap="innerHTML">
+  <span class="material-icons-round" style="font-size:16px">add</span> New Note
+</button>
+{% endblock %}
+
+{% block content %}
+<div class="notes-layout">
+
+  <!-- ── Note list (left panel) ──── -->
+  <div class="notes-sidebar">
+    <div id="note-list"
+         hx-get="/notes/list" hx-trigger="noteListRefresh from:body" hx-swap="innerHTML">
+      {% set active_slug = active_note.slug if active_note else '' %}
+      {% include "_note_list.html" %}
+    </div>
+  </div>
+
+  <!-- ── Editor (right panel) ────── -->
+  <div class="notes-editor" id="note-editor">
+    {% if active_note %}
+      {% include "_note_editor.html" %}
+    {% else %}
+      <div class="note-empty">
+        <span style="font-size:48px">📝</span>
+        <p class="text-muted">Select or create a note</p>
+      </div>
+    {% endif %}
+  </div>
+
+</div>
+{% endblock %}

@@ -339,6 +339,164 @@ Notification state is stored in `~/.picoclaw/last_notified_version.txt` — dele
 
 ---
 
+## Safe Update Protocol — Backup → Migrate → Test → Deploy
+
+> **When to use:** Any update that changes data formats, adds/removes modules, modifies the SQLite schema, or bumps `BOT_VERSION` with structural changes.
+> For pure code-only hotfixes with no schema change, the standard Telegram Bot Deployment Workflow above is sufficient.
+
+### Pre-update checklist
+
+Before starting ANY significant update on a target host:
+
+1. ✅ All local changes committed to git
+2. ✅ Target host reachable (`plink -pw "%HOSTPWD%" -batch stas@OpenClawPI "echo ok"`)
+3. ✅ Backup location exists locally (`backup/snapshots/`)
+
+### Step 1 — Create timestamped backup ON the Pi
+
+```bat
+rem Set a timestamp variable (PowerShell)
+for /f %%i in ('powershell -c "Get-Date -Format yyyyMMdd_HHmmss"') do set TS=%%i
+echo Backup timestamp: %TS%
+
+rem Archive all user data and config — excludes large model files
+plink -pw "%HOSTPWD%" -batch stas@OpenClawPI ^
+  "tar czf /tmp/picoclaw_backup_%TS%.tar.gz -C /home/stas/.picoclaw \
+    --exclude=vosk-model-small-ru --exclude=vosk-model-small-de \
+    --exclude='*.onnx' --exclude='ggml-*.bin' \
+    . 2>/dev/null && echo BACKUP_OK"
+```
+
+Expected output: `BACKUP_OK`. If not — **stop, do not proceed**.
+
+### Step 2 — Verify backup contents
+
+```bat
+plink -pw "%HOSTPWD%" -batch stas@OpenClawPI ^
+  "tar tzf /tmp/picoclaw_backup_%TS%.tar.gz | grep -E '\.(json|db|txt|env)$' | head -30"
+```
+
+Confirm you see key files: `bot.env`, `config.json`, `registrations.json` or `pico.db`, `voice_opts.json`, calendar and notes entries.
+
+### Step 3 — Download backup to local machine
+
+```bat
+if not exist backup\snapshots\%TS% mkdir backup\snapshots\%TS%
+pscp -pw "%HOSTPWD%" stas@OpenClawPI:/tmp/picoclaw_backup_%TS%.tar.gz backup\snapshots\%TS%\
+echo Downloaded to backup\snapshots\%TS%\
+```
+
+**The local backup is the safety net. Do not proceed until it is on disk.**
+
+### Step 4 — Stop services on Pi
+
+```bat
+plink -pw "%HOSTPWD%" -batch stas@OpenClawPI ^
+  "echo %HOSTPWD% | sudo -S systemctl stop picoclaw-telegram picoclaw-web picoclaw-voice 2>/dev/null; echo STOPPED"
+```
+
+### Step 5 — Deploy new code
+
+```bat
+rem Deploy all changed Python modules
+pscp -pw "%HOSTPWD%" src\bot_config.py src\bot_state.py src\bot_instance.py stas@OpenClawPI:/home/stas/.picoclaw/
+pscp -pw "%HOSTPWD%" src\bot_access.py src\bot_users.py src\bot_voice.py    stas@OpenClawPI:/home/stas/.picoclaw/
+pscp -pw "%HOSTPWD%" src\bot_admin.py  src\bot_handlers.py                  stas@OpenClawPI:/home/stas/.picoclaw/
+pscp -pw "%HOSTPWD%" src\telegram_menu_bot.py                                stas@OpenClawPI:/home/stas/.picoclaw/
+pscp -pw "%HOSTPWD%" src\strings.json src\release_notes.json                 stas@OpenClawPI:/home/stas/.picoclaw/
+
+rem Also deploy migration script if schema changed
+pscp -pw "%HOSTPWD%" src\setup\migrate_to_db.py stas@OpenClawPI:/home/stas/.picoclaw/
+```
+
+### Step 6 — Run data migration
+
+Run after every schema-impacting update. The migration script is **idempotent** — safe to run multiple times.
+
+```bat
+plink -pw "%HOSTPWD%" -batch stas@OpenClawPI ^
+  "python3 /home/stas/.picoclaw/migrate_to_db.py --source=/home/stas/.picoclaw && echo MIGRATION_OK"
+```
+
+Expected output: `MIGRATION_OK`. If migration fails — **rollback immediately (Step 9)**.
+
+For config file format changes (e.g. new keys added to JSON files), verify the migration output explicitly:
+
+```bat
+plink -pw "%HOSTPWD%" -batch stas@OpenClawPI "python3 -c \"import json; d=json.load(open('/home/stas/.picoclaw/config.json')); print('Keys:', list(d.keys()))\""
+```
+
+### Step 7 — Start services
+
+```bat
+plink -pw "%HOSTPWD%" -batch stas@OpenClawPI ^
+  "echo %HOSTPWD% | sudo -S systemctl start picoclaw-telegram picoclaw-web 2>/dev/null && sleep 3 && journalctl -u picoclaw-telegram -n 12 --no-pager"
+```
+
+Expected log lines:
+```
+[INFO] Version      : 2026.X.Y
+[INFO] DB init OK   : /home/stas/.picoclaw/pico.db
+[INFO] Polling Telegram…
+```
+
+### Step 8 — Run regression tests with migrated data
+
+Always run regression tests **after** migration, not before — tests must validate that migrated data works correctly with the new code.
+
+```bat
+rem Voice regression tests (mandatory after voice-related changes)
+plink -pw "%HOSTPWD%" -batch stas@OpenClawPI ^
+  "python3 /home/stas/.picoclaw/tests/test_voice_regression.py"
+
+rem Web UI tests (mandatory after web changes)
+rem Run from local machine against live Pi
+python -m pytest src/tests/ui/test_ui.py -v --base-url https://openclawpi:8080 --browser chromium
+
+rem DB / migration tests (mandatory after schema changes)
+plink -pw "%HOSTPWD%" -batch stas@OpenClawPI ^
+  "python3 /home/stas/.picoclaw/tests/test_voice_regression.py --test sqlite_schema,migration_idempotent"
+```
+
+**Pass criteria:**
+- All previously passing tests still pass
+- No new FAIL results
+- WARN is acceptable only for known intentional changes (update baseline if needed)
+
+### Step 9 — Rollback procedure (if tests fail or service won't start)
+
+```bat
+rem 1. Stop services
+plink -pw "%HOSTPWD%" -batch stas@OpenClawPI ^
+  "echo %HOSTPWD% | sudo -S systemctl stop picoclaw-telegram picoclaw-web 2>/dev/null"
+
+rem 2. Upload the backup back to Pi
+pscp -pw "%HOSTPWD%" backup\snapshots\%TS%\picoclaw_backup_%TS%.tar.gz stas@OpenClawPI:/tmp/
+
+rem 3. Restore data files from backup
+plink -pw "%HOSTPWD%" -batch stas@OpenClawPI ^
+  "tar xzf /tmp/picoclaw_backup_%TS%.tar.gz -C /home/stas/.picoclaw --overwrite && echo RESTORE_OK"
+
+rem 4. Redeploy the PREVIOUS version of code from git (last known-good tag)
+plink -pw "%HOSTPWD%" -batch stas@OpenClawPI "echo Restore previous code manually from git"
+
+rem 5. Restart services
+plink -pw "%HOSTPWD%" -batch stas@OpenClawPI ^
+  "echo %HOSTPWD% | sudo -S systemctl start picoclaw-telegram && sleep 3 && journalctl -u picoclaw-telegram -n 10 --no-pager"
+```
+
+### Rules — Safe Update
+
+- **NEVER** deploy to the Pi without a local backup downloaded first
+- **NEVER** run migration before stopping services (race condition with live bot)
+- **NEVER** skip regression tests after a schema change
+- If `MIGRATION_OK` is not printed — the migration failed silently; rollback immediately
+- Keep the last **3** backup archives locally (delete older ones after successful tests)
+- After a successful update, tag the git commit: `git tag deploy/YYYY.M.D`
+- Update `backup/device/README.md` if new services or data files were added
+
+---
+
 ## Russian Voice Assistant (RB-TalkingPI)
 
 Local offline Russian voice interface for picoclaw. Based on analysis of KIM-ASSISTANT project

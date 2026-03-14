@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+{% block title %}Admin — Pico Bot{% endblock %}
+{% block page_title %}Admin Panel{% endblock %}
+
+{% block content %}
+<div class="admin-container">
+
+  <!-- ── Stats row ───────────────── -->
+  <div class="stat-row mb-md">
+    {% for s in stats %}
+    <div class="card stat-card">
+      <div class="stat-label">{{ s.label }}</div>
+      <div class="stat-value" style="color:{{ s.color }}">{{ s.value }}</div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <!-- ── Users table ─────────────── -->
+  <p class="section-label">User Accounts</p>
+  <div class="card mb-md" style="overflow-x:auto">
+    <table class="admin-table">
+      <thead>
+        <tr>
+          <th>Username</th>
+          <th>Role</th>
+          <th>Status</th>
+          <th>Chat ID</th>
+          <th>Created</th>
+          <th style="width:100px"></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for u in users %}
+        <tr>
+          <td class="text-white fw-bold">{{ u.username }}</td>
+          <td><span class="badge {% if u.role == 'Admin' %}badge-ok{% else %}badge-info{% endif %}">{{ u.role }}</span></td>
+          <td>
+            {% if u.status == 'pending' %}
+              <span class="badge badge-warn">pending</span>
+            {% elif u.status == 'blocked' %}
+              <span class="badge badge-err">blocked</span>
+            {% else %}
+              <span class="badge badge-ok">active</span>
+            {% endif %}
+          </td>
+          <td class="text-dim">{{ u.chat_id or '—' }}</td>
+          <td class="text-dim">{{ u.created }}</td>
+          <td class="flex gap-xs">
+            {% if u.status == 'pending' %}
+            <button class="btn btn-ghost btn-icon btn-sm" title="Approve"
+                    hx-post="/admin/user/{{ u.user_id }}/approve"
+                    hx-swap="none" onclick="location.reload()">
+              <span class="material-icons-round" style="font-size:16px;color:#69f0ae">check</span>
+            </button>
+            <button class="btn btn-ghost btn-icon btn-danger btn-sm" title="Block"
+                    hx-post="/admin/user/{{ u.user_id }}/block"
+                    hx-swap="none" onclick="location.reload()">
+              <span class="material-icons-round" style="font-size:16px">block</span>
+            </button>
+            {% elif u.role != 'Admin' %}
+            <button class="btn btn-ghost btn-icon btn-danger btn-sm"
+                    hx-delete="/admin/user/{{ u.user_id }}"
+                    hx-confirm="Remove user {{ u.username }}?"
+                    hx-target="closest tr" hx-swap="outerHTML">
+              <span class="material-icons-round" style="font-size:16px">delete</span>
+            </button>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ── LLM Models ──────────────── -->
+  <p class="section-label">LLM Models</p>
+  <div class="card mb-md">
+    {% for m in llm_models %}
+    <div class="flex items-center justify-between py-sm {% if not loop.last %}border-b{% endif %}">
+      <div>
+        <span class="text-white fw-bold">{{ m.name }}</span>
+        {% if m.active %}
+        <span class="badge badge-ok" style="margin-left:8px">active</span>
+        {% endif %}
+      </div>
+      {% if not m.active %}
+      <button class="btn btn-ghost btn-sm"
+              hx-post="/admin/llm/{{ m.name }}"
+              hx-swap="none"
+              onclick="location.reload()">
+        Activate
+      </button>
+      {% endif %}
+    </div>
+    {% endfor %}
+    {% if not llm_models %}
+      <p class="text-dim">No models configured in config.json</p>
+    {% endif %}
+  </div>
+
+  <!-- ── Voice Opts ──────────────── -->
+  <p class="section-label">Voice Optimisations</p>
+  <div class="card">
+    {% for opt in voice_opts %}
+    <div class="flex items-center justify-between py-sm {% if not loop.last %}border-b{% endif %}">
+      <div>
+        <span class="text-white">{{ opt.label }}</span>
+        <div class="text-dim text-xs">{{ opt.description }}</div>
+      </div>
+      <label class="toggle">
+        <input type="checkbox" {% if opt.enabled %}checked{% endif %}
+               hx-post="/admin/voice-opt/{{ opt.key }}"
+               hx-swap="none">
+        <span class="toggle-slider"></span>
+      </label>
+    </div>
+    {% endfor %}
+  </div>
+
+</div>
+{% endblock %}
