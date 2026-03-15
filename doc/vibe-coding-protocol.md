@@ -343,17 +343,21 @@ Each session block contains a table with one row per completed request:
 
 ---
 
-## Session 19 — 2026-03-15 (UTC)
+---
 
-**Focus:** Test suite overview document for Copilot
+## Session 19 — 2026-03-15 (UTC+1)
+
+**Focus:** VS Code Copilot skills — prompt files for common workflows
 
 | Time (UTC) | Request | Complexity | Requests | Model | Files changed | Status |
 |---|---|---|---|---|---|---|
-| 22:46 UTC | Create test suite description for Copilot: doc/test-suite.md covering all test categories (voice regression T01–T21, Web UI Playwright, hardware audio, mic capture, smoke/deployment), trigger rules, run commands, engineering vs production targets, regression vs fix tests, and chat-mode "test software" protocol | 3 | 1 | claude-sonnet-4-5 | doc/test-suite.md, .github/copilot-instructions.md, AGENTS.md | done |
+| 17:08 | Create VS Code Copilot skills (prompt files) and usage guide so user can invoke tasks with /skill-name from Chat | 3 | 1 | claude-sonnet-4.6 | .github/prompts/deploy-bot.prompt.md, .github/prompts/run-tests.prompt.md, .github/prompts/bump-version.prompt.md, .github/prompts/test-software.prompt.md, doc/copilot-skills-guide.md, .vscode/settings.json, .github/copilot-instructions.md | done |
 
-**Session 19 total: 1 item, 1 request**
+**Session 19 total: 1 item, ~1 request**
 
 ---
+
+## Notes on Measurement
 
 - "Requests" = user→assistant conversation turns, not API calls.
 - Time estimates for sessions 1–4 reconstructed from git commit timestamps.
