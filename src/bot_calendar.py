@@ -35,6 +35,7 @@ from bot_instance import bot
 from bot_access import (
     _t, _ask_picoclaw, _escape_md, _back_keyboard, _send_menu, _is_allowed,
 )
+from bot_users import _resolve_storage_id
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -58,7 +59,7 @@ _cal_timers: dict[str, threading.Timer] = {}   # event_id → Timer
 def _cal_user_file(chat_id: int) -> Path:
     d = Path(CALENDAR_DIR)
     d.mkdir(parents=True, exist_ok=True)
-    return d / f"{chat_id}.json"
+    return d / f"{_resolve_storage_id(chat_id)}.json"
 
 
 def _cal_load(chat_id: int) -> list:
