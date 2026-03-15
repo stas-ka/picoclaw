@@ -10,6 +10,7 @@ Before writing any code for this project, consult these documents in `doc/`:
 | [`doc/dev-patterns.md`](../doc/dev-patterns.md) | **Before adding any feature** — exact copy-paste patterns for: voice opts, callbacks, multi-step input flows, i18n strings, access guards, versioning, subprocess calls, session state, deployment, service files. |
 | [`doc/architecture.md`](../doc/architecture.md) | When adding components, services, or changing the pipeline. Keep it in sync. |
 | [`doc/hardware-performance-analysis.md`](../doc/hardware-performance-analysis.md) | Before choosing algorithms, models, or suggesting hardware upgrades. |
+| [`doc/test-suite.md`](../doc/test-suite.md) | **Before running or extending tests** — complete reference for all test categories (voice regression T01–T21, Web UI Playwright, hardware audio, smoke), trigger rules, run commands, and Copilot chat-mode "test software" protocol. |
 | [`TODO.md`](../TODO.md) | **Session start** — check what is planned/in-progress/done before proposing work. |
 
 ### Quick rules from the patterns doc
@@ -19,6 +20,7 @@ Before writing any code for this project, consult these documents in `doc/`:
 - Version bump: always `BOT_VERSION = "YYYY.M.D"` + prepend entry in `release_notes.json` (never use `\_` in JSON — invalid escape)
 - Deploy: pscp all changed files → plink restart → verify `Version : X.Y.Z` in journal
 - Strings: always add to both `"ru"` and `"en"` in `src/strings.json`
+- **Testing ("test software" / "run tests" / "verify"):** consult `doc/test-suite.md` — it has the complete decision table (Section 1), all run commands, and the Copilot chat-mode protocol (Section 10). Do **not** scan test files manually every time.
 
 ### Post-deploy rule — ALWAYS ask after every successful deploy to the Pi
 

@@ -3,6 +3,7 @@
 ## User Working Preferences
 - Keep persistent operational knowledge in this file so future sessions can continue quickly.
 - Use this file as the first reference for recurring document/accounting tasks.
+- **Testing ("test software" / "run tests" / "verify changes"):** always read `doc/test-suite.md` first — it has the complete decision table, all run commands, and the Copilot chat-mode protocol. Never scan test files manually every session.
 
 ## Remote Host Access
 
