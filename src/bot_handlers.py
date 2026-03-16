@@ -290,7 +290,7 @@ def _handle_profile(chat_id: int) -> None:
     text = _t(chat_id, "profile_msg",
               name=_escape_md(name),
               username_line=username_line,
-              chat_id=chat_id,
+              tg_id=chat_id,
               role=role,
               reg_date=reg_date,
               email_line=email_line)
