@@ -1122,6 +1122,132 @@ async def google_oauth_callback(request: Request, code: str = "", state: str = "
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Contacts
+# ─────────────────────────────────────────────────────────────────────────────
+
+PAGE_SIZE = 20
+
+def _contacts_for(chat_id: int, q: str = "", offset: int = 0) -> tuple[list[dict], int]:
+    """Return (contacts, total) for a user. Optionally filtered by search query."""
+    from bot_contacts import _contact_search, _contact_list, _contact_count
+    if q:
+        results = _contact_search(chat_id, q)
+        return results, len(results)
+    return _contact_list(chat_id, offset=offset, limit=PAGE_SIZE), _contact_count(chat_id)
+
+
+@app.get("/contacts", response_class=HTMLResponse)
+async def contacts_page(request: Request, q: str = "", page: int = 0):
+    user = _get_current_user(request)
+    if not user:
+        return RedirectResponse("/login", status_code=302)
+    account = find_account_by_id(user["sub"])
+    chat_id = (account or {}).get("telegram_chat_id") or 0
+    offset = page * PAGE_SIZE
+    contacts, total = _contacts_for(chat_id, q=q, offset=offset)
+    pages = max(1, (total + PAGE_SIZE - 1) // PAGE_SIZE)
+    return templates.TemplateResponse(
+        "contacts.html",
+        _ctx(request, user, "contacts",
+             contacts=contacts, total=total, q=q,
+             page=page, pages=pages, page_size=PAGE_SIZE),
+    )
+
+
+@app.get("/contacts/new", response_class=HTMLResponse)
+async def contacts_new_form(request: Request):
+    user = _get_current_user(request)
+    if not user:
+        return RedirectResponse("/login", status_code=302)
+    return templates.TemplateResponse(
+        "contacts.html",
+        _ctx(request, user, "contacts",
+             contacts=[], total=0, q="", page=0, pages=1, page_size=PAGE_SIZE,
+             show_form=True, form_contact=None),
+    )
+
+
+@app.post("/contacts/new")
+async def contacts_create(
+    request: Request,
+    name: str = Form(...),
+    phone: str = Form(""),
+    email: str = Form(""),
+    address: str = Form(""),
+    notes: str = Form(""),
+):
+    user = _get_current_user(request)
+    if not user:
+        return RedirectResponse("/login", status_code=302)
+    from bot_contacts import _contact_add
+    account = find_account_by_id(user["sub"])
+    chat_id = (account or {}).get("telegram_chat_id") or 0
+    _contact_add(chat_id,
+                 name=name.strip(),
+                 phone=phone.strip() or None,
+                 email=email.strip() or None,
+                 address=address.strip() or None,
+                 notes=notes.strip() or None)
+    return RedirectResponse("/contacts", status_code=303)
+
+
+@app.get("/contacts/{cid}", response_class=HTMLResponse)
+async def contacts_detail(request: Request, cid: str):
+    user = _get_current_user(request)
+    if not user:
+        return RedirectResponse("/login", status_code=302)
+    from bot_contacts import _contact_get
+    account = find_account_by_id(user["sub"])
+    chat_id = (account or {}).get("telegram_chat_id") or 0
+    contact = _contact_get(chat_id, cid)
+    if not contact:
+        return RedirectResponse("/contacts", status_code=302)
+    return templates.TemplateResponse(
+        "contacts.html",
+        _ctx(request, user, "contacts",
+             contacts=[], total=0, q="", page=0, pages=1, page_size=PAGE_SIZE,
+             show_form=True, form_contact=contact),
+    )
+
+
+@app.post("/contacts/{cid}")
+async def contacts_update(
+    request: Request,
+    cid: str,
+    name: str = Form(...),
+    phone: str = Form(""),
+    email: str = Form(""),
+    address: str = Form(""),
+    notes: str = Form(""),
+):
+    user = _get_current_user(request)
+    if not user:
+        return RedirectResponse("/login", status_code=302)
+    from bot_contacts import _contact_update
+    account = find_account_by_id(user["sub"])
+    chat_id = (account or {}).get("telegram_chat_id") or 0
+    _contact_update(chat_id, cid,
+                    name=name.strip(),
+                    phone=phone.strip() or None,
+                    email=email.strip() or None,
+                    address=address.strip() or None,
+                    notes=notes.strip() or None)
+    return RedirectResponse(f"/contacts/{cid}", status_code=303)
+
+
+@app.post("/contacts/{cid}/delete")
+async def contacts_delete(request: Request, cid: str):
+    user = _get_current_user(request)
+    if not user:
+        return RedirectResponse("/login", status_code=302)
+    from bot_contacts import _contact_delete
+    account = find_account_by_id(user["sub"])
+    chat_id = (account or {}).get("telegram_chat_id") or 0
+    _contact_delete(chat_id, cid)
+    return RedirectResponse("/contacts", status_code=303)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Mail
 # ─────────────────────────────────────────────────────────────────────────────
 

@@ -114,6 +114,16 @@ from bot_error_protocol import (
     _errp_send, _errp_cancel,
 )
 
+# ─── Contact book ───────────────────────────────────────────────────────────
+from bot_contacts import (
+    _handle_contacts_menu, _handle_contact_list, _handle_contact_open,
+    _start_contact_add, _finish_contact_add, _handle_contact_add_skip,
+    _start_contact_edit, _start_contact_edit_field, _finish_contact_edit,
+    _handle_contact_delete, _handle_contact_delete_confirmed,
+    _start_contact_search, _finish_contact_search,
+    _pending_contact,
+)
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Registration helper
 # ─────────────────────────────────────────────────────────────────────────────
@@ -507,6 +517,48 @@ def callback_handler(call):
     elif data == "errp_cancel":
         _errp_cancel(cid)
 
+    # ── Contacts ────────────────────────────────────────────────────────────
+    elif data == "menu_contacts":
+        if not _is_guest(cid):
+            _handle_contacts_menu(cid)
+        else:
+            _deny(cid)
+    elif data in ("contact_create", "contact_list"):
+        if not _is_guest(cid):
+            if data == "contact_create":
+                _start_contact_add(cid)
+            else:
+                _handle_contact_list(cid)
+        else:
+            _deny(cid)
+    elif data == "contact_add_skip":
+        if not _is_guest(cid):
+            _handle_contact_add_skip(cid)
+    elif data == "contact_search":
+        if not _is_guest(cid):
+            _start_contact_search(cid)
+        else:
+            _deny(cid)
+    elif data.startswith("contact_page:"):
+        if not _is_guest(cid):
+            _handle_contact_list(cid, offset=int(data.split(":")[1]))
+    elif data.startswith("contact_open:"):
+        if not _is_guest(cid):
+            _handle_contact_open(cid, data[len("contact_open:"):])
+    elif data.startswith("contact_edit:"):
+        if not _is_guest(cid):
+            _start_contact_edit(cid, data[len("contact_edit:"):])
+    elif data.startswith("contact_edit_field:"):
+        if not _is_guest(cid):
+            parts = data.split(":")
+            _start_contact_edit_field(cid, parts[1], parts[2])
+    elif data.startswith("contact_del:"):
+        if not _is_guest(cid):
+            _handle_contact_delete(cid, data[len("contact_del:"):])
+    elif data.startswith("contact_del_confirm:"):
+        if not _is_guest(cid):
+            _handle_contact_delete_confirmed(cid, data[len("contact_del_confirm:"):])
+
     # ── Calendar ───────────────────────────────────────────────────────────
     elif data == "menu_calendar":
         if not _is_guest(cid):
@@ -606,6 +658,7 @@ def callback_handler(call):
         _pending_mail_setup.pop(cid, None)
         _st._pending_error_protocol.pop(cid, None)
         _pending_profile.pop(cid, None)
+        _pending_contact.pop(cid, None)
         _st._user_mode.pop(cid, None)
         bot.send_message(cid, _t(cid, "cancelled"), reply_markup=_back_keyboard())
 
@@ -817,6 +870,31 @@ def text_handler(message):
             _st._user_mode.pop(cid, None)
             _pending_cal.pop(cid, None)
         return
+
+    # ── Contact book flows ─────────────────────────────────────────────────
+    if mode == "contact_add":
+        if not _is_guest(cid):
+            _finish_contact_add(cid, message.text)
+        else:
+            _st._user_mode.pop(cid, None)
+            _pending_contact.pop(cid, None)
+        return
+
+    if mode == "contact_edit":
+        if not _is_guest(cid):
+            _finish_contact_edit(cid, message.text)
+        else:
+            _st._user_mode.pop(cid, None)
+            _pending_contact.pop(cid, None)
+        return
+
+    if mode == "contact_search":
+        if not _is_guest(cid):
+            _finish_contact_search(cid, message.text)
+        else:
+            _st._user_mode.pop(cid, None)
+        return
+
     # ── Chat modes ─────────────────────────────────────────────────────────
     if mode == "chat":
         _handle_chat_message(cid, message.text)
