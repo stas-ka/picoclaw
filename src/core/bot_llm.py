@@ -10,7 +10,7 @@ import re
 import subprocess
 from pathlib import Path
 
-from bot_config import PICOCLAW_BIN, PICOCLAW_CONFIG, ACTIVE_MODEL_FILE, log
+from core.bot_config import PICOCLAW_BIN, PICOCLAW_CONFIG, ACTIVE_MODEL_FILE, log
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -40,7 +40,7 @@ def list_models() -> list[dict]:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Output cleaning  (ported from bot_access._clean_picoclaw_output)
+# Output cleaning  (ported from telegram.bot_access._clean_picoclaw_output)
 # ─────────────────────────────────────────────────────────────────────────────
 
 _ANSI_RE     = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")

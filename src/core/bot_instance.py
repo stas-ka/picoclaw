@@ -6,6 +6,6 @@ Keeping the bot object here avoids circular imports between handler modules.
 """
 
 import telebot
-from bot_config import BOT_TOKEN
+from core.bot_config import BOT_TOKEN
 
 bot = telebot.TeleBot(BOT_TOKEN, parse_mode="Markdown")

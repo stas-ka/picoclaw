@@ -10,7 +10,7 @@ argument-hint: 'Which files changed? (e.g. all, bot_admin.py, strings.json) and 
 
 - You changed one or more `src/*.py`, `src/strings.json`, `src/release_notes.json`
 - You changed a `src/services/*.service` file
-- You changed a `src/templates/*.*` file
+- You changed a `src/web/templates/*.*` or `src/web/static/*.*` file
 - You need to bump `BOT_VERSION` and push a release
 - You need to run a safe update with backup + migration
 - You want to verify the current deployed state of a target
@@ -135,17 +135,25 @@ pscp -pw "%TARGET2PWD%" src\strings.json src\release_notes.json stas@OpenClawPI2
 
 ### Full Module Deploy
 
-Use after a major refactor or first-time deploy to a target.
+Use after a major refactor or first-time deploy to a target. Modules live in packages under `src/`.
 
 ```bat
-pscp -pw "%TARGET2PWD%" src\bot_config.py src\bot_state.py src\bot_instance.py stas@OpenClawPI2:/home/stas/.picoclaw/
-pscp -pw "%TARGET2PWD%" src\bot_security.py src\bot_access.py src\bot_users.py stas@OpenClawPI2:/home/stas/.picoclaw/
-pscp -pw "%TARGET2PWD%" src\bot_voice.py src\bot_calendar.py src\bot_admin.py stas@OpenClawPI2:/home/stas/.picoclaw/
-pscp -pw "%TARGET2PWD%" src\bot_handlers.py src\bot_mail_creds.py src\bot_email.py stas@OpenClawPI2:/home/stas/.picoclaw/
-pscp -pw "%TARGET2PWD%" src\bot_error_protocol.py src\bot_llm.py src\bot_web.py stas@OpenClawPI2:/home/stas/.picoclaw/
-pscp -pw "%TARGET2PWD%" src\bot_actions.py src\bot_ui.py src\render_telegram.py stas@OpenClawPI2:/home/stas/.picoclaw/
-pscp -pw "%TARGET2PWD%" src\telegram_menu_bot.py stas@OpenClawPI2:/home/stas/.picoclaw/
+rem Create package dirs on target (idempotent)
+plink -pw "%TARGET2PWD%" -batch stas@OpenClawPI2 "mkdir -p ~/.picoclaw/core ~/.picoclaw/security ~/.picoclaw/telegram ~/.picoclaw/features ~/.picoclaw/ui"
+plink -pw "%TARGET2PWD%" -batch stas@OpenClawPI2 "touch ~/.picoclaw/core/__init__.py ~/.picoclaw/security/__init__.py ~/.picoclaw/telegram/__init__.py ~/.picoclaw/features/__init__.py ~/.picoclaw/ui/__init__.py"
+
+rem Deploy Python packages
+pscp -pw "%TARGET2PWD%" src\core\*.py stas@OpenClawPI2:/home/stas/.picoclaw/core/
+pscp -pw "%TARGET2PWD%" src\security\*.py stas@OpenClawPI2:/home/stas/.picoclaw/security/
+pscp -pw "%TARGET2PWD%" src\telegram\*.py stas@OpenClawPI2:/home/stas/.picoclaw/telegram/
+pscp -pw "%TARGET2PWD%" src\features\*.py stas@OpenClawPI2:/home/stas/.picoclaw/features/
+pscp -pw "%TARGET2PWD%" src\ui\*.py stas@OpenClawPI2:/home/stas/.picoclaw/ui/
+
+rem Deploy entry points + data
+pscp -pw "%TARGET2PWD%" src\telegram_menu_bot.py src\bot_web.py src\voice_assistant.py src\gmail_digest.py stas@OpenClawPI2:/home/stas/.picoclaw/
 pscp -pw "%TARGET2PWD%" src\strings.json src\release_notes.json stas@OpenClawPI2:/home/stas/.picoclaw/
+
+rem Restart
 plink -pw "%TARGET2PWD%" -batch stas@OpenClawPI2 "echo %TARGET2PWD% | sudo -S systemctl restart picoclaw-telegram picoclaw-web && sleep 3 && journalctl -u picoclaw-telegram -n 12 --no-pager"
 ```
 
@@ -156,9 +164,10 @@ plink -pw "%TARGET2PWD%" -batch stas@OpenClawPI2 "echo %TARGET2PWD% | sudo -S sy
 Use when `bot_web.py`, templates, or static assets changed.
 
 ```bat
+plink -pw "%TARGET2PWD%" -batch stas@OpenClawPI2 "mkdir -p ~/.picoclaw/web/templates ~/.picoclaw/web/static"
 pscp -pw "%TARGET2PWD%" src\bot_web.py stas@OpenClawPI2:/home/stas/.picoclaw/
-pscp -pw "%TARGET2PWD%" src\templates\*.html stas@OpenClawPI2:/home/stas/.picoclaw/templates/
-pscp -pw "%TARGET2PWD%" src\static\style.css stas@OpenClawPI2:/home/stas/.picoclaw/static/
+pscp -pw "%TARGET2PWD%" src\web\templates\*.html stas@OpenClawPI2:/home/stas/.picoclaw/web/templates/
+pscp -pw "%TARGET2PWD%" src\web\static\style.css src\web\static\manifest.json stas@OpenClawPI2:/home/stas/.picoclaw/web/static/
 plink -pw "%TARGET2PWD%" -batch stas@OpenClawPI2 "echo %TARGET2PWD% | sudo -S systemctl restart picoclaw-telegram picoclaw-web && sleep 3 && journalctl -u picoclaw-telegram -n 5 --no-pager && journalctl -u picoclaw-web -n 5 --no-pager"
 ```
 
@@ -320,7 +329,7 @@ plink -pw "%TARGET2PWD%" -batch stas@OpenClawPI2 "systemctl list-units picoclaw-
 | Changed file(s) | Services to restart |
 |---|---|
 | `bot_*.py`, `telegram_menu_bot.py` | `picoclaw-telegram` |
-| `bot_web.py`, `templates/`, `static/` | `picoclaw-telegram picoclaw-web` |
+| `bot_web.py`, `web/templates/`, `web/static/` | `picoclaw-telegram picoclaw-web` |
 | `voice_assistant.py` | `picoclaw-voice` |
 | `src/services/*.service` | the changed service (+ `daemon-reload`) |
 | `strings.json`, `release_notes.json` | `picoclaw-telegram` |

@@ -92,7 +92,7 @@ ERROR_PROTOCOL_DIR  = os.environ.get("ERROR_PROTOCOL_DIR",
 BOT_VERSION        = "2026.3.30+1"
 RELEASE_NOTES_FILE = os.environ.get(
     "RELEASE_NOTES_FILE",
-    os.path.join(os.path.dirname(os.path.abspath(__file__)), "release_notes.json"),
+    os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "release_notes.json"),
 )
 LAST_NOTIFIED_FILE = os.path.expanduser("~/.picoclaw/last_notified_version.txt")
 
@@ -133,7 +133,7 @@ VOICE_TIMING_DEBUG    = os.environ.get("VOICE_TIMING_DEBUG", "0").lower() in ("1
 # Strings file
 _STRINGS_FILE = os.environ.get(
     "STRINGS_FILE",
-    os.path.join(os.path.dirname(os.path.abspath(__file__)), "strings.json"),
+    os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "strings.json"),
 )
 
 # ─────────────────────────────────────────────────────────────────────────────

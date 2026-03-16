@@ -5,12 +5,16 @@
 **Entry point (Web):** `src/bot_web.py` — FastAPI application, all HTTP routes  
 **Version:** 2026.3.28
 
-Use this map to locate any function by module. All `bot_*.py` files live in `src/`.
+Use this map to locate any function by module. Modules are organized into packages under `src/`:
 
-## Module Dependency Chain (no circular imports)
-
-```
-bot_config → bot_state → bot_instance → bot_security → bot_access → bot_users
+| Package | Path | Contents |
+|---|---|---|
+| `core/` | `src/core/` | bot_config, bot_state, bot_instance, bot_db, bot_llm |
+| `security/` | `src/security/` | bot_security, bot_auth |
+| `telegram/` | `src/telegram/` | bot_access, bot_users, bot_admin, bot_handlers |
+| `features/` | `src/features/` | bot_voice, bot_calendar, bot_contacts, bot_mail_creds, bot_email, bot_error_protocol |
+| `ui/` | `src/ui/` | bot_ui, bot_actions, render_telegram |
+| `src/` (root) | entry points | telegram_menu_bot.py, bot_web.py, voice_assistant.py, gmail_digest.py |
     → bot_voice → bot_calendar → bot_mail_creds → bot_email
     → bot_admin → bot_handlers → bot_error_protocol → telegram_menu_bot
 
@@ -25,30 +29,32 @@ bot_actions ← bot_web         ← Web renderer (reads bot_actions output via J
 
 ## Module Overview
 
-| Module | Lines | Responsibility |
-|---|---|---|
-| `bot_config.py` | ~120 | Constants, env loading, logging setup — no deps |
-| `bot_state.py` | ~115 | Mutable runtime dicts, voice_opts/dynamic_users I/O; web link codes |
-| `bot_instance.py` | ~12 | `bot = TeleBot(...)` singleton |
-| `bot_security.py` | ~200 | 3-layer prompt injection guard; `SECURITY_PREAMBLE`; `_wrap_user_input()` |
-| `bot_access.py` | ~380 | Access control, i18n, keyboards, text utils, `_ask_picoclaw()` |
-| `bot_users.py` | ~160 | Registration + notes file I/O (pure, no Telegram API) |
-| `bot_voice.py` | ~280 | Full voice pipeline: STT/TTS/VAD + pending TTS tracker |
-| `bot_calendar.py` | ~650 | Smart calendar: CRUD, NL parser, reminders, briefing, TTS, multi-event |
-| `bot_mail_creds.py` | ~450 | Per-user IMAP creds, consent flow, digest fetch + LLM summarise |
-| `bot_email.py` | ~250 | Send-as-email SMTP for notes, digest, calendar events |
-| `bot_admin.py` | ~310 | Admin panel: guests, reg, voice opts, release notes, LLM |
-| `bot_handlers.py` | ~160 | User handlers: chat, system, digest, notes, profile |
-| `bot_error_protocol.py` | ~260 | Error protocol: collect text/voice/photo → save dir → email |
-| `telegram_menu_bot.py` | ~280 | Entry point: handlers + `main()` |
-| `bot_llm.py` | ~130 | Pluggable LLM backend — `picoclaw_cli` / `openai_direct`; shared by Telegram + Web |
-| `bot_auth.py` | ~200 | JWT/bcrypt authentication, `accounts.json` — Web UI only |
-| `bot_ui.py` | ~150 | Screen DSL dataclasses: `Screen`, `Button`, `Card`, `Toggle`, `Spinner`, etc. |
-| `bot_actions.py` | ~300 | Action handlers returning `Screen` objects — shared logic layer |
-| `render_telegram.py` | ~220 | Renders `Screen` → Telegram `send_message` / `InlineKeyboardMarkup` |
-| `bot_web.py` | ~2000 | FastAPI app: all HTTP routes, Jinja2 templates, HTMX endpoints, HTTPS :8080 |
+| Module | Package | Lines | Responsibility |
+|---|---|---|---|
+| `bot_config.py` | `core/` | ~120 | Constants, env loading, logging setup — no deps |
+| `bot_state.py` | `core/` | ~115 | Mutable runtime dicts, voice_opts/dynamic_users I/O; web link codes |
+| `bot_instance.py` | `core/` | ~12 | `bot = TeleBot(...)` singleton |
+| `bot_db.py` | `core/` | ~60 | SQLite init and connection helper |
+| `bot_llm.py` | `core/` | ~130 | Pluggable LLM backend — `picoclaw_cli` / `openai_direct`; shared by Telegram + Web |
+| `bot_security.py` | `security/` | ~200 | 3-layer prompt injection guard; `SECURITY_PREAMBLE`; `_wrap_user_input()` |
+| `bot_auth.py` | `security/` | ~200 | JWT/bcrypt authentication, `accounts.json` — Web UI only |
+| `bot_access.py` | `telegram/` | ~380 | Access control, i18n, keyboards, text utils, `_ask_picoclaw()` |
+| `bot_users.py` | `telegram/` | ~160 | Registration + notes file I/O (pure, no Telegram API) |
+| `bot_admin.py` | `telegram/` | ~310 | Admin panel: guests, reg, voice opts, release notes, LLM |
+| `bot_handlers.py` | `telegram/` | ~160 | User handlers: chat, system, digest, notes, profile |
+| `bot_voice.py` | `features/` | ~280 | Full voice pipeline: STT/TTS/VAD + pending TTS tracker |
+| `bot_calendar.py` | `features/` | ~650 | Smart calendar: CRUD, NL parser, reminders, briefing, TTS, multi-event |
+| `bot_contacts.py` | `features/` | ~300 | Contact book: CRUD, search, Telegram UI |
+| `bot_mail_creds.py` | `features/` | ~450 | Per-user IMAP creds, consent flow, digest fetch + LLM summarise |
+| `bot_email.py` | `features/` | ~250 | Send-as-email SMTP for notes, digest, calendar events |
+| `bot_error_protocol.py` | `features/` | ~260 | Error protocol: collect text/voice/photo → save dir → email |
+| `bot_ui.py` | `ui/` | ~150 | Screen DSL dataclasses: `Screen`, `Button`, `Card`, `Toggle`, `Spinner`, etc. |
+| `bot_actions.py` | `ui/` | ~300 | Action handlers returning `Screen` objects — shared logic layer |
+| `render_telegram.py` | `ui/` | ~220 | Renders `Screen` → Telegram `send_message` / `InlineKeyboardMarkup` |
+| `telegram_menu_bot.py` | `src/` | ~280 | Entry point: handlers + `main()` |
+| `bot_web.py` | `src/` | ~2000 | FastAPI app: all HTTP routes, Jinja2 templates, HTMX endpoints, HTTPS :8080 |
 
-## bot_config.py — Constants & Configuration
+## core/bot_config.py — Constants & Configuration
 
 No imports from other `bot_*` modules. Root of the dependency tree.
 

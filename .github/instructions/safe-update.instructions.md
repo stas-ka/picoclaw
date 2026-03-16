@@ -1,5 +1,5 @@
 ---
-applyTo: "**"
+applyTo: "src/bot_db.py,src/bot_state.py,src/bot_config.py,tools/migrate_to_db.py"
 ---
 
 # Safe Update Protocol — Skill

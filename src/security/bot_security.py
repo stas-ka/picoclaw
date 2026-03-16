@@ -24,7 +24,7 @@ Access restriction (enforced by callers):
 
 import re
 
-from bot_config import BOT_NAME, log
+from core.bot_config import BOT_NAME, log
 
 
 # ─────────────────────────────────────────────────────────────────────────────

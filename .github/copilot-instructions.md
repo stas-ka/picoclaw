@@ -15,35 +15,21 @@ These reusable task prompts live in `.github/prompts/`. Invoke them with `/skill
 
 ---
 
-## Developer Reference Documents — READ FIRST
+## Project
+
 picoclaw is a Raspberry Pi–based Telegram bot + offline voice assistant (Russian/German/English). Bot source lives in `src/`. The Pi target host is `OpenClawPI`. All secrets are in `.credentials/` (git-ignored).
 
-## Reference Docs — Read First
+## Reference Docs — Read on Demand
+
 | Document | When to use |
 |---|---|
-| [`doc/bot-code-map.md`](../doc/bot-code-map.md) | **Always** — find any function by name/line before searching the file. Maps every function in `telegram_menu_bot.py` with its line number and purpose. Also lists all callback `data=` keys and all runtime files on the Pi. |
+| [`doc/quick-ref.md`](../doc/quick-ref.md) | **Always-read first** — module map, key functions, test triggers, deploy pipeline (~3 KB) |
+| [`doc/bot-code-map.md`](../doc/bot-code-map.md) | **Search, don't read whole** — grep/search for function names, callback keys, or file names; read only the matching section (~2 KB). Do NOT load the full 39 KB file. |
 | [`doc/dev-patterns.md`](../doc/dev-patterns.md) | **Before adding any feature** — exact copy-paste patterns for: voice opts, callbacks, multi-step input flows, i18n strings, access guards, versioning, subprocess calls, session state, deployment, service files. |
-| [`doc/architecture.md`](../doc/architecture.md) | When adding components, services, or changing the pipeline. Keep it in sync. |
+| [`doc/architecture.md`](../doc/architecture.md) | **Search, don't read whole** — index of eight topic files in `doc/arch/`. Read only the relevant topic: [overview](../doc/arch/overview.md) · [voice-pipeline](../doc/arch/voice-pipeline.md) · [telegram-bot](../doc/arch/telegram-bot.md) · [security](../doc/arch/security.md) · [features](../doc/arch/features.md) · [deployment](../doc/arch/deployment.md) · [multilanguage](../doc/arch/multilanguage.md) · [web-ui](../doc/arch/web-ui.md) |
 | [`doc/hardware-performance-analysis.md`](../doc/hardware-performance-analysis.md) | Before choosing algorithms, models, or suggesting hardware upgrades. |
 | [`doc/test-suite.md`](../doc/test-suite.md) | **Before running or extending tests** — complete reference for all test categories (voice regression T01–T21, Web UI Playwright, hardware audio, smoke), trigger rules, run commands, and Copilot chat-mode "test software" protocol. |
 | [`TODO.md`](../TODO.md) | **Session start** — check what is planned/in-progress/done before proposing work. |
-
-### Quick rules from the patterns doc
-
-- Voice opts: 6-step pattern — defaults `False`, toggle row, opt-in side-effect in `_handle_voice_opt_toggle()` and `main()`
-- New callback: handler function + button in keyboard + dispatch branch in `handle_callback()`
-- Version bump: always `BOT_VERSION = "YYYY.M.D"` + prepend entry in `release_notes.json` (never use `\_` in JSON — invalid escape)
-- Deploy: pscp all changed files → plink restart → verify `Version : X.Y.Z` in journal
-- Strings: always add to both `"ru"` and `"en"` in `src/strings.json`
-- **Testing ("test software" / "run tests" / "verify"):** consult `doc/test-suite.md` — it has the complete decision table (Section 1), all run commands, and the Copilot chat-mode protocol (Section 10). Do **not** scan test files manually every time.
-
-### Post-deploy rule — ALWAYS ask after every successful deploy to the Pi
-
-After every successful deployment to the host (confirmed by journal showing `Version : X.Y.Z` and `Polling Telegram…`), **always ask the user**:
-
- "Deployment verified ✅. Shall I also:
- 1. Commit and push to git? (if not already done)
- 2. Update `release_notes.json` with a new version entry? (if `BOT_VERSION` was bumped)"
 
 ## Workspace Layout
 
@@ -58,16 +44,6 @@ picoclaw/
   .credentials/   ← secrets ONLY (never scripts or code)
   .env            ← remote host vars (gitignored)
 ```
-
-## Remote Host
-
-| Key | Value |
-|---|---|
-| Host | `OpenClawPI` (LAN) / `100.81.143.126` (Tailscale) |
-| User | `stas` |
-| Password | see `.env` → `%HOSTPWD%` |
-| SSH | `plink -pw "%HOSTPWD%" -batch stas@OpenClawPI "<cmd>"` |
-| SCP | `pscp -pw "%HOSTPWD%" <file> stas@OpenClawPI:<remote-path>` |
 
 ## Skills — Use These for Specific Tasks
 
@@ -86,7 +62,7 @@ picoclaw/
 - **Strings:** add to all three languages (`ru`, `en`, `de`) in `src/strings.json`.
 - **Service files:** always deploy to Pi in the same commit/operation as code changes. See [bot-deploy](.github/instructions/bot-deploy.instructions.md).
 - **UI changes:** apply to both Telegram and Web UI simultaneously. See [bot-coding](.github/instructions/bot-coding.instructions.md).
-- **Docs:** update `doc/architecture.md`, `README.md` etc. in the same commit as the code change.
+- **Docs:** update the relevant `doc/arch/<topic>.md` file and `README.md` in the same commit as the code change.
 - **TODO.md:** keep current; collapse completed items to `✅ Implemented (vX.Y.Z)`.
 - **Deployment pipeline:** ALL changes MUST be deployed and tested on the engineering target **PI2** (`OpenClawPI2`) first. Only after tests pass and the change is committed and pushed to git may it be deployed to the production target **PI1** (`OpenClawPI`). Never deploy directly to PI1 without prior PI2 validation.
 
@@ -101,3 +77,4 @@ After every completed request, append a row to `doc/vibe-coding-protocol.md`:
 ```
 | HH:MM UTC | description | complexity 1–5 | N turns | model-id | files changed | done |
 ```
+

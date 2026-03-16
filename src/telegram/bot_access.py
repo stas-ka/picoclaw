@@ -19,14 +19,14 @@ from typing import Optional
 
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
-from bot_config import (
+from core.bot_config import (
     ADMIN_USERS, ALLOWED_USERS, DEVELOPER_USERS, BOT_NAME,
     ACTIVE_MODEL_FILE, PICOCLAW_BIN,
     _STRINGS_FILE,
     log,
 )
-from bot_instance import bot
-from bot_state import _user_mode, _user_lang, _voice_opts, _user_audio, _dynamic_users
+from core.bot_instance import bot
+from core.bot_state import _user_mode, _user_lang, _voice_opts, _user_audio, _dynamic_users
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Access control
@@ -163,7 +163,7 @@ def _resolve_lang(chat_id: int, user_text: str = "") -> str:
 
 def _with_lang(chat_id: int, user_text: str) -> str:
     """Prepend security preamble + language instruction, then wrap user text."""
-    from bot_security import SECURITY_PREAMBLE, _wrap_user_input
+    from security.bot_security import SECURITY_PREAMBLE, _wrap_user_input
     lang = _resolve_lang(chat_id, user_text)
     lang_instr = _LANG_INSTRUCTION.get(lang, _LANG_INSTRUCTION[_FALLBACK_LANG])
     return SECURITY_PREAMBLE + lang_instr + _wrap_user_input(user_text)
@@ -171,7 +171,7 @@ def _with_lang(chat_id: int, user_text: str) -> str:
 
 def _with_lang_voice(chat_id: int, stt_text: str) -> str:
     """Like _with_lang but includes STT-error hint for low-confidence words ([?word])."""
-    from bot_security import SECURITY_PREAMBLE, _wrap_user_input
+    from security.bot_security import SECURITY_PREAMBLE, _wrap_user_input
     has_uncertain = bool(re.search(r'\[\?', stt_text))
     lang = _resolve_lang(chat_id, stt_text)
     instruction = _LANG_INSTRUCTION.get(lang, _LANG_INSTRUCTION[_FALLBACK_LANG])

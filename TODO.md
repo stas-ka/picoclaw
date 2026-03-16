@@ -183,3 +183,41 @@ Migrate from per-user JSON files to `pico.db`. `bot_db.py` created (v2026.3.30);
 - [ ] Dual-write wrappers (Phase 2): `_upsert_registration`, `_save_voice_opts`, `_cal_save`, mail creds
 - [ ] `src/setup/migrate_to_db.py` script (Phase 3)
 - [ ] Tests T22 `sqlite_schema` + T23 `migration_idempotent`
+
+## 10. Upload and using documents as Knowlegdes
+- Function to upload and administration documents (upload, view,  delete , move to directory , set title, set hash/label, share to other users in system)
+- Using documents as knowledgebase in chat in multimodal RAG way
+- documents can be contain text, images, tables
+
+## 11. Central control dashboard (primary per voice)
+- IMplementing central dashboard to contorol and run all activities of the asstsiant
+- all functions can be runned and controled from this board. Steering can be do per voice or per text input.
+- ui shall be switchable  per voice to functional ui part to run activities
+
+## 12. Input all textes in all application parts per voice
+- all inputs of textes shall be possible per voice exceptional confirmation of runnig activities
+
+## 13. Implementing smart CRM 
+- Implementing all fuctions from ..\hp\alex-crm\crm_commercial_proposal.md
+- all inputs and switching between  all windows shall be possible per voice
+
+
+## 14. Developer Board
+- Impelementing developer board to extend , update, remove functionality of applciation based on agent principe
+
+
+## 15. Connecting Calendar, E-Mails, Drives from Google and Yandex
+
+
+## 16 Implementing functions of personal assistant
+- Implementing all fuctions ..\from hp\KIM-ASSISTANT\analyse\KIM_PACKAGES.md
+
+
+
+## 17. Connect Max
+
+
+## 18. Using ZeroClaw instead PicoClaw
+
+
+## 19. Using OpenClaw instead PicoClaw

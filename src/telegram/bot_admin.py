@@ -15,24 +15,24 @@ import json
 import threading
 from pathlib import Path
 
-import bot_state as _st
-from bot_config import (
+import core.bot_state as _st
+from core.bot_config import (
     ADMIN_USERS, ALLOWED_USERS,
     PICOCLAW_CONFIG,
     RELEASE_NOTES_FILE, LAST_NOTIFIED_FILE, BOT_VERSION,
     _VOICE_OPTS_DEFAULTS,
     log,
 )
-from bot_instance import bot
-from bot_access import (
+from core.bot_instance import bot
+from telegram.bot_access import (
     _t, _escape_md, _send_menu,
     _back_keyboard, _get_active_model,
 )
-from bot_users import (
+from telegram.bot_users import (
     _get_pending_registrations, _find_registration, _upsert_registration,
     _set_reg_status, _load_registrations,
 )
-from bot_voice import _warm_piper_cache, _start_persistent_piper, _stop_persistent_piper
+from features.bot_voice import _warm_piper_cache, _start_persistent_piper, _stop_persistent_piper
 
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
@@ -46,7 +46,7 @@ def _voice_opts() -> dict:
 
 
 def _save_voice_opts() -> None:
-    from bot_state import _save_voice_opts as _svop
+    from core.bot_state import _save_voice_opts as _svop
     _svop()
 
 
@@ -55,7 +55,7 @@ def _dynamic_users() -> set:
 
 
 def _save_dynamic_users() -> None:
-    from bot_state import _save_dynamic_users as _sdyn
+    from core.bot_state import _save_dynamic_users as _sdyn
     _sdyn()
 
 
@@ -256,7 +256,7 @@ def _handle_admin_pending_users(chat_id: int) -> None:
 
 def _do_approve_registration(admin_id: int, target_id: int) -> None:
     """Approve a pending registration: add to guests and notify user."""
-    from bot_access import _menu_keyboard
+    from telegram.bot_access import _menu_keyboard
     reg = _find_registration(target_id)
     if not reg:
         bot.send_message(admin_id, f"ℹ️ Registration for `{target_id}` not found.",

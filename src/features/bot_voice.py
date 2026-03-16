@@ -20,8 +20,8 @@ import time
 from pathlib import Path
 from typing import Optional
 
-import bot_state as _st
-from bot_config import (
+import core.bot_state as _st
+from core.bot_config import (
     PIPER_BIN, PIPER_MODEL, PIPER_MODEL_TMPFS, PIPER_MODEL_LOW,
     PIPER_MODEL_DE, PIPER_MODEL_DE_TMPFS,
     VOSK_MODEL_PATH, VOSK_MODEL_DE_PATH, VOICE_SAMPLE_RATE, VOICE_CHUNK_SIZE,
@@ -29,13 +29,13 @@ from bot_config import (
     WHISPER_BIN, WHISPER_MODEL,
     _PENDING_TTS_FILE, log,
 )
-from bot_instance import bot
-from bot_access import (
+from core.bot_instance import bot
+from telegram.bot_access import (
     _t, _lang, _safe_edit, _back_keyboard, _voice_back_keyboard,
     _escape_tts, _escape_md, _truncate, _with_lang_voice, _ask_picoclaw,
     _is_guest,
 )
-from bot_users import (
+from telegram.bot_users import (
     _slug, _list_notes_for, _load_note_text, _save_note_file,
 )
 
@@ -173,7 +173,7 @@ def _setup_tmpfs_model(enable: bool) -> None:
         except Exception as e:
             log.warning(f"[VoiceOpt] tmpfs_model: copy failed: {e}")
             _st._voice_opts["tmpfs_model"] = False
-            from bot_state import _save_voice_opts
+            from core.bot_state import _save_voice_opts
             _save_voice_opts()
     else:
         try:
@@ -477,7 +477,7 @@ def _handle_note_read_aloud(chat_id: int, slug: str) -> None:
     voice messages so the full text is always heard.
     Runs in a background thread to avoid blocking the callback handler.
     """
-    from bot_handlers import _notes_menu_keyboard  # deferred — avoids circular import at module level
+    from telegram.bot_handlers import _notes_menu_keyboard  # deferred — avoids circular import at module level
 
     note_text = _load_note_text(chat_id, slug)
     if note_text is None:
@@ -546,7 +546,7 @@ def _handle_digest_tts(chat_id: int) -> None:
     voice messages so the complete digest is always read in full.
     Runs in a background thread to avoid blocking the callback handler.
     """
-    from bot_mail_creds import _last_digest_file  # deferred — avoids circular import
+    from features.bot_mail_creds import _last_digest_file  # deferred — avoids circular import
 
     fp = _last_digest_file(chat_id)
     if not fp.exists() or fp.stat().st_size == 0:
@@ -781,7 +781,7 @@ def _handle_voice_message(chat_id: int, voice_obj) -> None:
                 slug  = info.get("slug", _slug(_clean_text[:30]))
                 title = info.get("title", slug)
                 _save_note_file(chat_id, slug, f"# {title}\n\n{_clean_text}")
-                from bot_handlers import _notes_menu_keyboard  # safe — deferred import, no circular issue at runtime
+                from telegram.bot_handlers import _notes_menu_keyboard  # safe — deferred import, no circular issue at runtime
                 bot.send_message(chat_id,
                                  _t(chat_id, "note_saved", title=_escape_md(title)),
                                  parse_mode="Markdown",
@@ -792,14 +792,14 @@ def _handle_voice_message(chat_id: int, voice_obj) -> None:
                 _st._user_mode.pop(chat_id, None)
                 slug = info.get("slug")
                 if not slug:
-                    from bot_access import _send_menu
+                    from telegram.bot_access import _send_menu
                     _send_menu(chat_id, greeting=False)
                     return
                 existing   = _load_note_text(chat_id, slug)
                 title_line = existing.splitlines()[0] if existing else f"# {slug}"
                 _save_note_file(chat_id, slug, f"{title_line}\n\n{_clean_text}")
                 edit_title = title_line.lstrip("# ").strip()
-                from bot_handlers import _notes_menu_keyboard  # deferred — safe
+                from telegram.bot_handlers import _notes_menu_keyboard  # deferred — safe
                 bot.send_message(chat_id,
                                  _t(chat_id, "note_updated", title=_escape_md(edit_title)),
                                  parse_mode="Markdown",
@@ -812,7 +812,7 @@ def _handle_voice_message(chat_id: int, voice_obj) -> None:
             _safe_edit(chat_id, msg.message_id,
                        f"🎤 _{_escape_md(_clean_text)}_",
                        parse_mode="Markdown")
-            from bot_calendar import _finish_cal_add  # noqa: PLC0415  deferred — no circular at runtime
+            from features.bot_calendar import _finish_cal_add  # noqa: PLC0415  deferred — no circular at runtime
             _finish_cal_add(chat_id, _clean_text)
             return
 
@@ -822,7 +822,7 @@ def _handle_voice_message(chat_id: int, voice_obj) -> None:
             _safe_edit(chat_id, msg.message_id,
                        f"🎤 _{_escape_md(_clean_text)}_",
                        parse_mode="Markdown")
-            from bot_calendar import _handle_cal_console  # noqa: PLC0415
+            from features.bot_calendar import _handle_cal_console  # noqa: PLC0415
             _handle_cal_console(chat_id, _clean_text)
             return
 
@@ -918,7 +918,7 @@ def _handle_voice_message(chat_id: int, voice_obj) -> None:
             pass
 
         # Security L1: reject injection attempts before sending to LLM
-        from bot_security import _check_injection
+        from security.bot_security import _check_injection
         _is_inj, _inj_reason = _check_injection(text)
         if _is_inj:
             log.warning(f"[Security] voice injection blocked chat_id={chat_id}")

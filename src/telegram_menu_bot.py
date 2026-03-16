@@ -19,17 +19,17 @@ import os
 import threading
 
 # ─── Core ────────────────────────────────────────────────────────────────────
-from bot_config import (
+from core.bot_config import (
     BOT_VERSION, PICOCLAW_BIN, DIGEST_SCRIPT,
     PIPER_MODEL_TMPFS,
     log,
 )
-import bot_state as _st
+import core.bot_state as _st
 
-from bot_instance import bot
+from core.bot_instance import bot
 
 # ─── Shared utilities ─────────────────────────────────────────────────────────
-from bot_access import (
+from telegram.bot_access import (
     _is_allowed, _is_admin, _is_guest,
     _deny, _set_lang, _send_menu,
     _t, _menu_keyboard, _back_keyboard, _escape_md,
@@ -37,20 +37,20 @@ from bot_access import (
 )
 
 # ─── Data layer ───────────────────────────────────────────────────────────────
-from bot_users import (
+from telegram.bot_users import (
     _upsert_registration, _is_blocked_reg, _is_pending_reg,
     _slug, _load_note_text, _save_note_file,
 )
 
 # ─── Voice pipeline ───────────────────────────────────────────────────────────
-from bot_voice import (
+from features.bot_voice import (
     _handle_voice_message, _handle_note_read_aloud, _handle_digest_tts,
     _warm_piper_cache, _start_persistent_piper, _setup_tmpfs_model,
     _cleanup_orphaned_tts,
 )
 
 # ─── Admin handlers ───────────────────────────────────────────────────────────
-from bot_admin import (
+from telegram.bot_admin import (
     _handle_admin_menu, _handle_admin_list_users,
     _start_admin_add_user, _finish_admin_add_user,
     _start_admin_remove_user, _finish_admin_remove_user,
@@ -65,7 +65,7 @@ from bot_admin import (
 )
 
 # ─── User handlers ────────────────────────────────────────────────────────────
-from bot_handlers import (
+from telegram.bot_handlers import (
     _handle_digest, _refresh_digest,
     _handle_chat_message,
     _handle_system_message, _execute_pending_cmd,
@@ -81,7 +81,7 @@ from bot_handlers import (
 )
 
 # ─── Calendar ─────────────────────────────────────────────────────────────────
-from bot_calendar import (
+from features.bot_calendar import (
     _handle_calendar_menu, _handle_cal_event_detail,
     _start_cal_add, _finish_cal_add, _handle_cal_cancel_event,
     _cal_do_confirm_save, _show_cal_confirm,
@@ -96,26 +96,26 @@ from bot_calendar import (
 )
 
 # ─── Mail credentials ──────────────────────────────────────────────────────────
-from bot_mail_creds import (
+from features.bot_mail_creds import (
     handle_mail_consent, handle_mail_consent_agree,
     handle_mail_provider, finish_mail_setup,
     handle_mail_settings, handle_mail_del_creds,
     _pending_mail_setup,
 )
 # ─── Email send ────────────────────────────────────────────────────────────
-from bot_email import (
+from features.bot_email import (
     handle_send_email, handle_email_change_target, finish_email_set_target,
 )
 
 # ─── Error protocol ────────────────────────────────────────────────────────
-from bot_error_protocol import (
+from features.bot_error_protocol import (
     _start_error_protocol, _finish_errp_name,
     _errp_collect_text, _errp_collect_voice, _errp_collect_photo,
     _errp_send, _errp_cancel,
 )
 
 # ─── Contact book ───────────────────────────────────────────────────────────
-from bot_contacts import (
+from features.bot_contacts import (
     _handle_contacts_menu, _handle_contact_list, _handle_contact_open,
     _start_contact_add, _finish_contact_add, _handle_contact_add_skip,
     _start_contact_edit, _start_contact_edit_field, _finish_contact_edit,
@@ -456,7 +456,7 @@ def callback_handler(call):
             bot.send_message(cid, _t(cid, "admin_only"))
     # ── Send as email ───────────────────────────────────────────────────────
     elif data.startswith("note_email:"):
-        from bot_users import _load_note_text
+        from telegram.bot_users import _load_note_text
         slug    = data[len("note_email:"):]
         content = _load_note_text(cid, slug)
         if content:
@@ -465,7 +465,7 @@ def callback_handler(call):
             bot.send_message(cid, _t(cid, "note_not_found"), reply_markup=_back_keyboard())
 
     elif data == "digest_email":
-        from bot_mail_creds import _last_digest_file
+        from features.bot_mail_creds import _last_digest_file
         last_f = _last_digest_file(cid)
         if last_f.exists() and last_f.stat().st_size > 0:
             body = last_f.read_text(encoding="utf-8", errors="replace").strip()
@@ -474,7 +474,7 @@ def callback_handler(call):
             bot.send_message(cid, _t(cid, "digest_not_ready"), reply_markup=_back_keyboard())
 
     elif data.startswith("cal_email:"):
-        from bot_calendar import _cal_load
+        from features.bot_calendar import _cal_load
         ev_id  = data[len("cal_email:"):]
         events = _cal_load(cid)
         ev     = next((e for e in events if e["id"] == ev_id), None)
@@ -948,11 +948,11 @@ def photo_handler(message):
 # ─────────────────────────────────────────────────────────────────────────────
 
 def main() -> None:
-    from bot_db import init_db as _init_db
+    from core.bot_db import init_db as _init_db
     _init_db()
     log.info("=" * 50)
     log.info("Pico Telegram Menu Bot starting")
-    from bot_config import ADMIN_USERS, ALLOWED_USERS
+    from core.bot_config import ADMIN_USERS, ALLOWED_USERS
     log.info(f"  Admin users  : {sorted(ADMIN_USERS)}")
     log.info(f"  Allowed users: {sorted(ALLOWED_USERS)}")
     log.info(f"  Guest users  : {sorted(_st._dynamic_users)}")

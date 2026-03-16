@@ -29,13 +29,13 @@ from typing import Optional
 
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
-import bot_state as _st
-from bot_config import CALENDAR_DIR, log
-from bot_instance import bot
-from bot_access import (
+import core.bot_state as _st
+from core.bot_config import CALENDAR_DIR, log
+from core.bot_instance import bot
+from telegram.bot_access import (
     _t, _ask_picoclaw, _escape_md, _back_keyboard, _send_menu, _is_allowed,
 )
-from bot_users import _resolve_storage_id
+from telegram.bot_users import _resolve_storage_id
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -114,7 +114,7 @@ def _cal_mark_reminded(chat_id: int, ev_id: str) -> None:
 
 def _fmt_countdown(dt: datetime, lang: str) -> str:
     """Return a short countdown string like '⏰ через 2д 3ч' or 'now!'."""
-    from bot_access import _STRINGS
+    from telegram.bot_access import _STRINGS
     def s(key, **kw):
         text = _STRINGS.get(lang, _STRINGS.get("en", {})).get(key, key)
         return text.format(**kw) if kw else text
@@ -879,7 +879,7 @@ def _cal_handle_edit_input(chat_id: int, text: str, field: str) -> None:
 def _cal_tts_text(chat_id: int, ev: dict) -> str:
     """Build TTS string for an event."""
     lang = _st._user_lang.get(chat_id, "ru")
-    from bot_access import _STRINGS
+    from telegram.bot_access import _STRINGS
     tmpl = _STRINGS.get(lang, _STRINGS.get("en", {})).get("cal_tts_event_text", "Event: {title}. Date: {dt_fmt}.")
     dt_fmt = ev["dt"].strftime("%d %B %Y %H:%M")
     return tmpl.format(title=ev["title"], dt_fmt=dt_fmt)
@@ -900,7 +900,7 @@ def _handle_cal_event_tts(chat_id: int, ev_id: str) -> None:
         _t(chat_id, "cal_tts_generating"),
     )
     try:
-        from bot_voice import _tts_to_ogg  # noqa: PLC0415
+        from features.bot_voice import _tts_to_ogg  # noqa: PLC0415
         ogg = _tts_to_ogg(tts_text, lang=lang)
         if ogg:
             bot.delete_message(chat_id, placeholder.message_id)
@@ -934,7 +934,7 @@ def _handle_cal_confirm_tts(chat_id: int) -> None:
         _t(chat_id, "cal_tts_generating"),
     )
     try:
-        from bot_voice import _tts_to_ogg  # noqa: PLC0415
+        from features.bot_voice import _tts_to_ogg  # noqa: PLC0415
         ogg = _tts_to_ogg(tts_text, lang=lang)
         if ogg:
             bot.delete_message(chat_id, placeholder.message_id)
@@ -999,7 +999,7 @@ def _send_reminder(chat_id: int, ev_id: str, title: str, dt_iso: str) -> None:
 
         # Optional TTS voice note (deferred import to avoid circular at module load)
         try:
-            from bot_voice import _tts_to_ogg  # noqa: PLC0415  deferred on purpose
+            from features.bot_voice import _tts_to_ogg  # noqa: PLC0415  deferred on purpose
             ogg = _tts_to_ogg(tts_text, lang=lang)
             if ogg:
                 bot.send_voice(chat_id, ogg)
@@ -1100,7 +1100,7 @@ def _cal_morning_briefing_loop() -> None:
                     continue
 
                 lang = _st._user_lang.get(chat_id, "ru")
-                from bot_access import _STRINGS
+                from telegram.bot_access import _STRINGS
                 greeting = _STRINGS.get(lang, _STRINGS.get("en", {})).get("cal_morning_greeting", "☀️ *Good morning! Today:*\n\n")
                 lines = []
                 for ev in today_evs:
@@ -1114,7 +1114,7 @@ def _cal_morning_briefing_loop() -> None:
 
                 # Optional TTS voice briefing
                 try:
-                    from bot_voice import _tts_to_ogg  # noqa: PLC0415  deferred
+                    from features.bot_voice import _tts_to_ogg  # noqa: PLC0415  deferred
                     tts_text = _STRINGS.get(lang, _STRINGS.get("en", {})).get("cal_morning_tts_prefix", "Good morning. ")
                     for ev in today_evs:
                         dt = datetime.fromisoformat(ev["dt_iso"])

@@ -14,11 +14,11 @@ Dependency position: bot_config, bot_ui, bot_users (no Telegram API imports)
 """
 from __future__ import annotations
 
-from bot_ui import (
+from ui.bot_ui import (
     UserContext, Screen, Card, ButtonRow, Button,
     MarkdownBlock, TextInput, Redirect, back_button
 )
-from bot_users import _list_notes_for, _load_note_text
+from telegram.bot_users import _list_notes_for, _load_note_text
 
 
 # ---------------------------------------------------------------------------

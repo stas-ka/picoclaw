@@ -21,10 +21,10 @@ from pathlib import Path
 
 from telebot.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-from bot_config import ERROR_PROTOCOL_DIR, log
-import bot_state as _st
-from bot_instance import bot
-from bot_access import _is_admin, _t, _back_keyboard, _escape_md
+from core.bot_config import ERROR_PROTOCOL_DIR, log
+import core.bot_state as _st
+from core.bot_instance import bot
+from telegram.bot_access import _is_admin, _t, _back_keyboard, _escape_md
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -240,8 +240,8 @@ def _errp_send(chat_id: int) -> None:
 
 def _errp_send_email(chat_id: int, state: dict) -> None:
     """Background thread: send error protocol as email with attachments."""
-    from bot_mail_creds import _load_creds
-    from bot_email import _get_target_email, _smtp_host_port, _mask_addr
+    from features.bot_mail_creds import _load_creds
+    from features.bot_email import _get_target_email, _smtp_host_port, _mask_addr
 
     folder_name = state["folder_name"]
 

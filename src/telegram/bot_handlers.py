@@ -16,17 +16,17 @@ import unicodedata
 from pathlib import Path
 from typing import Optional
 
-import bot_state as _st
-from bot_config import (
+import core.bot_state as _st
+from core.bot_config import (
     LAST_DIGEST_FILE, DIGEST_SCRIPT,
     log,
 )
-from bot_instance import bot
-from bot_access import (
+from core.bot_instance import bot
+from telegram.bot_access import (
     _t, _is_admin, _is_allowed, _is_developer, _with_lang, _escape_md, _truncate,
     _safe_edit, _back_keyboard, _run_subprocess, _ask_picoclaw,
 )
-from bot_users import (
+from telegram.bot_users import (
     _list_notes_for, _load_note_text, _save_note_file, _delete_note_file,
     _slug, _find_registration, _upsert_registration,
 )
@@ -236,9 +236,9 @@ def _handle_note_delete(chat_id: int, slug: str) -> None:
 def _handle_profile(chat_id: int) -> None:
     """Show the user's own profile: name, username, chat ID, role, registration date, mail."""
     try:
-        from bot_mail_creds import _load_creds  # deferred — avoids circular import at module level
+        from features.bot_mail_creds import _load_creds  # deferred — avoids circular import at module level
     except Exception as _imp_err:
-        log.warning(f"[Profile] cannot import bot_mail_creds: {_imp_err}")
+        log.warning(f"[Profile] cannot import features.bot_mail_creds: {_imp_err}")
         _load_creds = lambda _cid: None  # noqa: E731 — degrade gracefully
 
     reg = _find_registration(chat_id)
@@ -346,7 +346,7 @@ def _finish_profile_edit_name(chat_id: int, text: str) -> None:
 def _start_profile_change_pw(chat_id: int) -> None:
     """Check that a linked web account exists, then prompt for a new password."""
     try:
-        from bot_auth import find_account_by_chat_id
+        from security.bot_auth import find_account_by_chat_id
         account = find_account_by_chat_id(chat_id)
     except Exception as _e:
         log.warning(f"[Profile] cannot load bot_auth: {_e}")
@@ -369,7 +369,7 @@ def _finish_profile_change_pw(chat_id: int, text: str) -> None:
                          reply_markup=_back_keyboard())
         return
     try:
-        from bot_auth import find_account_by_chat_id, change_password
+        from security.bot_auth import find_account_by_chat_id, change_password
         account = find_account_by_chat_id(chat_id)
         if not account:
             bot.send_message(chat_id, _t(chat_id, "profile_no_web_account"),
@@ -401,13 +401,13 @@ def _handle_web_link(chat_id: int) -> None:
 
 def _handle_digest(chat_id: int) -> None:
     """Delegate to per-user credential-aware digest handler."""
-    from bot_mail_creds import handle_digest_auth   # deferred — no circular at runtime
+    from features.bot_mail_creds import handle_digest_auth   # deferred — no circular at runtime
     handle_digest_auth(chat_id)
 
 
 def _refresh_digest(chat_id: int) -> None:
     """Delegate to per-user credential-aware refresh."""
-    from bot_mail_creds import handle_digest_refresh  # deferred — no circular at runtime
+    from features.bot_mail_creds import handle_digest_refresh  # deferred — no circular at runtime
     handle_digest_refresh(chat_id)
 
 
@@ -527,7 +527,7 @@ def _handle_system_message(chat_id: int, user_text: str) -> None:
         log.warning(f"[Security] non-admin system-chat attempt from chat_id={chat_id}")
         return
 
-    from bot_security import _check_injection, _classify_cmd_class
+    from security.bot_security import _check_injection, _classify_cmd_class
     is_inj, reason = _check_injection(user_text)
     if is_inj:
         bot.send_message(chat_id,
@@ -582,7 +582,7 @@ def _handle_system_message(chat_id: int, user_text: str) -> None:
         cmd_hash = hashlib.md5(cmd_clean.encode()).hexdigest()[:8]
         _st._pending_cmd[chat_id] = cmd_clean
 
-        from bot_access import _confirm_keyboard
+        from telegram.bot_access import _confirm_keyboard
         reply = (
             "🖥️  I'll run the following command:\n\n"
             f"```\n{cmd_clean}\n```\n\n"
@@ -649,7 +649,7 @@ def _execute_pending_cmd(chat_id: int) -> None:
 
 def _handle_chat_message(chat_id: int, user_text: str) -> None:
     """Forward message to picoclaw agent and return response."""
-    from bot_security import _check_injection
+    from security.bot_security import _check_injection
     is_inj, reason = _check_injection(user_text)
     if is_inj:
         bot.send_message(chat_id,

@@ -130,7 +130,7 @@ Also update `doc/bot-code-map.md` callback key table.
 
 Any UI change (screen, button, string) must be applied to **both** Telegram and Web UI simultaneously:
 - Telegram: `src/telegram_menu_bot.py` + `src/bot_*.py` + `src/strings.json`
-- Web UI: `src/bot_web.py` + `src/templates/*.html` + `src/static/`
+- Web UI: `src/bot_web.py` + `src/web/templates/*.html` + `src/web/static/`
 
 Before deploying, ask: *"Which target(s) shall I deploy to? (OpenClawPI / OpenClawPI2 / both)"*
 

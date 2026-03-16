@@ -2,12 +2,12 @@
 render_telegram.py — Screen DSL → Telegram renderer (Phase 4)
 
 Translates a Screen object returned by a bot_actions handler into
-Telegram API calls via the shared `bot` singleton from bot_instance.
+Telegram API calls via the shared `bot` singleton from core.bot_instance.
 
 Usage in a callback handler:
-    from bot_actions import action_menu
-    from render_telegram import render_screen
-    from bot_instance import bot
+    from ui.bot_actions import action_menu
+    from ui.render_telegram import render_screen
+    from core.bot_instance import bot
 
     screen = action_menu(user_ctx)
     render_screen(screen, chat_id, bot)
@@ -38,7 +38,7 @@ from telebot.types import (
     InlineKeyboardMarkup, InlineKeyboardButton, ForceReply
 )
 
-from bot_ui import (
+from ui.bot_ui import (
     Screen, Widget,
     Button, ButtonRow, Card, TextInput, Toggle,
     AudioPlayer, MarkdownBlock, Spinner, Confirm, Redirect,

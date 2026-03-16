@@ -118,6 +118,7 @@ Each session block contains a table with one row per completed request:
 | 07:12 | Audit German language completeness across all files | 2 | 2 | claude-sonnet-4.6 | — | done |
 | 07:18 | Complete German language implementation (Phase 2) | 5 | wip+cont | claude-sonnet-4.6 | bot_calendar.py, bot_handlers.py, bot_mail_creds.py, bot_access.py, strings.json | done |
 | 09:38 | Resume from hung CLI — complete Phase 2 bot_calendar.py migration | 3 | 3 | claude-sonnet-4.6 | bot_calendar.py | done |
+| 10:00 | implement copilot_optimizations.md — P1–P4, P6–P8: slim instructions, split architecture.md into 8 topic files, create doc/quick-ref.md | 4 | 12 | claude-sonnet-4-5 | .github/copilot-instructions.md, safe-update.instructions.md, bot-deploy.instructions.md, INSTRUCTIONS.md, doc/quick-ref.md, doc/architecture.md, doc/arch/overview.md, doc/arch/voice-pipeline.md, doc/arch/telegram-bot.md, doc/arch/security.md, doc/arch/features.md, doc/arch/deployment.md, doc/arch/multilanguage.md, doc/arch/web-ui.md, concept/accounting_2025.md | done |
 | 07:22 | Add vibe coding protocol rule to AGENTS.md + reformat protocol | 2 | 2 | claude-sonnet-4.6 | AGENTS.md, doc/vibe-coding-protocol.md | done |
 | 07:35 | Add §14 Multilanguage Support to architecture.md; deploy/test status check | 2 | 4 | claude-sonnet-4.6 | doc/architecture.md | done |
 | 09:47 | Deploy Phase 2 to Pi, update architecture.md §14 to complete, git push | 2 | 3 | claude-sonnet-4.6 | doc/architecture.md, doc/vibe-coding-protocol.md | done |
@@ -180,6 +181,16 @@ Each session block contains a table with one row per completed request:
 
 ---
 
+## Session 11 — 2026-03-16 (src/ package restructure)
+
+| Time | Request | Complexity | Requests used | Model | Files changed | Status |
+|------|---------|------------|---------------|-------|---------------|--------|
+| ~20:00 | Reorganize flat `src/*.py` into 5 logical packages: core/, security/, telegram/, features/, ui/ — move files, rewrite all imports, update docs | 4 | ~15 | claude-sonnet-4.6 | all 20 bot_*.py files, telegram_menu_bot.py, bot_web.py, doc/bot-code-map.md, doc/quick-ref.md, .github/instructions/bot-deploy.instructions.md | done |
+
+**Session 11 total: 1 item, ~15 requests**
+
+---
+
 ## Summary Table (all sessions)
 
 | Session | Date | Items | Requests | Avg complexity | Model |
@@ -194,7 +205,8 @@ Each session block contains a table with one row per completed request:
 | 8 | 2026-03-12 | 1 | ~2 | 3.0 | claude-opus-4.6 |
 | 9 | 2026-03-13 | 2 | ~30 | 4.0 | claude-sonnet-4.6 |
 | 10 | 2026-03-14 | 1 | ~6 | 3.0 | claude-sonnet-4.6 |
-| **Total** | | **47** | **~141** | | |
+| 11 | 2026-03-16 | 1 | ~15 | 4.0 | claude-sonnet-4.6 |
+| **Total** | | **48** | **~156** | | |
 
 ---
 
@@ -466,6 +478,20 @@ Each session block contains a table with one row per completed request:
 | ~UTC | Commit and push all changes: update .gitignore (IDE/certs/backups/test-results), stage 69 files (new: bot_ui.py, bot_actions.py, render_telegram.py, manifest.json, picoclaw-tunnel.service, VPS setup scripts, settings.html, benchmark tools; modified: bot_auth.py + change_password(), bot_web.py + settings routes + admin reset, bot_state.py + account linking, templates; deleted: obsolete files/mockups), rebase on Copilot PR #4 (list-open-issues), resolve vibe-coding-protocol.md conflict, push 69b3a2a to origin/master | 2 | 4 | claude-sonnet-4.6 | .gitignore, doc/vibe-coding-protocol.md | done |
 
 **Session 27 total: 1 item, 4 requests**
+
+---
+
+## Session 28 — 2026-03-16 (UTC)
+
+**Focus:** Package-structure migration validation — fix web service, fix voice regression tests, add db functions
+
+| Time (UTC) | Request | Complexity | Requests | Model | Files changed | Status |
+|---|---|---|---|---|---|---|
+| ~22:00 UTC | Deploy missing bot_web.py to PI2 (was not deployed in previous migration session); web service now running on https://0.0.0.0:8080 | 1 | 2 | claude-sonnet-4.6 | src/bot_web.py (deploy only) | done |
+| ~22:15 UTC | Fix 6 voice regression test failures caused by new package layout: add _PKG_CORE/_PKG_TELEGRAM/_PKG_FEATURES path constants, update T17 (core.bot_config import), T18/T19 (telegram/bot_handlers.py path), T20/T21 (features/bot_calendar.py path), T22 (core.bot_db import) | 2 | 6 | claude-sonnet-4.6 | src/tests/test_voice_regression.py | done |
+| ~22:30 UTC | Fix T18 test false failure (wrong string pattern "from bot_mail_creds" → "bot_mail_creds" substring); add close_db(), db_save_voice_opts(), db_get_voice_opts(), vosk_fallback column, global_voice_opts table to bot_db.py; all 30 tests now PASS | 3 | 4 | claude-sonnet-4.6 | src/core/bot_db.py, src/tests/test_voice_regression.py | done |
+
+**Session 28 total: 3 items, ~12 requests — package migration validation complete. PASS 30 FAIL 0 WARN 0 SKIP 4**
 
 ---
 

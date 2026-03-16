@@ -11,7 +11,7 @@ import sqlite3
 import threading
 import os
 
-from bot_config import log
+from core.bot_config import log
 
 # ── Database file path ────────────────────────────────────────────────────────
 _PICOCLAW_DIR = os.path.expanduser("~/.picoclaw")
@@ -47,7 +47,14 @@ CREATE TABLE IF NOT EXISTS voice_opts (
     whisper_stt          INTEGER DEFAULT 0,
     piper_low_model      INTEGER DEFAULT 0,
     persistent_piper     INTEGER DEFAULT 0,
-    voice_timing_debug   INTEGER DEFAULT 0
+    voice_timing_debug   INTEGER DEFAULT 0,
+    vosk_fallback        INTEGER DEFAULT 1
+);
+
+-- Global voice optimisation flags (system-wide, not per-user)
+CREATE TABLE IF NOT EXISTS global_voice_opts (
+    key    TEXT PRIMARY KEY,
+    value  INTEGER NOT NULL DEFAULT 0
 );
 
 -- Calendar events (replaces calendar/<chat_id>.json)
@@ -137,3 +144,40 @@ def init_db() -> None:
     conn.executescript(_SCHEMA_SQL)
     conn.commit()
     log.info(f"[DB] init OK : {DB_PATH}")
+
+
+def close_db() -> None:
+    """Close and discard the thread-local connection (used in tests and teardown)."""
+    conn = getattr(_local, "conn", None)
+    if conn:
+        conn.close()
+        _local.conn = None
+
+
+_VOICE_OPT_KEYS = [
+    "silence_strip", "low_sample_rate", "warm_piper", "parallel_tts",
+    "user_audio_toggle", "tmpfs_model", "vad_prefilter", "whisper_stt",
+    "vosk_fallback", "piper_low_model", "persistent_piper", "voice_timing_debug",
+]
+
+
+def db_save_voice_opts(opts: dict) -> None:
+    """Persist all voice-opt flags to the global_voice_opts table."""
+    conn = get_db()
+    for key in _VOICE_OPT_KEYS:
+        conn.execute(
+            "INSERT INTO global_voice_opts(key, value) VALUES(?, ?) "
+            "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            (key, 1 if opts.get(key) else 0),
+        )
+    conn.commit()
+
+
+def db_get_voice_opts() -> dict:
+    """Return all voice-opt flags from the global_voice_opts table."""
+    conn = get_db()
+    rows = conn.execute("SELECT key, value FROM global_voice_opts").fetchall()
+    result = {row[0]: bool(row[1]) for row in rows}
+    for key in _VOICE_OPT_KEYS:
+        result.setdefault(key, False)
+    return result

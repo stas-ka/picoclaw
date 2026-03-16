@@ -42,7 +42,7 @@ src/tests/voice/results/
 .github/agents/
 
 # Large binary resources
-src/res/
+res/
 
 # You (scratch)
 You

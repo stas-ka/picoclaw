@@ -2,7 +2,7 @@
 bot_email.py — "Send as Email" feature for Notes, Mail Digest, and Calendar events.
 
 Design:
-  • Uses the per-user IMAP app-password (from bot_mail_creds) to also send via SMTP.
+  • Uses the per-user IMAP app-password (from features.bot_mail_creds) to also send via SMTP.
     No additional credentials needed — the same Gmail/Yandex/Mail.ru App Password
     that already works for IMAP reading also works for SMTP sending.
   • Per-user recipient address stored at ~/.picoclaw/mail_creds/<chat_id>_email_target.txt
@@ -30,10 +30,10 @@ from email.mime.text import MIMEText
 from pathlib import Path
 from typing import Optional
 
-import bot_state as _st
-from bot_config import MAIL_CREDS_DIR, log
-from bot_instance import bot
-from bot_access import _t, _back_keyboard
+import core.bot_state as _st
+from core.bot_config import MAIL_CREDS_DIR, log
+from core.bot_instance import bot
+from telegram.bot_access import _t, _back_keyboard
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -121,7 +121,7 @@ def _do_smtp_send(
 def _send_in_thread(chat_id: int, msg_id: int, subject: str, body: str) -> None:
     """Background thread: resolve creds → SMTP → edit spinner message."""
     # import here to avoid circular dep at module load time
-    from bot_mail_creds import _load_creds
+    from features.bot_mail_creds import _load_creds
 
     creds = _load_creds(chat_id)
     if not creds or not creds.get("email") or not creds.get("app_password"):
@@ -179,7 +179,7 @@ def handle_send_email(chat_id: int, subject: str, body: str) -> None:
     - If target email already stored → send immediately.
     - Otherwise → enter "email_set_target" mode, ask for address.
     """
-    from bot_mail_creds import _mail_has_creds
+    from features.bot_mail_creds import _mail_has_creds
 
     if not _mail_has_creds(chat_id):
         bot.send_message(

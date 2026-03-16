@@ -22,7 +22,7 @@ git diff --name-only HEAD~1 HEAD
 | `src/telegram_menu_bot.py` (calendar section) | **T20** `calendar_tts_call_signature`, **T21** `calendar_console_classifier` |
 | `src/telegram_menu_bot.py` (notes section) | **T19** `note_edit_append_replace` |
 | `src/telegram_menu_bot.py` (profile section) | **T18** `profile_resilience` |
-| `src/bot_web.py`, `src/templates/`, `src/static/` | **Web UI Playwright tests** (run locally vs. live Pi) |
+| `src/bot_web.py`, `src/web/templates/`, `src/web/static/` | **Web UI Playwright tests** (run locally vs. live Pi) |
 | Any Python file | **Full voice regression suite** as a safety net |
 
 ## Step 3 — Run selected tests

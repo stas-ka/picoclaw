@@ -16,41 +16,43 @@ Use this skill whenever deploying bot changes to the Pi.
 >
 > **NEVER** deploy directly to PI1 without prior validation on PI2.
 
-## 1 — Version Bump and Release Notes
+## 1 — Version Bump
 
-Every user-visible change needs a version bump.
-
-```python
-# src/bot_config.py  (canonical location — telegram_menu_bot.py imports it from there)
-BOT_VERSION = "2026.3.X"   # YYYY.M.D — no zero-padding
-```
-
-```json
-// src/release_notes.json — prepend at top; never append
-[
-  {
-    "version": "2026.3.X",
-    "date":    "2026-03-XX",
-    "title":   "Short feature name",
-    "notes":   "- Item 1\n- Item 2"
-  }
-]
-```
-
-- Never use `\_` in JSON — invalid escape. Validate: `python3 -c "import json,sys; json.load(sys.stdin)" < src/release_notes.json`
+`BOT_VERSION = "YYYY.M.D"` in `src/core/bot_config.py` + prepend entry in `src/release_notes.json`. Never use `\_` in JSON. See `doc/quick-ref.md` §Version Bump.
 
 ## 2 — Deploy Files
 
 ```bat
-rem Incremental — only changed files
-pscp -pw "%HOSTPWD%" src\telegram_menu_bot.py stas@OpenClawPI:/home/stas/.picoclaw/
+rem Incremental — only changed files (use package subdirectory)
+rem core/:     pscp -pw "%HOSTPWD%" src\core\<file>.py stas@<HOST>:/home/stas/.picoclaw/core/
+rem security/: pscp -pw "%HOSTPWD%" src\security\<file>.py stas@<HOST>:/home/stas/.picoclaw/security/
+rem telegram/: pscp -pw "%HOSTPWD%" src\telegram\<file>.py stas@<HOST>:/home/stas/.picoclaw/telegram/
+rem features/: pscp -pw "%HOSTPWD%" src\features\<file>.py stas@<HOST>:/home/stas/.picoclaw/features/
+rem ui/:       pscp -pw "%HOSTPWD%" src\ui\<file>.py stas@<HOST>:/home/stas/.picoclaw/ui/
+rem root:      pscp -pw "%HOSTPWD%" src\telegram_menu_bot.py stas@<HOST>:/home/stas/.picoclaw/
 pscp -pw "%HOSTPWD%" src\release_notes.json src\strings.json stas@OpenClawPI:/home/stas/.picoclaw/
 
-rem Full deploy (first-time or major refactor)
-pscp -pw "%HOSTPWD%" src\bot_config.py src\bot_state.py src\bot_instance.py stas@OpenClawPI:/home/stas/.picoclaw/
-pscp -pw "%HOSTPWD%" src\bot_access.py src\bot_users.py src\bot_voice.py    stas@OpenClawPI:/home/stas/.picoclaw/
-pscp -pw "%HOSTPWD%" src\bot_admin.py  src\bot_handlers.py                  stas@OpenClawPI:/home/stas/.picoclaw/
-pscp -pw "%HOSTPWD%" src\telegram_menu_bot.py src\release_notes.json src\strings.json stas@OpenClawPI:/home/stas/.picoclaw/
+rem Full deploy (all packages)
+pscp -pw "%HOSTPWD%" src\core\*.py     stas@OpenClawPI:/home/stas/.picoclaw/core/
+pscp -pw "%HOSTPWD%" src\security\*.py stas@OpenClawPI:/home/stas/.picoclaw/security/
+pscp -pw "%HOSTPWD%" src\telegram\*.py stas@OpenClawPI:/home/stas/.picoclaw/telegram/
+pscp -pw "%HOSTPWD%" src\features\*.py stas@OpenClawPI:/home/stas/.picoclaw/features/
+pscp -pw "%HOSTPWD%" src\ui\*.py       stas@OpenClawPI:/home/stas/.picoclaw/ui/
+pscp -pw "%HOSTPWD%" src\telegram_menu_bot.py src\bot_web.py stas@OpenClawPI:/home/stas/.picoclaw/
+pscp -pw "%HOSTPWD%" src\release_notes.json src\strings.json stas@OpenClawPI:/home/stas/.picoclaw/
+```
+
+## 2a — First-Time Deploy (New Pi or After Restructure)
+
+Before deploying Python files to a Pi that still has the flat (pre-package) layout, create
+the package directories and `__init__.py` files first:
+
+```bat
+rem Create package directories on Pi
+plink -pw "%HOSTPWD%" -batch stas@<HOST> "mkdir -p ~/.picoclaw/core ~/.picoclaw/security ~/.picoclaw/telegram ~/.picoclaw/features ~/.picoclaw/ui"
+plink -pw "%HOSTPWD%" -batch stas@<HOST> "touch ~/.picoclaw/core/__init__.py ~/.picoclaw/security/__init__.py ~/.picoclaw/telegram/__init__.py ~/.picoclaw/features/__init__.py ~/.picoclaw/ui/__init__.py"
+
+rem Then run full deploy (section 2)
 ```
 
 ## 3 — Restart and Verify
@@ -76,12 +78,13 @@ Any UI change must be deployed to both variants:
 
 ```bat
 rem Telegram
-pscp -pw "%HOSTPWD%" src\telegram_menu_bot.py src\bot_access.py src\strings.json stas@<HOST>:/home/stas/.picoclaw/
+pscp -pw "%HOSTPWD%" src\telegram_menu_bot.py src\strings.json stas@<HOST>:/home/stas/.picoclaw/
+pscp -pw "%HOSTPWD%" src\telegram\bot_access.py stas@<HOST>:/home/stas/.picoclaw/telegram/
 
 rem Web UI
 pscp -pw "%HOSTPWD%" src\bot_web.py stas@<HOST>:/home/stas/.picoclaw/
-pscp -pw "%HOSTPWD%" src\templates\*.html stas@<HOST>:/home/stas/.picoclaw/templates/
-pscp -pw "%HOSTPWD%" src\static\style.css stas@<HOST>:/home/stas/.picoclaw/static/
+pscp -pw "%HOSTPWD%" src\web\templates\*.html stas@<HOST>:/home/stas/.picoclaw/web/templates/
+pscp -pw "%HOSTPWD%" src\web\static\style.css src\web\static\manifest.json stas@<HOST>:/home/stas/.picoclaw/web/static/
 
 rem Restart both
 plink -pw "%HOSTPWD%" -batch stas@<HOST> "echo %HOSTPWD% | sudo -S systemctl restart picoclaw-telegram picoclaw-web"
@@ -101,19 +104,11 @@ plink -pw "%HOSTPWD%" -batch stas@OpenClawPI "picoclaw agent -m \"Hello!\""
 
 Config: `~/.picoclaw/config.json` — requires at least one `model_list` entry with an OpenRouter API key.
 
-## Gmail Digest Agent
-
-Daily digest runs at 19:00 Pi local time via cron (`0 19 * * *`).
-
-```bat
-rem Run manually
-plink -pw "%HOSTPWD%" -batch stas@OpenClawPI "python3 /home/stas/.picoclaw/gmail_digest.py"
-
-rem Update script
-pscp -pw "%HOSTPWD%" src\gmail_digest.py stas@OpenClawPI:/home/stas/.picoclaw/gmail_digest.py
-```
-
 ## Runtime Files (auto-created on Pi — do NOT commit)
+
+Gmail digest: runs at 19:00 via cron; update with `pscp src\gmail_digest.py stas@<HOST>:/home/stas/.picoclaw/`
+
+
 
 | File | Purpose |
 |---|---|

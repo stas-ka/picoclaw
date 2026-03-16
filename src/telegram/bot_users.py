@@ -11,7 +11,7 @@ import json
 from pathlib import Path
 from typing import Optional
 
-from bot_config import REGISTRATIONS_FILE, log
+from core.bot_config import REGISTRATIONS_FILE, log
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -100,7 +100,7 @@ def _is_pending_reg(chat_id: int) -> bool:
 # ─────────────────────────────────────────────────────────────────────────────
 
 import re as _notes_re
-from bot_config import NOTES_DIR
+from core.bot_config import NOTES_DIR
 
 
 def _resolve_storage_id(chat_id: int) -> str:
@@ -111,7 +111,7 @@ def _resolve_storage_id(chat_id: int) -> str:
     Telegram and Web UI share the same notes/calendar directories.
     """
     try:
-        from bot_auth import ACCOUNTS_FILE  # noqa: PLC0415  (local import avoids circular)
+        from security.bot_auth import ACCOUNTS_FILE  # noqa: PLC0415  (local import avoids circular)
         data = json.loads(Path(ACCOUNTS_FILE).read_text(encoding="utf-8"))
         for acct in data.get("accounts", []):
             if acct.get("telegram_chat_id") == chat_id:

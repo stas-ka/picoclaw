@@ -25,6 +25,7 @@ Exit codes:
 from __future__ import annotations
 
 import argparse
+import importlib
 import json
 import os
 import re
@@ -42,6 +43,10 @@ from typing import Optional
 
 PICOCLAW_DIR   = Path(os.path.expanduser("~/.picoclaw"))
 TESTS_DIR      = Path(__file__).parent.resolve()
+# Package-aware paths (new package layout)
+_PKG_CORE     = PICOCLAW_DIR / "core"
+_PKG_TELEGRAM = PICOCLAW_DIR / "telegram"
+_PKG_FEATURES = PICOCLAW_DIR / "features"
 VOICE_DIR      = TESTS_DIR / "voice"
 RESULTS_DIR    = VOICE_DIR / "results"
 GROUND_TRUTH   = VOICE_DIR / "ground_truth.json"
@@ -555,6 +560,11 @@ def t_whisper_stt(gt: dict, verbose: bool = False, **_) -> list[TestResult]:
     if not Path(WHISPER_MODEL).exists():
         return [TestResult("whisper_stt", "SKIP", 0.0,
                            f"Whisper model not found: {WHISPER_MODEL}")]
+    # Probe for missing shared libraries (binary exists but can't load .so deps)
+    _probe = subprocess.run([WHISPER_BIN, "--help"], capture_output=True, timeout=5)
+    if _probe.returncode == 127:
+        return [TestResult("whisper_stt", "SKIP", 0.0,
+                           "whisper-cpp missing shared libs (rc=127) — not fully installed")]
 
     import wave as _wave
     import tempfile
@@ -947,7 +957,7 @@ def t_bot_name_injection(**_) -> list[TestResult]:
     try:
         sys.path.insert(0, str(PICOCLAW_DIR))
         import importlib
-        cfg = importlib.import_module("bot_config")
+        cfg = importlib.import_module("core.bot_config")
         importlib.reload(cfg)
         bot_name = getattr(cfg, "BOT_NAME", None)
         if bot_name is None:
@@ -1003,7 +1013,8 @@ def t_profile_resilience(**_) -> list[TestResult]:
     """T18 — _handle_profile() has try/except around deferred mail_creds import so it never crashes."""
     t0 = time.time()
     issues: list[str] = []
-    handler_path = PICOCLAW_DIR / "bot_handlers.py"
+    handler_path = (_PKG_TELEGRAM / "bot_handlers.py" if (_PKG_TELEGRAM / "bot_handlers.py").exists()
+                     else PICOCLAW_DIR / "bot_handlers.py")
 
     if not handler_path.exists():
         return [TestResult("profile_resilience", "FAIL", time.time() - t0,
@@ -1023,7 +1034,7 @@ def t_profile_resilience(**_) -> list[TestResult]:
         if match:
             func_body = match.group(1)
             # Must have try/except around the import
-            if "try:" not in func_body or "from bot_mail_creds" not in func_body:
+            if "try:" not in func_body or "bot_mail_creds" not in func_body:
                 issues.append("_handle_profile missing try/except around bot_mail_creds import")
             if "except" not in func_body:
                 issues.append("_handle_profile has no except clause for import guard")
@@ -1053,7 +1064,8 @@ def t_note_edit_append_replace(**_) -> list[TestResult]:
     issues: list[str] = []
 
     # 1) Functions exist in bot_handlers.py
-    handler_path = PICOCLAW_DIR / "bot_handlers.py"
+    handler_path = (_PKG_TELEGRAM / "bot_handlers.py" if (_PKG_TELEGRAM / "bot_handlers.py").exists()
+                    else PICOCLAW_DIR / "bot_handlers.py")
     if not handler_path.exists():
         return [TestResult("note_edit_append_replace", "FAIL", time.time() - t0,
                            f"bot_handlers.py not found")]
@@ -1116,7 +1128,8 @@ def t_calendar_tts_call_signature(**_) -> list[TestResult]:
     t0 = time.time()
     issues: list[str] = []
 
-    cal_path = PICOCLAW_DIR / "bot_calendar.py"
+    cal_path = (_PKG_FEATURES / "bot_calendar.py" if (_PKG_FEATURES / "bot_calendar.py").exists()
+                else PICOCLAW_DIR / "bot_calendar.py")
     if not cal_path.exists():
         return [TestResult("calendar_tts_call_signature", "FAIL", time.time() - t0,
                            "bot_calendar.py not found")]
@@ -1181,7 +1194,8 @@ def t_calendar_console_classifier(**_) -> list[TestResult]:
     t0 = time.time()
     issues: list[str] = []
 
-    cal_path = PICOCLAW_DIR / "bot_calendar.py"
+    cal_path = (_PKG_FEATURES / "bot_calendar.py" if (_PKG_FEATURES / "bot_calendar.py").exists()
+                else PICOCLAW_DIR / "bot_calendar.py")
     if not cal_path.exists():
         return [TestResult("calendar_console_classifier", "FAIL", time.time() - t0,
                            "bot_calendar.py not found")]
@@ -1234,6 +1248,87 @@ def t_calendar_console_classifier(**_) -> list[TestResult]:
                            f"{len(issues)} issue(s): " + "; ".join(issues))]
     return [TestResult("calendar_console_classifier", "PASS", dur,
                        "Console uses JSON intent classifier with add default + routes to local handlers")]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# T22 — SQLite voice_opts roundtrip
+# ─────────────────────────────────────────────────────────────────────────────
+
+def t_db_voice_opts_roundtrip(**_) -> list[TestResult]:
+    """T22 — SQLite voice_opts roundtrip: save all 12 keys and reload from DB."""
+    import tempfile
+    t0 = time.time()
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = os.path.join(tmp, "test.db")
+            os.environ["DB_FILE"] = db_path
+            os.environ["WEB_ONLY"] = "1"
+            sys.path.insert(0, str(PICOCLAW_DIR))
+            if "core.bot_db" in sys.modules:
+                import core.bot_db as _bot_db
+                importlib.reload(_bot_db)
+            else:
+                import core.bot_db as _bot_db
+            _bot_db.init_db()
+            opts_in = {k: True for k in [
+                "silence_strip", "low_sample_rate", "warm_piper", "parallel_tts",
+                "user_audio_toggle", "tmpfs_model", "vad_prefilter", "whisper_stt",
+                "vosk_fallback", "piper_low_model", "persistent_piper", "voice_timing_debug",
+            ]}
+            _bot_db.db_save_voice_opts(opts_in)
+            opts_out = _bot_db.db_get_voice_opts()
+            _bot_db.close_db()
+        os.environ.pop("DB_FILE", None)
+        os.environ.pop("WEB_ONLY", None)
+        matched = all(opts_out.get(k) == v for k, v in opts_in.items())
+        status = "PASS" if matched else "FAIL"
+        detail = ("All 12 voice_opts keys round-tripped correctly" if matched
+                  else f"Mismatch: {opts_out}")
+    except Exception as e:
+        status, detail = "FAIL", str(e)
+    return [TestResult("db_voice_opts_roundtrip", status, time.time() - t0, detail)]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# T23 — Migration idempotency
+# ─────────────────────────────────────────────────────────────────────────────
+
+def t_db_migration_idempotent(**_) -> list[TestResult]:
+    """T23 — running migrate_to_db.py twice gives same row counts (idempotent)."""
+    import tempfile
+    import sqlite3 as _sql
+    t0 = time.time()
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            (tmp_path / "registrations.json").write_text(json.dumps({"registrations": [
+                {"chat_id": 1, "username": "u", "first_name": "F", "last_name": "L",
+                 "name": "F L", "timestamp": "2024-01-01T00:00:00", "status": "approved"}
+            ]}))
+            (tmp_path / "users.json").write_text(json.dumps({"users": [1]}))
+            (tmp_path / "voice_opts.json").write_text(json.dumps({"vosk_fallback": True}))
+            db_path = str(tmp_path / "mig.db")
+            migrate = str(TESTS_DIR.parent.parent / "tools" / "migrate_to_db.py")
+            for run_no in range(1, 3):
+                r = subprocess.run(
+                    [sys.executable, migrate, "--source", str(tmp_path), "--db", db_path],
+                    capture_output=True, timeout=15,
+                    env={**os.environ, "PYTHONIOENCODING": "utf-8"},
+                )
+                if r.returncode != 0:
+                    return [TestResult("db_migration_idempotent", "FAIL", time.time() - t0,
+                                       f"migrate exit {r.returncode} on run {run_no}: {r.stderr.decode(errors='replace')[:300]}")]
+            con = _sql.connect(db_path)
+            reg_count = con.execute("SELECT COUNT(*) FROM registrations").fetchone()[0]
+            usr_count = con.execute("SELECT COUNT(*) FROM guest_users").fetchone()[0]
+            con.close()
+        ok = reg_count == 1 and usr_count == 1
+        status = "PASS" if ok else "FAIL"
+        detail = (f"registrations={reg_count}, guest_users={usr_count} after 2 runs"
+                  + (" (idempotent \u2713)" if ok else " \u2014 DOUBLED, not idempotent!"))
+    except Exception as e:
+        status, detail = "FAIL", str(e)
+    return [TestResult("db_migration_idempotent", status, time.time() - t0, detail)]
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1306,6 +1401,9 @@ TEST_FUNCTIONS = [
     t_note_edit_append_replace,
     t_calendar_tts_call_signature,
     t_calendar_console_classifier,
+    # SQLite integration tests (T22–T23)
+    t_db_voice_opts_roundtrip,
+    t_db_migration_idempotent,
 ]
 
 

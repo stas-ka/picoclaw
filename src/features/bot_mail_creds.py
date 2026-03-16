@@ -33,10 +33,10 @@ from email.header import decode_header, make_header
 from pathlib import Path
 from typing import Optional
 
-import bot_state as _st
-from bot_config import MAIL_CREDS_DIR, log
-from bot_instance import bot
-from bot_access import (
+import core.bot_state as _st
+from core.bot_config import MAIL_CREDS_DIR, log
+from core.bot_instance import bot
+from telegram.bot_access import (
     _t, _escape_md, _truncate, _back_keyboard, _send_menu, _ask_picoclaw,
     _is_guest,
 )

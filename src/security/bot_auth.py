@@ -18,7 +18,7 @@ from typing import Optional
 import bcrypt
 import jwt
 
-from bot_config import log
+from core.bot_config import log
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Paths

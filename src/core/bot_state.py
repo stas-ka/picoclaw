@@ -11,7 +11,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
-from bot_config import (
+from core.bot_config import (
     USERS_FILE,
     _VOICE_OPTS_FILE,
     _VOICE_OPTS_DEFAULTS,

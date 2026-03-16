@@ -44,17 +44,17 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from bot_config import (
+from core.bot_config import (
     BOT_VERSION, PICOCLAW_BIN, PICOCLAW_CONFIG, NOTES_DIR,
     ACTIVE_MODEL_FILE, log,
 )
-from bot_auth import (
+from security.bot_auth import (
     find_account_by_username, create_account, verify_password,
     create_token, verify_token, list_accounts, ensure_admin_account,
     COOKIE_NAME, find_account_by_id, update_account, change_password,
     find_account_by_chat_id,
 )
-from bot_llm import ask_llm, get_active_model, list_models, set_active_model
+from core.bot_llm import ask_llm, get_active_model, list_models, set_active_model
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Paths
@@ -64,8 +64,8 @@ _PICOCLAW_DIR = os.path.expanduser("~/.picoclaw")
 _CALENDAR_DIR = os.path.join(_PICOCLAW_DIR, "calendar")
 
 BASE = Path(__file__).resolve().parent
-TEMPLATES_DIR = BASE / "templates"
-STATIC_DIR = BASE / "static"
+TEMPLATES_DIR = BASE / "web" / "templates"
+STATIC_DIR = BASE / "web" / "static"
 
 # ── Google OAuth2 (Gmail) ──────────────────────────────────────────────────
 _GMAIL_OAUTH_SCOPES = ["https://mail.google.com/"]
@@ -381,8 +381,8 @@ async def register_submit(
     telegram_chat_id = None
     inherited_role   = "user"
     if link_code.strip():
-        import bot_state as _st_web
-        from bot_config import ADMIN_USERS
+        import core.bot_state as _st_web
+        from core.bot_config import ADMIN_USERS
         validated_cid = _st_web.validate_web_link_code(link_code.strip())
         if not validated_cid:
             return templates.TemplateResponse("register.html", {
@@ -454,7 +454,7 @@ async def profile_page(request: Request, msg: str = "", error: str = ""):
     tg_reg = None
     if tg_chat_id:
         try:
-            from bot_users import _find_registration
+            from telegram.bot_users import _find_registration
             tg_reg = _find_registration(int(tg_chat_id))
         except Exception:
             pass
@@ -1129,7 +1129,7 @@ PAGE_SIZE = 20
 
 def _contacts_for(chat_id: int, q: str = "", offset: int = 0) -> tuple[list[dict], int]:
     """Return (contacts, total) for a user. Optionally filtered by search query."""
-    from bot_contacts import _contact_search, _contact_list, _contact_count
+    from features.bot_contacts import _contact_search, _contact_list, _contact_count
     if q:
         results = _contact_search(chat_id, q)
         return results, len(results)
@@ -1179,7 +1179,7 @@ async def contacts_create(
     user = _get_current_user(request)
     if not user:
         return RedirectResponse("/login", status_code=302)
-    from bot_contacts import _contact_add
+    from features.bot_contacts import _contact_add
     account = find_account_by_id(user["sub"])
     chat_id = (account or {}).get("telegram_chat_id") or 0
     _contact_add(chat_id,
@@ -1196,7 +1196,7 @@ async def contacts_detail(request: Request, cid: str):
     user = _get_current_user(request)
     if not user:
         return RedirectResponse("/login", status_code=302)
-    from bot_contacts import _contact_get
+    from features.bot_contacts import _contact_get
     account = find_account_by_id(user["sub"])
     chat_id = (account or {}).get("telegram_chat_id") or 0
     contact = _contact_get(chat_id, cid)
@@ -1223,7 +1223,7 @@ async def contacts_update(
     user = _get_current_user(request)
     if not user:
         return RedirectResponse("/login", status_code=302)
-    from bot_contacts import _contact_update
+    from features.bot_contacts import _contact_update
     account = find_account_by_id(user["sub"])
     chat_id = (account or {}).get("telegram_chat_id") or 0
     _contact_update(chat_id, cid,
@@ -1240,7 +1240,7 @@ async def contacts_delete(request: Request, cid: str):
     user = _get_current_user(request)
     if not user:
         return RedirectResponse("/login", status_code=302)
-    from bot_contacts import _contact_delete
+    from features.bot_contacts import _contact_delete
     account = find_account_by_id(user["sub"])
     chat_id = (account or {}).get("telegram_chat_id") or 0
     _contact_delete(chat_id, cid)
@@ -2069,7 +2069,7 @@ async def admin_delete_user(request: Request, user_id: str):
     if not user or user.get("role") != "admin":
         raise HTTPException(403)
     # Remove from accounts
-    from bot_auth import _load_accounts, _save_accounts
+    from security.bot_auth import _load_accounts, _save_accounts
     accounts = _load_accounts()
     accounts = [a for a in accounts if a.get("user_id") != user_id]
     _save_accounts(accounts)
