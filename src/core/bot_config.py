@@ -131,7 +131,7 @@ DOCS_DIR            = os.environ.get("DOCS_DIR",
 # Bot version — bump on every user-visible deployment
 # ─────────────────────────────────────────────────────────────────────────────
 
-BOT_VERSION        = "2026.3.32"
+BOT_VERSION        = "2026.3.33"
 RELEASE_NOTES_FILE = os.environ.get(
     "RELEASE_NOTES_FILE",
     os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "release_notes.json"),
@@ -184,7 +184,8 @@ _STRINGS_FILE = os.environ.get(
 # Settings persist in ~/.picoclaw/voice_opts.json.
 # ─────────────────────────────────────────────────────────────────────────────
 
-_VOICE_OPTS_FILE     = os.path.expanduser("~/.picoclaw/voice_opts.json")
+_VOICE_OPTS_FILE      = os.path.expanduser("~/.picoclaw/voice_opts.json")
+_WEB_LINK_CODES_FILE  = os.path.expanduser("~/.picoclaw/web_link_codes.json")
 _PENDING_TTS_FILE    = os.path.expanduser("~/.picoclaw/pending_tts.json")
 _VOICE_OPTS_DEFAULTS: dict = {
     "silence_strip":     False,   # #1: strip leading/trailing silence (ffmpeg)

@@ -18,6 +18,7 @@ from core.bot_config import (
     USERS_FILE,
     _VOICE_OPTS_FILE,
     _VOICE_OPTS_DEFAULTS,
+    _WEB_LINK_CODES_FILE,
     log,
 )
 
@@ -54,40 +55,84 @@ _pending_registration: dict[int, dict] = {}
 # Format: {"name": str, "dir": str, "texts": list, "voices": list, "photos": list}
 _pending_error_protocol: dict[int, dict] = {}
 
-# Web account link codes — generated in Telegram, redeemed on /register
-# Format: {"code": {"chat_id": int, "expires_at": datetime}}
-# Codes expire after 15 minutes and are single-use.
-_web_link_codes: dict[str, dict] = {}
+# Web account link codes — shared between Telegram and Web processes via file
+# Format on disk: {"CODE": {"chat_id": int, "expires_at": ISO-8601 string}}
+# Codes expire after WEB_LINK_CODE_TTL_MINUTES and are single-use.
 
 WEB_LINK_CODE_TTL_MINUTES = 15
+
+
+def _load_web_link_codes() -> dict:
+    """Load non-expired link codes from shared JSON file. Returns {} on any error."""
+    try:
+        data = json.loads(Path(_WEB_LINK_CODES_FILE).read_text(encoding="utf-8"))
+        now = datetime.now(timezone.utc)
+        codes = {}
+        for code, entry in data.items():
+            expires = datetime.fromisoformat(entry["expires_at"])
+            if not expires.tzinfo:
+                expires = expires.replace(tzinfo=timezone.utc)
+            if expires > now:
+                codes[code] = {"chat_id": entry["chat_id"], "expires_at": expires}
+        return codes
+    except (FileNotFoundError, json.JSONDecodeError, KeyError, ValueError):
+        return {}
+    except Exception as e:
+        log.warning(f"[WebLink] load failed: {e}")
+        return {}
+
+
+def _save_web_link_codes(codes: dict) -> None:
+    """Atomically save active link codes to shared JSON file."""
+    try:
+        data = {
+            code: {
+                "chat_id":    entry["chat_id"],
+                "expires_at": entry["expires_at"].isoformat(),
+            }
+            for code, entry in codes.items()
+        }
+        target = Path(_WEB_LINK_CODES_FILE)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        tmp = target.with_suffix(".tmp")
+        tmp.write_text(json.dumps(data), encoding="utf-8")
+        tmp.replace(target)
+    except Exception as e:
+        log.warning(f"[WebLink] save failed: {e}")
 
 
 def generate_web_link_code(chat_id: int) -> str:
     """Generate a 6-character alphanumeric link code for the given chat_id.
     Any previous code for this user is replaced. Returns the new code."""
     import random, string
-    # Revoke any existing code for this user first
-    for existing_code, entry in list(_web_link_codes.items()):
+    codes = _load_web_link_codes()
+    # Revoke any existing code for this user
+    for existing_code, entry in list(codes.items()):
         if entry["chat_id"] == chat_id:
-            del _web_link_codes[existing_code]
+            del codes[existing_code]
     code = "".join(random.choices(string.ascii_uppercase + string.digits, k=6))
-    _web_link_codes[code] = {
+    codes[code] = {
         "chat_id":    chat_id,
         "expires_at": datetime.now(timezone.utc) + timedelta(minutes=WEB_LINK_CODE_TTL_MINUTES),
     }
+    _save_web_link_codes(codes)
     return code
 
 
 def validate_web_link_code(code: str) -> Optional[int]:
-    """Validate a link code. Returns chat_id if valid, None if expired/unknown.
-    Consumes the code (single-use)."""
-    entry = _web_link_codes.get(code.upper().strip())
+    """Validate a link code. Returns chat_id if valid, None if invalid/expired.
+    Consumes the code on success (single-use)."""
+    codes = _load_web_link_codes()
+    key   = code.upper().strip()
+    entry = codes.get(key)
     if not entry:
         return None
     if datetime.now(timezone.utc) > entry["expires_at"]:
-        _web_link_codes.pop(code, None)
+        codes.pop(key, None)
+        _save_web_link_codes(codes)
         return None
-    _web_link_codes.pop(code, None)  # single-use
+    codes.pop(key, None)  # single-use
+    _save_web_link_codes(codes)
     return entry["chat_id"]
 
 # ─────────────────────────────────────────────────────────────────────────────
