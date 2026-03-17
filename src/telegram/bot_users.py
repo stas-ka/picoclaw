@@ -58,6 +58,13 @@ def _upsert_registration(chat_id: int, username: str, name: str,
             r["last_name"]  = last_name
             r["name"]       = name
             _save_registrations(regs)
+            try:
+                from core.store import store
+                store.upsert_user(chat_id, username=username,
+                                  name=name or f"{first_name} {last_name}".strip(),
+                                  role=status)
+            except Exception as _e:
+                log.debug("[Users] store.upsert_user failed: %s", _e)
             return
     regs.append({
         "chat_id":    chat_id,
@@ -69,6 +76,13 @@ def _upsert_registration(chat_id: int, username: str, name: str,
         "status":     status,
     })
     _save_registrations(regs)
+    try:
+        from core.store import store
+        store.upsert_user(chat_id, username=username,
+                          name=name or f"{first_name} {last_name}".strip(),
+                          role=status)
+    except Exception as _e:
+        log.debug("[Users] store.upsert_user failed: %s", _e)
 
 
 def _set_reg_status(chat_id: int, status: str) -> None:
@@ -78,6 +92,11 @@ def _set_reg_status(chat_id: int, status: str) -> None:
         if r.get("chat_id") == chat_id:
             r["status"] = status
             _save_registrations(regs)
+            try:
+                from core.store import store
+                store.set_user_role(chat_id, status)
+            except Exception as _e:
+                log.debug("[Users] store.set_user_role failed: %s", _e)
             return
 
 

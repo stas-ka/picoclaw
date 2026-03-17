@@ -124,6 +124,14 @@ from features.bot_contacts import (
     _pending_contact,
 )
 
+# ─── Documents / RAG ──────────────────────────────────────────────────────────
+from features.bot_documents import (
+    _handle_docs_menu,
+    _handle_doc_upload,
+    _handle_doc_delete,
+    _handle_doc_delete_confirmed,
+)
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Registration helper
 # ─────────────────────────────────────────────────────────────────────────────
@@ -650,6 +658,16 @@ def callback_handler(call):
     elif data == "cal_confirm_tts":
         if not _is_guest(cid) and cid in _pending_cal:
             _handle_cal_confirm_tts(cid)
+    # ── Documents / RAG ────────────────────────────────────────────────────
+    elif data == "menu_docs":
+        if not _is_guest(cid):
+            _handle_docs_menu(cid)
+    elif data.startswith("doc_del:"):
+        if not _is_guest(cid):
+            _handle_doc_delete(cid, data[len("doc_del:"):])
+    elif data.startswith("doc_del_confirm:"):
+        if not _is_guest(cid):
+            _handle_doc_delete_confirmed(cid, data[len("doc_del_confirm:"):])
     # ── Confirm / cancel system command ────────────────────────────────────
     elif data == "cancel":
         _st._pending_cmd.pop(cid, None)
@@ -941,6 +959,16 @@ def photo_handler(message):
         _errp_collect_photo(cid, message.photo)
         return
     # Outside error protocol — no general photo handling needed
+
+
+@bot.message_handler(content_types=["document"])
+def document_handler(message):
+    cid = message.chat.id
+    if not _is_allowed(cid):
+        _deny(cid)
+        return
+    _set_lang(cid, message.from_user)
+    _handle_doc_upload(message)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

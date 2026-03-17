@@ -64,6 +64,13 @@ def _cal_user_file(chat_id: int) -> Path:
 
 
 def _cal_load(chat_id: int) -> list:
+    try:
+        from core.store import store
+        events = store.load_events(chat_id)
+        if events:
+            return events
+    except Exception:
+        pass
     fp = _cal_user_file(chat_id)
     try:
         return json.loads(fp.read_text(encoding="utf-8")) if fp.exists() else []

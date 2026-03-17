@@ -124,6 +124,8 @@ MAIL_CREDS_DIR      = os.environ.get("MAIL_CREDS_DIR",
                           os.path.expanduser("~/.picoclaw/mail_creds"))
 ERROR_PROTOCOL_DIR  = os.environ.get("ERROR_PROTOCOL_DIR",
                           os.path.expanduser("~/.picoclaw/error_protocols"))
+DOCS_DIR            = os.environ.get("DOCS_DIR",
+                          os.path.expanduser("~/.picoclaw/docs"))
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Bot version — bump on every user-visible deployment

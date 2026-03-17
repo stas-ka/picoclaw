@@ -253,7 +253,18 @@
     "contact_edit_prompt_email": "✏️ Введите новый *e-mail*:",
     "contact_edit_prompt_address": "✏️ Введите новый *адрес*:",
     "contact_edit_prompt_notes": "✏️ Введите новые *заметки*:",
-    "btn_contacts": "📇  Контакты"
+    "btn_contacts":             "📇  Контакты",
+    "btn_docs":               "📄  Документы",
+    "docs_menu_title":        "📄 *Мои документы*\nНажмите на файл для удаления.",
+    "docs_empty":             "У вас нет загруженных документов.\n\nОтправьте файл .txt, .md, .pdf или .docx — я его проиндексирую.",
+    "docs_uploading":         "⏳ Загрузка и индексация…",
+    "docs_uploaded":          "✅ *{title}* загружен. Проиндексировано фрагментов: {chunks}.",
+    "docs_unsupported":       "❌ Неподдерживаемый тип файла. Поддерживаются: .txt .md .pdf .docx",
+    "docs_no_vector_search":  "❌ Векторный поиск недоступен. Настройте PostgreSQL с pgvector.",
+    "docs_delete_confirm":    "🗑 Удалить документ *{title}*?",
+    "docs_deleted":           "✅ Документ удалён.",
+    "docs_delete_failed":     "❌ Не удалось удалить документ.",
+    "docs_upload_failed":     "❌ Ошибка загрузки. Попробуйте ещё раз."
   },
   "en": {
     "btn_digest": "📧  Mail Digest",
@@ -509,7 +520,18 @@
     "contact_edit_prompt_email": "✏️ Enter new *e-mail*:",
     "contact_edit_prompt_address": "✏️ Enter new *address*:",
     "contact_edit_prompt_notes": "✏️ Enter new *notes*:",
-    "btn_contacts": "📇  Contacts"
+    "btn_contacts":             "📇  Contacts",
+    "btn_docs":               "📄  Documents",
+    "docs_menu_title":        "📄 *My Documents*\nTap a file to delete it.",
+    "docs_empty":             "You have no uploaded documents.\n\nSend a .txt, .md, .pdf or .docx file to index it.",
+    "docs_uploading":         "⏳ Uploading and indexing…",
+    "docs_uploaded":          "✅ *{title}* uploaded. {chunks} chunks indexed.",
+    "docs_unsupported":       "❌ Unsupported file type. Supported: .txt .md .pdf .docx",
+    "docs_no_vector_search":  "❌ Vector search unavailable. Configure PostgreSQL with pgvector.",
+    "docs_delete_confirm":    "🗑 Delete document *{title}*?",
+    "docs_deleted":           "✅ Document deleted.",
+    "docs_delete_failed":     "❌ Failed to delete document.",
+    "docs_upload_failed":     "❌ Upload failed. Please try again."
   },
   "de": {
     "btn_digest": "📧  E-Mail-Zusammenfassung",
@@ -765,6 +787,17 @@
     "contact_edit_prompt_email": "✏️ Neue *E-Mail* eingeben:",
     "contact_edit_prompt_address": "✏️ Neue *Adresse* eingeben:",
     "contact_edit_prompt_notes": "✏️ Neue *Notizen* eingeben:",
-    "btn_contacts": "📇  Kontakte"
+    "btn_contacts":             "📇  Kontakte",
+    "btn_docs":               "📄  Dokumente",
+    "docs_menu_title":        "📄 *Meine Dokumente*\nTippe auf eine Datei zum Löschen.",
+    "docs_empty":             "Keine hochgeladenen Dokumente.\n\nSende eine .txt, .md, .pdf oder .docx-Datei zur Indizierung.",
+    "docs_uploading":         "⏳ Hochladen und indizieren…",
+    "docs_uploaded":          "✅ *{title}* hochgeladen. {chunks} Abschnitte indiziert.",
+    "docs_unsupported":       "❌ Nicht unterstützter Dateityp. Unterstützt: .txt .md .pdf .docx",
+    "docs_no_vector_search":  "❌ Vektorsuche nicht verfügbar. Konfiguriere PostgreSQL mit pgvector.",
+    "docs_delete_confirm":    "🗑 Dokument *{title}* löschen?",
+    "docs_deleted":           "✅ Dokument gelöscht.",
+    "docs_delete_failed":     "❌ Dokument konnte nicht gelöscht werden.",
+    "docs_upload_failed":     "❌ Upload fehlgeschlagen. Bitte erneut versuchen."
   }
 }

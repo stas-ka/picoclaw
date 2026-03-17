@@ -356,6 +356,7 @@ def _menu_keyboard(chat_id: int = 0) -> InlineKeyboardMarkup:
         kb.add(InlineKeyboardButton(_t(chat_id, "btn_notes"),    callback_data="menu_notes"))
         kb.add(InlineKeyboardButton(_t(chat_id, "btn_calendar"), callback_data="menu_calendar"))
         kb.add(InlineKeyboardButton(_t(chat_id, "btn_contacts"), callback_data="menu_contacts"))
+        kb.add(InlineKeyboardButton(_t(chat_id, "btn_docs"),     callback_data="menu_docs"))
     kb.add(InlineKeyboardButton(_t(chat_id, "btn_profile"),  callback_data="profile"))
     kb.add(InlineKeyboardButton(_t(chat_id, "btn_help"),     callback_data="help"))
     if _is_admin(chat_id):

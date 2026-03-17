@@ -677,6 +677,20 @@ def _handle_chat_message(chat_id: int, user_text: str) -> None:
 
         # Build message list: past history + current user turn (with lang hint)
         current_content = _with_lang(chat_id, user_text)
+        # ── RAG context injection ──────────────────────────────────────────
+        try:
+            from core.store import store as _store
+            if _store.has_vector_search():
+                from sentence_transformers import SentenceTransformer as _ST
+                _emb_model = _ST("all-MiniLM-L6-v2")
+                _vec = _emb_model.encode([user_text])[0].tolist()
+                del _emb_model
+                _chunks = _store.search_similar(_vec, chat_id, top_k=5)
+                if _chunks:
+                    _rag_ctx = "\n---\n".join(c["chunk_text"] for c in _chunks)
+                    current_content = f"[Relevant context:\n{_rag_ctx}]\n\n{current_content}"
+        except Exception as _rag_e:
+            log.debug("[RAG] vector search failed: %s", _rag_e)
         messages = history_msgs + [{"role": "user", "content": current_content}]
 
         # Record the raw user text (without lang prefix) before calling the LLM

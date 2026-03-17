@@ -24,3 +24,14 @@ bcrypt
 PyJWT
 python-multipart
 requests               # Google OAuth token refresh + HTTP calls (bot_web.py)
+
+# Storage — PostgreSQL + pgvector (optional; required for STORE_BACKEND=postgres)
+psycopg[binary]
+psycopg-pool
+pgvector
+
+# Documents / RAG
+sentence-transformers  # all-MiniLM-L6-v2 embeddings
+pdfminer.six           # PDF text extraction
+python-docx            # .docx text extraction
+cryptography           # optional dependency for psycopg TLS

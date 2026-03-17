@@ -179,6 +179,11 @@ def add_to_history(chat_id: int, role: str, content: str,
     """
     from core.bot_db import db_add_history
     db_id = db_add_history(chat_id, role, content, call_id)
+    try:
+        from core.store import store as _st
+        _st.append_history(chat_id, role, content)
+    except Exception as _e:
+        log.debug("[State] store.append_history failed: %s", _e)
     hist = _conversation_history.setdefault(chat_id, [])
     hist.append({"role": role, "content": content, "_db_id": db_id})
     if len(hist) > CONVERSATION_HISTORY_MAX:
