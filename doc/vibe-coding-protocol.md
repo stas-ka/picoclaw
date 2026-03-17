@@ -652,6 +652,18 @@ Each session block contains a table with one row per completed request:
 
 ---
 
+## Session 41 — 2026-03-18 (UTC+1)
+
+**Focus:** Fix HTTP 500 on /register when entering Telegram link code (cross-process isolation bug)
+
+| Time (UTC) | Request | Complexity | Requests | Model | Files changed | Status |
+|---|---|---|---|---|---|---|
+| — | Fix HTTP 500 on `/register` when entering Telegram link code: root cause = in-memory `_web_link_codes` dict invisible across processes (telegram service writes, web service reads — separate PIDs); fix = file-based storage via `~/.picoclaw/web_link_codes.json` with atomic write, TTL eviction, single-use validation; bumped to v2026.3.33; deployed PI2 then PI1 (both already on package structure v2026.3.32 — no migration needed); git commit `8e5a3b1` | 4 | ~8 | claude-sonnet-4.6 | src/core/bot_config.py, src/core/bot_state.py, src/release_notes.json | done |
+
+**Session 41 total: 1 item, ~8 requests — Telegram↔Web link code cross-process fix ✅ commit 8e5a3b1**
+
+---
+
 ## Notes on Measurement
 
 - "Requests" = user→assistant conversation turns, not API calls.
