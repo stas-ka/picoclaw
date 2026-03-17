@@ -1460,6 +1460,151 @@ def t_rag_lr_products(**_) -> list[TestResult]:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# T25 — Web link code generate/validate roundtrip
+# ─────────────────────────────────────────────────────────────────────────────
+
+def t_web_link_code_roundtrip(**_) -> list[TestResult]:
+    """T25 — web link code: format, roundtrip, single-use, expiry, revocation, cross-process."""
+    import string
+    import tempfile
+    import time as _t
+    from datetime import datetime, timezone, timedelta as _td
+    results: list[TestResult] = []
+    CHAT_ID = 99999
+
+    sys.path.insert(0, str(PICOCLAW_DIR))
+    try:
+        import core.bot_state as _bs
+    except ImportError as exc:
+        return [TestResult("web_link_code:import", "FAIL", 0.0,
+                           f"Cannot import core.bot_state: {exc}")]
+
+    orig_file = _bs._WEB_LINK_CODES_FILE
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            _bs._WEB_LINK_CODES_FILE = str(Path(tmp) / "web_link_codes.json")
+
+            # 1 — format: 6 uppercase alphanumeric chars
+            t1 = _t.time()
+            try:
+                code = _bs.generate_web_link_code(CHAT_ID)
+                valid_chars = set(string.ascii_uppercase + string.digits)
+                fmt_ok = len(code) == 6 and all(c in valid_chars for c in code)
+                results.append(TestResult(
+                    "web_link_code:generate",
+                    "PASS" if fmt_ok else "FAIL",
+                    _t.time() - t1,
+                    f"code='{code}' len={len(code)} all_valid={fmt_ok}",
+                ))
+            except Exception as exc:
+                results.append(TestResult("web_link_code:generate", "FAIL",
+                                          _t.time() - t1, str(exc)))
+                return results
+
+            # 2 — validate returns correct chat_id
+            t1 = _t.time()
+            try:
+                returned_id = _bs.validate_web_link_code(code)
+                ok = returned_id == CHAT_ID
+                results.append(TestResult(
+                    "web_link_code:validate",
+                    "PASS" if ok else "FAIL",
+                    _t.time() - t1,
+                    f"expected={CHAT_ID} got={returned_id}",
+                ))
+            except Exception as exc:
+                results.append(TestResult("web_link_code:validate", "FAIL",
+                                          _t.time() - t1, str(exc)))
+
+            # 3 — single-use: second validate returns None
+            t1 = _t.time()
+            try:
+                returned_again = _bs.validate_web_link_code(code)
+                ok = returned_again is None
+                results.append(TestResult(
+                    "web_link_code:single_use",
+                    "PASS" if ok else "FAIL",
+                    _t.time() - t1,
+                    f"re-validate={returned_again!r} (expected None)",
+                ))
+            except Exception as exc:
+                results.append(TestResult("web_link_code:single_use", "FAIL",
+                                          _t.time() - t1, str(exc)))
+
+            # 4 — unknown code returns None
+            t1 = _t.time()
+            try:
+                returned_inv = _bs.validate_web_link_code("XXXXXX")
+                ok = returned_inv is None
+                results.append(TestResult(
+                    "web_link_code:invalid",
+                    "PASS" if ok else "FAIL",
+                    _t.time() - t1,
+                    f"unknown code returned {returned_inv!r} (expected None)",
+                ))
+            except Exception as exc:
+                results.append(TestResult("web_link_code:invalid", "FAIL",
+                                          _t.time() - t1, str(exc)))
+
+            # 5 — expired code returns None
+            t1 = _t.time()
+            try:
+                exp_code = "EXPIRY"
+                _bs._save_web_link_codes(
+                    {exp_code: {"chat_id": CHAT_ID,
+                                "expires_at": datetime.now(timezone.utc) - _td(seconds=10)}}
+                )
+                returned_exp = _bs.validate_web_link_code(exp_code)
+                ok = returned_exp is None
+                results.append(TestResult(
+                    "web_link_code:expired",
+                    "PASS" if ok else "FAIL",
+                    _t.time() - t1,
+                    f"expired code returned {returned_exp!r} (expected None)",
+                ))
+            except Exception as exc:
+                results.append(TestResult("web_link_code:expired", "FAIL",
+                                          _t.time() - t1, str(exc)))
+
+            # 6 — revoke old: generate twice, first code invalidated
+            t1 = _t.time()
+            try:
+                code_a = _bs.generate_web_link_code(CHAT_ID)
+                code_b = _bs.generate_web_link_code(CHAT_ID)
+                returned_a = _bs.validate_web_link_code(code_a)
+                ok = returned_a is None and code_a != code_b
+                results.append(TestResult(
+                    "web_link_code:revoke_old",
+                    "PASS" if ok else "FAIL",
+                    _t.time() - t1,
+                    f"a={code_a} b={code_b} validate(a)={returned_a!r} distinct={code_a != code_b}",
+                ))
+            except Exception as exc:
+                results.append(TestResult("web_link_code:revoke_old", "FAIL",
+                                          _t.time() - t1, str(exc)))
+
+            # 7 — cross-process: generate → reload from file → code present
+            t1 = _t.time()
+            try:
+                cp_code = _bs.generate_web_link_code(CHAT_ID)
+                fresh = _bs._load_web_link_codes()
+                ok = cp_code in fresh and fresh[cp_code].get("chat_id") == CHAT_ID
+                results.append(TestResult(
+                    "web_link_code:cross_process",
+                    "PASS" if ok else "FAIL",
+                    _t.time() - t1,
+                    f"code in file={cp_code in fresh} "
+                    f"chat_id={fresh.get(cp_code, {}).get('chat_id')}",
+                ))
+            except Exception as exc:
+                results.append(TestResult("web_link_code:cross_process", "FAIL",
+                                          _t.time() - t1, str(exc)))
+    finally:
+        _bs._WEB_LINK_CODES_FILE = orig_file
+    return results
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Regression check
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -1534,6 +1679,8 @@ TEST_FUNCTIONS = [
     t_db_migration_idempotent,
     # RAG quality tests (T24)
     t_rag_lr_products,
+    # Web link code tests (T25)
+    t_web_link_code_roundtrip,
 ]
 
 

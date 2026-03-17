@@ -22,6 +22,7 @@ Use it any time a user says "test the software", "run tests", or asks whether so
 | Bug fix for known bug 0.1–0.5 | Matching regression test (T17–T21) | Pi |
 | `src/core/store_sqlite.py` / `src/core/bot_db.py` | SQLite integration T22–T23 | Pi |
 | RAG document upload / `bot_web.py` knowledge routes | RAG quality T24 | Pi |
+| `src/core/bot_state.py` (`generate_web_link_code` / `validate_web_link_code`) | Web link code T25 | Pi |
 
 ---
 
@@ -120,6 +121,13 @@ pscp -pw "%HOSTPWD%" src\tests\voice\*.ogg              stas@OpenClawPI:/home/st
 | T23 | `db_migration_idempotent` | `migrate_to_db.py` run twice on same DB — row count stable, no duplicates | After changing migration script or DB schema |
 | T24 | `rag_lr_products_fts` | FTS5 query for LR product keywords (алоэ, Mind Master, витамин, цинк, LR LIFETAKT) returns ≥2 expected keywords; SKIP if `pico.db`/`doc_chunks` absent | After uploading a knowledge document; after changing FTS5 index or `store_sqlite.search_fts()` |
 | T24 | `rag_lr_products_llm` | Full RAG pipeline: chunks → LLM answer → LLM-as-judge verifies topical similarity (set `LLM_JUDGE=1`); SKIP otherwise | When `LLM_JUDGE=1` is set; after changing RAG prompt logic |
+| T25 | `web_link_code:generate` | Generated code is 6 uppercase alphanumeric chars | After changing `generate_web_link_code()` |
+| T25 | `web_link_code:validate` | `validate_web_link_code()` returns correct chat_id | After changing validate logic |
+| T25 | `web_link_code:single_use` | Second validate of same code returns None (consumed) | After any single-use logic change |
+| T25 | `web_link_code:invalid` | Unknown code returns None | — |
+| T25 | `web_link_code:expired` | Code with past expiry returns None | After changing TTL or expiry check |
+| T25 | `web_link_code:revoke_old` | generate() twice same chat_id: first code invalidated | After changing revocation logic |
+| T25 | `web_link_code:cross_process` | Code present in file immediately after generate() | After changing persistence logic |
 
 ### 2.6 When specific tests are mandatory
 
@@ -133,6 +141,7 @@ pscp -pw "%HOSTPWD%" src\tests\voice\*.ogg              stas@OpenClawPI:/home/st
 | After hardware change (Pi re-image, new Pi unit) | T01–T12 + `--set-baseline` |
 | After changing `store_sqlite.py` or `bot_db.py` | T22, T23 |
 | After uploading new RAG document | T24 (`--test rag_lr`) |
+| After changing `generate_web_link_code()` / `validate_web_link_code()` / `bot_state.py` web link persistence | T25 (`--test web_link_code`) |
 
 ---
 
@@ -380,6 +389,24 @@ plink -pw "%HOSTPWD%" -batch stas@OpenClawPI "python3 /home/stas/.picoclaw/tests
 **With LLM judge:**
 ```bat
 plink -pw "%HOSTPWD%" -batch stas@OpenClawPI "LLM_JUDGE=1 python3 /home/stas/.picoclaw/tests/test_voice_regression.py --test rag_lr"
+```
+
+### Web link code tests
+Test T25 validates the Telegram↔Web account linking pipeline (`generate_web_link_code` / `validate_web_link_code` in `bot_state.py`). Uses a temporary file for full isolation — safe to run on any Pi.
+
+| Sub-test | What it validates |
+|---|---|
+| `web_link_code:generate` | Code is exactly 6 uppercase alphanumeric chars |
+| `web_link_code:validate` | Returns correct `chat_id` on first use |
+| `web_link_code:single_use` | Second validate of same code returns `None` (consumed) |
+| `web_link_code:invalid` | Unknown code returns `None` |
+| `web_link_code:expired` | Code with past expiry returns `None` |
+| `web_link_code:revoke_old` | Calling generate twice with same `chat_id` invalidates the first code |
+| `web_link_code:cross_process` | Code is persisted to file immediately after generate (readable by new process) |
+
+**Run command for T25 only:**
+```bat
+plink -pw "%HOSTPWD%" -batch stas@OpenClawPI "python3 /home/stas/.picoclaw/tests/test_voice_regression.py --test web_link_code --verbose"
 ```
 
 ---
