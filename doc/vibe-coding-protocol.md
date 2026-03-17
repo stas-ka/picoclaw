@@ -664,6 +664,18 @@ Each session block contains a table with one row per completed request:
 
 ---
 
+## Session 42 — 2026-03-18 (UTC+1)
+
+**Focus:** Create T25 automated regression test for web link code feature; run on PI1+PI2; add to test suite
+
+| Time (UTC) | Request | Complexity | Requests | Model | Files changed | Status |
+|---|---|---|---|---|---|---|
+| ~19:00 | Create automated test for web link code cross-process fix, run it, add to test suite: designed T25 `t_web_link_code_roundtrip` (7 sub-tests: generate, validate, single_use, invalid, expired, revoke_old, cross_process); fixed float→datetime bug in expired sub-test (`_t.time()-1.0` → `datetime.now(utc)-timedelta(10s)`); deployed + verified 7/7 PASS on PI2 (clean), then 7/7 PASS on PI1 (clean); updated `doc/test-suite.md` in 4 locations (trigger table, §2.5 catalog, §2.6 mandatory, §8 dedicated section); git commit `da6af89` | 3 | ~10 | claude-sonnet-4.6 | src/tests/test_voice_regression.py, doc/test-suite.md | done |
+
+**Session 42 total: 1 item, ~10 requests — T25 web link code roundtrip tests ✅ commit da6af89**
+
+---
+
 ## Notes on Measurement
 
 - "Requests" = user→assistant conversation turns, not API calls.
