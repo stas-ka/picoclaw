@@ -202,6 +202,34 @@ class DataStore(Protocol):
         """Remove all embedding chunks for a document. Silent if not found."""
         ...
 
+    # ── FTS5 text search (always available) ──────────────────────────────────
+
+    def has_document_search(self) -> bool:
+        """Return True if document text search is supported.
+
+        Always True for SQLite (FTS5 built-in); may return False on adapters
+        that do not implement FTS5 or an equivalent.
+        """
+        ...
+
+    def upsert_chunk_text(self, doc_id: str, chunk_idx: int, chat_id: int,
+                          chunk_text: str) -> None:
+        """Store a text chunk in the FTS5 index (no vector required)."""
+        ...
+
+    def search_fts(self, query: str, chat_id: int,
+                   top_k: int = 5) -> list[dict]:
+        """BM25 full-text search in user's document chunks.
+
+        Returns [{doc_id, chunk_text, score}] sorted by relevance descending.
+        Returns [] if no results or FTS not supported.
+        """
+        ...
+
+    def delete_text_chunks(self, doc_id: str) -> None:
+        """Remove all FTS5 text chunks for a document. Silent if not found."""
+        ...
+
     # ── Lifecycle ─────────────────────────────────────────────────────────────
 
     def close(self) -> None:

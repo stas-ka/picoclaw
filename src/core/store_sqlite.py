@@ -542,6 +542,66 @@ class SQLiteStore:
         db.execute("DELETE FROM vec_embeddings WHERE doc_id = ?", (doc_id,))
         db.commit()
 
+    # ── FTS5 text search ──────────────────────────────────────────────────────
+
+    def has_document_search(self) -> bool:
+        """Always True — FTS5 is built into SQLite."""
+        return True
+
+    def upsert_chunk_text(self, doc_id: str, chunk_idx: int, chat_id: int,
+                          chunk_text: str) -> None:
+        """Store a text chunk in the FTS5 doc_chunks index."""
+        db = self._db()
+        db.execute(
+            "DELETE FROM doc_chunks WHERE doc_id = ? AND chunk_idx = ?",
+            (str(doc_id), str(chunk_idx)),
+        )
+        db.execute(
+            "INSERT INTO doc_chunks(doc_id, chunk_idx, chat_id, chunk_text)"
+            " VALUES (?, ?, ?, ?)",
+            (str(doc_id), str(chunk_idx), str(chat_id), chunk_text),
+        )
+        db.commit()
+
+    def search_fts(self, query: str, chat_id: int,
+                   top_k: int = 5) -> list[dict]:
+        """BM25 full-text search across user's document chunks.
+
+        Sanitises the query to bare words (removes FTS5 special chars) so
+        arbitrary user input cannot cause a parse error.
+        Uses OR semantics so partial matches work — FTS5 default AND requires
+        all words in one chunk which is too strict for natural language queries.
+        Returns [{doc_id, chunk_text, score}] ordered best-first.
+        """
+        import re
+        tokens = re.findall(r"\w+", query, re.UNICODE)
+        # Keep tokens >= 2 chars to drop single-letter noise; cap at 12 terms
+        meaningful = [t for t in tokens if len(t) >= 2][:12]
+        if not meaningful:
+            return []
+        # OR joining: any chunk matching at least one keyword is a candidate;
+        # BM25 rank naturally promotes chunks with more/rarer keyword hits
+        safe_q = " OR ".join(meaningful)
+        try:
+            rows = self._db().execute(
+                "SELECT doc_id, chunk_text, rank"
+                " FROM doc_chunks"
+                " WHERE doc_chunks MATCH ? AND chat_id = ?"
+                " ORDER BY rank LIMIT ?",
+                (safe_q, str(chat_id), top_k),
+            ).fetchall()
+            return [{"doc_id": r[0], "chunk_text": r[1], "score": r[2]}
+                    for r in rows]
+        except Exception as exc:
+            log.warning("[Store] FTS5 search error: %s", exc)
+            return []
+
+    def delete_text_chunks(self, doc_id: str) -> None:
+        """Remove all FTS5 text chunks for a document."""
+        db = self._db()
+        db.execute("DELETE FROM doc_chunks WHERE doc_id = ?", (str(doc_id),))
+        db.commit()
+
     # ── Lifecycle ─────────────────────────────────────────────────────────────
 
     def close(self) -> None:

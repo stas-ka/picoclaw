@@ -627,6 +627,18 @@ Each session block contains a table with one row per completed request:
 
 ---
 
+## Session 39 — 2026-03-17 (UTC+1)
+
+**Focus:** sqlite-vec vector search extension — install scripts, requirements.txt, README, deploy to OpenClawPI2
+
+| Time (UTC) | Request | Complexity | Requests | Model | Files changed | Status |
+|---|---|---|---|---|---|---|
+| ~UTC | Add sqlite-vec v0.1.7 to `deploy/requirements.txt`; create `src/setup/install_sqlite_vec.sh` (standalone installer with verify step: `sqlite_vec.load()` + `vec_version()`); update `src/setup/install.sh` Step 2 pip block; add Step 1b to `src/setup/update.sh` (upgrade + version print); update `README.md` (docs table + architecture bullets); `pip3 install sqlite-vec` on PI2, copy 3 scripts, restart `picoclaw-telegram`, verify journal: `[Store] sqlite-vec loaded — vector search enabled`; commit `4e23299` + push | 3 | ~5 | claude-sonnet-4.6 | deploy/requirements.txt, src/setup/install.sh, src/setup/install_sqlite_vec.sh (new), src/setup/update.sh, README.md | done |
+
+**Session 39 total: 1 item, ~5 requests — sqlite-vec v0.1.7 installed on OpenClawPI2, vector search enabled ✅**
+
+---
+
 ## Notes on Measurement
 
 - "Requests" = user→assistant conversation turns, not API calls.

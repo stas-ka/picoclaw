@@ -713,3 +713,21 @@ To import on Windows (run as Administrator):
 certutil -addstore -f "Root" OpenClawPI.crt
 certutil -addstore -f "Root" OpenClawPI2.crt
 ```
+### Access to logs on target
+Two places:
+
+1. systemd journal (live / recent logs):
+plink -pw "PASSWORD" -batch user@targethost "journalctl -u picoclaw-telegram -n 50 --no-pager"
+
+Add --since "18:00" to filter by time:
+plink -pw "PASSWORD" -batch user@targethost "journalctl -u picoclaw-telegram --since '18:00' --no-pager"
+
+2. Log file on Pi:
+plink -pw "pw "PASSWORD" -batch user@targethost "tail -50 /home/stas/.picoclaw/telegram_bot.log"
+Other service logs:
+rem Web UI
+plink -pw "PASSWORD" -batch user@targethost "journalctl -u picoclaw-web -n 30 --no-pager"
+
+rem Voice assistant
+plink -pw "PASSWORD" -batch user@targethost "journalctl -u picoclaw-voice -n 30 --no-pager"
+

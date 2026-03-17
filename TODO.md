@@ -130,7 +130,7 @@ Baseline: Pi 3 B+ ~115 s total; target <25 s with all opts ON.
 
 ### 6.1 Logging & Monitoring 🔲
 
-- [ ] Structured log categories: `assistant.log`, `security.log`, `voice.log`
+- [ ] Structured log categories: `assistant.log`, `security.log`, `voice.log`, `datastore.log`
 - [ ] Admin Telegram UI: view last N log lines per category
 - [ ] Log rotation (`logrotate` config)
 
@@ -173,7 +173,7 @@ Quick-win features — Level A (LLM-only, <2 h), B (helpers, 2–4 h), C (impres
 Contacts → Deals → Custom fields → White-label. Core platform C0 done (v2026.3.28).
 → [CRM roadmap & phases](doc/todo/8.4-crm-platform.md)
 
-### 8.5 NiceGUI Integration 💡
+### 8.5 Not planed : NiceGUI Integration 💡
 
 Replace Jinja2 with NiceGUI for richer interactivity — evaluate RAM footprint on Pi 3 first.
 

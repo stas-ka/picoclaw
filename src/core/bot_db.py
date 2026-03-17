@@ -152,6 +152,15 @@ CREATE TABLE IF NOT EXISTS documents (
     updated_at  TEXT    DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_docs_chat ON documents(chat_id);
+
+-- Document text chunks — FTS5 full-text index (always available, zero dependencies)
+CREATE VIRTUAL TABLE IF NOT EXISTS doc_chunks USING fts5(
+    doc_id    UNINDEXED,
+    chunk_idx UNINDEXED,
+    chat_id   UNINDEXED,
+    chunk_text,
+    tokenize  = 'unicode61'
+);
 """
 
 

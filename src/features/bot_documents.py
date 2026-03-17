@@ -1,9 +1,8 @@
 """
-bot_documents.py — Document upload, management, and RAG embedding.
+bot_documents.py — Document upload, management, and FTS5 text search.
 
 Supports: .txt, .md, .pdf, .docx
-Pipeline: download → extract text → chunk → embed (all-MiniLM-L6-v2) → store via store adapter
-Requires: STORE_BACKEND=postgres with pgvector extension
+Pipeline: download → extract text → chunk → store via SQLite FTS5 (zero extra RAM, built-in)
 """
 import os
 import threading
@@ -20,7 +19,6 @@ from telegram.bot_access import _is_guest, _t
 _SUPPORTED_EXTS = {".txt", ".md", ".pdf", ".docx"}
 _CHUNK_SIZE = 512
 _CHUNK_OVERLAP = 50
-_EMBED_MODEL = "all-MiniLM-L6-v2"
 
 
 def _docs_user_dir(chat_id: int) -> Path:
@@ -59,19 +57,16 @@ def _chunk_text(text: str, size: int = _CHUNK_SIZE, overlap: int = _CHUNK_OVERLA
     return [c for c in chunks if c.strip()]
 
 
-def _embed_and_store(doc_id: str, chat_id: int, chunks: list) -> int:
-    """Embed all chunks and persist to vector store. Returns chunk count."""
-    from sentence_transformers import SentenceTransformer
-    model = SentenceTransformer(_EMBED_MODEL)
-    vecs = model.encode(chunks, show_progress_bar=False)
-    for idx, (chunk, vec) in enumerate(zip(chunks, vecs)):
-        store.upsert_embedding(doc_id, idx, chat_id, chunk, vec.tolist())
+def _store_text_chunks(doc_id: str, chat_id: int, chunks: list) -> int:
+    """Store text chunks via FTS5 — no embeddings, no external model, zero extra RAM."""
+    for idx, chunk in enumerate(chunks):
+        store.upsert_chunk_text(doc_id, idx, chat_id, chunk)
     return len(chunks)
 
 
 def _handle_docs_menu(chat_id: int) -> None:
     """Show user's uploaded documents with delete buttons."""
-    if not store.has_vector_search():
+    if not store.has_document_search():
         bot.send_message(chat_id, _t(chat_id, "docs_no_vector_search"))
         return
     try:
@@ -94,7 +89,7 @@ def _handle_docs_menu(chat_id: int) -> None:
 def _handle_doc_upload(message) -> None:
     """Handle an incoming document message from Telegram."""
     chat_id = message.chat.id
-    if not store.has_vector_search():
+    if not store.has_document_search():
         bot.send_message(chat_id, _t(chat_id, "docs_no_vector_search"))
         return
     doc = message.document
@@ -121,7 +116,7 @@ def _handle_doc_upload(message) -> None:
                     chat_id, status_msg.message_id)
                 return
             chunks = _chunk_text(text)
-            n = _embed_and_store(doc_id, chat_id, chunks)
+            n = _store_text_chunks(doc_id, chat_id, chunks)
             store.save_document_meta(doc_id, chat_id, fname, str(dest), ext.lstrip("."))
             bot.edit_message_text(
                 _t(chat_id, "docs_uploaded", title=fname, chunks=n),
@@ -159,7 +154,7 @@ def _handle_doc_delete(chat_id: int, doc_id: str) -> None:
 def _handle_doc_delete_confirmed(chat_id: int, doc_id: str) -> None:
     """Perform actual deletion of embeddings and document metadata."""
     try:
-        store.delete_embeddings(doc_id)
+        store.delete_text_chunks(doc_id)
         store.delete_document(doc_id)
         kb = InlineKeyboardMarkup()
         kb.add(InlineKeyboardButton(_t(chat_id, "btn_back"), callback_data="menu"))

@@ -25,6 +25,9 @@ PyJWT
 python-multipart
 requests               # Google OAuth token refresh + HTTP calls (bot_web.py)
 
+# Embeddings — ONNX Runtime-based (ARM-safe; replaces sentence_transformers/torch which crashes on ARM)
+fastembed                # pulls in onnxruntime-cpu automatically; model: all-MiniLM-L6-v2 384-dim
+
 # Storage — PostgreSQL + pgvector (optional; required for STORE_BACKEND=postgres)
 psycopg[binary]
 psycopg-pool

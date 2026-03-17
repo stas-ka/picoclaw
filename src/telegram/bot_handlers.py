@@ -680,15 +680,18 @@ def _handle_chat_message(chat_id: int, user_text: str) -> None:
         # ── RAG context injection ──────────────────────────────────────────
         try:
             from core.store import store as _store
-            if _store.has_vector_search():
-                from sentence_transformers import SentenceTransformer as _ST
-                _emb_model = _ST("all-MiniLM-L6-v2")
-                _vec = _emb_model.encode([user_text])[0].tolist()
-                del _emb_model
-                _chunks = _store.search_similar(_vec, chat_id, top_k=5)
+            if _store.has_document_search():
+                _MAX_CHUNK_CHARS = 400   # truncate each FTS5 chunk
+                _MAX_RAG_CHARS   = 1600  # total context cap
+                _chunks = _store.search_fts(user_text, chat_id, top_k=3)
                 if _chunks:
-                    _rag_ctx = "\n---\n".join(c["chunk_text"] for c in _chunks)
-                    current_content = f"[Relevant context:\n{_rag_ctx}]\n\n{current_content}"
+                    _rag_ctx = "\n---\n".join(
+                        c["chunk_text"][:_MAX_CHUNK_CHARS] for c in _chunks
+                    )
+                    current_content = (
+                        f"[Relevant context:\n{_rag_ctx[:_MAX_RAG_CHARS]}]\n\n{current_content}"
+                    )
+                    log.debug("[RAG] injected %d chars from %d chunks", len(_rag_ctx[:_MAX_RAG_CHARS]), len(_chunks))
         except Exception as _rag_e:
             log.debug("[RAG] vector search failed: %s", _rag_e)
         messages = history_msgs + [{"role": "user", "content": current_content}]
