@@ -826,6 +826,46 @@ def _handle_voice_message(chat_id: int, voice_obj) -> None:
             _handle_cal_console(chat_id, _clean_text)
             return
 
+        # ── Voice input during calendar field-edit flows ──────────────────────
+        if _cur_mode in ("cal_edit_title", "cal_edit_dt", "cal_edit_remind") \
+                and not _is_guest(chat_id):
+            _field = _cur_mode[len("cal_edit_"):]   # "title" / "dt" / "remind"
+            _clean_text = re.sub(r'\[\?([^\]]*)\]', r'\1', text).strip()
+            _safe_edit(chat_id, msg.message_id,
+                       f"🎤 _{_escape_md(_clean_text)}_",
+                       parse_mode="Markdown")
+            from features.bot_calendar import _cal_handle_edit_input  # noqa: PLC0415
+            _cal_handle_edit_input(chat_id, _clean_text, _field)
+            return
+
+        # ── Voice input during contact-book flows ─────────────────────────────
+        if _cur_mode == "contact_add" and not _is_guest(chat_id):
+            _clean_text = re.sub(r'\[\?([^\]]*)\]', r'\1', text).strip()
+            _safe_edit(chat_id, msg.message_id,
+                       f"🎤 _{_escape_md(_clean_text)}_",
+                       parse_mode="Markdown")
+            from features.bot_contacts import _finish_contact_add  # noqa: PLC0415
+            _finish_contact_add(chat_id, _clean_text)
+            return
+
+        if _cur_mode == "contact_edit" and not _is_guest(chat_id):
+            _clean_text = re.sub(r'\[\?([^\]]*)\]', r'\1', text).strip()
+            _safe_edit(chat_id, msg.message_id,
+                       f"🎤 _{_escape_md(_clean_text)}_",
+                       parse_mode="Markdown")
+            from features.bot_contacts import _finish_contact_edit  # noqa: PLC0415
+            _finish_contact_edit(chat_id, _clean_text)
+            return
+
+        if _cur_mode == "contact_search" and not _is_guest(chat_id):
+            _clean_text = re.sub(r'\[\?([^\]]*)\]', r'\1', text).strip()
+            _safe_edit(chat_id, msg.message_id,
+                       f"🎤 _{_escape_md(_clean_text)}_",
+                       parse_mode="Markdown")
+            from features.bot_contacts import _finish_contact_search  # noqa: PLC0415
+            _finish_contact_search(chat_id, _clean_text)
+            return
+
         # ── Voice note commands (intercept before LLM) ────────────────────────
         _text_lower = text.lower()
         _note_create_ru = ("запиши заметку", "создай заметку", "запишите заметку", "сохрани заметку")

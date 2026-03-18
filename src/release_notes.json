@@ -1,5 +1,11 @@
 [
   {
+    "version": "2026.3.39",
+    "date":    "2026-3-20",
+    "title":   "Fix LLM provider (OpenRouter direct), voice mode routing, import error",
+    "notes":   "- Fixed: LLM calls failed with picoclaw rc=1 because picoclaw-gateway service crash-loops (Error: no channels enabled) — switched to LLM_PROVIDER=openai pointing at OpenRouter's OpenAI-compatible endpoint\n- Fixed: voice messages during contact_add / contact_edit / contact_search modes were silently handed to LLM instead of the contact handler — STT transcript was discarded, contact was never saved\n- Fixed: voice messages during cal_edit_title / cal_edit_dt / cal_edit_remind modes were also ignored — calendar field edits via voice now work\n- Fixed: NameError ACTIVE_MODEL_FILE not defined in bot_admin.py — constant was used in _set_active_model() but missing from the import block"
+  },
+  {
     "version": "2026.3.38",
     "date":    "2026-3-19",
     "title":   "Fix empty-note crashes; /status shows LLM provider",

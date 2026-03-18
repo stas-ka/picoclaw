@@ -18,7 +18,7 @@ from pathlib import Path
 import core.bot_state as _st
 from core.bot_config import (
     ADMIN_USERS, ALLOWED_USERS,
-    PICOCLAW_CONFIG,
+    PICOCLAW_CONFIG, ACTIVE_MODEL_FILE,
     RELEASE_NOTES_FILE, LAST_NOTIFIED_FILE, BOT_VERSION,
     _VOICE_OPTS_DEFAULTS,
     log,
