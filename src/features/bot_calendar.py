@@ -34,8 +34,9 @@ from core.bot_config import CALENDAR_DIR, log
 from core.bot_instance import bot
 from core.bot_prompts import PROMPTS, fmt_prompt
 from telegram.bot_access import (
-    _t, _ask_picoclaw, _escape_md, _back_keyboard, _send_menu, _is_allowed,
+    _t, _escape_md, _back_keyboard, _send_menu, _is_allowed,
 )
+from core.bot_llm import ask_llm
 from telegram.bot_users import _resolve_storage_id
 from core.store import store
 
@@ -294,7 +295,7 @@ def _finish_cal_add(chat_id: int, text: str) -> None:
         chat_id,
         _t(chat_id, "cal_parsing"),
     )
-    raw = _ask_picoclaw(prompt, timeout=30)
+    raw = ask_llm(prompt, timeout=60)
     try:
         bot.delete_message(chat_id, thinking_msg.message_id)
     except Exception:
@@ -543,7 +544,7 @@ def _handle_calendar_query(chat_id: int, text: str) -> None:
         chat_id,
         _t(chat_id, "cal_searching"),
     )
-    raw = _ask_picoclaw(prompt, timeout=25)
+    raw = ask_llm(prompt, timeout=60)
     try:
         bot.delete_message(chat_id, thinking.message_id)
     except Exception:
@@ -617,7 +618,7 @@ def _handle_cal_console(chat_id: int, text: str) -> None:
         chat_id,
         _t(chat_id, "cal_analyzing"),
     )
-    raw = _ask_picoclaw(prompt, timeout=20)
+    raw = ask_llm(prompt, timeout=60)
     try:
         bot.delete_message(chat_id, thinking.message_id)
     except Exception:
@@ -782,7 +783,7 @@ def _cal_handle_edit_input(chat_id: int, text: str, field: str) -> None:
             chat_id,
             _t(chat_id, "cal_parsing_date"),
         )
-        raw = _ask_picoclaw(prompt, timeout=25)
+        raw = ask_llm(prompt, timeout=60)
         try:
             bot.delete_message(chat_id, thinking.message_id)
         except Exception:

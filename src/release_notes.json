@@ -1,5 +1,11 @@
 [
   {
+    "version": "2026.3.35",
+    "date":    "2026-3-19",
+    "title":   "Fix calendar LLM call — use ask_llm",
+    "notes":   "- Fixed: calendar NL input returned 'no LLM response' error\n- Root cause: bot_calendar.py used old _ask_picoclaw (bot_access) with short timeouts (20-30s) and outdated output cleaner missing agent|json pipe format\n- Fix: migrated all 4 calendar LLM calls to ask_llm (bot_llm) with 60s timeout, proper error logging, and correct output cleaning"
+  },
+  {
     "version": "2026.3.34",
     "date":    "2026-03-18",
     "title":   "Prompt templates centralised + LLM params configurable",

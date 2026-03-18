@@ -676,6 +676,26 @@ Each session block contains a table with one row per completed request:
 
 ---
 
+## Session 43 — 2026-03-18 UTC — Centralise LLM prompts + configurable params (v2026.3.34)
+
+| Time (UTC) | Request | Complexity | Requests | Model | Files changed | Status |
+|---|---|---|---|---|---|---|
+| ~18:00 | Centralise all LLM prompts from inline code to `src/prompts.json`; add `src/core/bot_prompts.py` with `PROMPTS` dict + `fmt_prompt()` helper; add 5 env-configurable LLM tuning constants (`LLM_TEMPERATURE`, `LLM_MAX_TOKENS`, `LLM_TIMEOUT_DEFAULT`, `LLM_TIMEOUT_LONG`, `LLM_TIMEOUT_VOICE`) to `bot_config.py`; update all callers (bot_llm.py, bot_security.py, bot_access.py, bot_handlers.py, bot_calendar.py, bot_mail_creds.py, bot_web.py); deploy to PI2 + verify + deploy to PI1 + verify; git commit `4bbe5c6` | 4 | ~8 | claude-sonnet-4.6 | src/prompts.json, src/core/bot_prompts.py, src/core/bot_config.py, src/core/bot_llm.py, src/security/bot_security.py, src/telegram/bot_access.py, src/telegram/bot_handlers.py, src/features/bot_calendar.py, src/features/bot_mail_creds.py, src/bot_web.py, src/release_notes.json | done |
+
+**Session 43 total: 1 item, ~8 requests — LLM prompt centralisation ✅ commit 4bbe5c6**
+
+---
+
+## Session 44 — 2026-03-18 UTC — Fix calendar LLM "cal_no_llm" bug (v2026.3.35)
+
+| Time (UTC) | Request | Complexity | Requests | Model | Files changed | Status |
+|---|---|---|---|---|---|---|
+| ~19:20 | Fix production bug: NL calendar input (e.g. "Тренировка в 19") always returned `cal_no_llm` error. Root cause: `bot_calendar.py` called `_ask_picoclaw()` (missing pipe-header handler, 20–30s timeouts silently swallowed). Fix: migrate all 4 calendar LLM call sites to `ask_llm(timeout=60)` from `bot_llm.py`. Bump to v2026.3.35. Deploy to PI2 (verified `Version : 2026.3.35`) + PI1 (verified `Version : 2026.3.35`). | 3 | ~15 | claude-sonnet-4.6 | src/features/bot_calendar.py, src/core/bot_config.py, src/release_notes.json | done |
+
+**Session 44 total: 1 item, ~15 requests — calendar LLM fix ✅ PI2 ✅ PI1 ✅**
+
+---
+
 ## Notes on Measurement
 
 - "Requests" = user→assistant conversation turns, not API calls.
