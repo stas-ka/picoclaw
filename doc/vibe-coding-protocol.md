@@ -706,6 +706,16 @@ Each session block contains a table with one row per completed request:
 
 ---
 
+## Session 46 — 2026-03-19
+
+| Time (UTC) | Description | Complexity | Turns | Model | Files | Status |
+|---|---|---|---|---|---|---|
+| ~09:45 | Fix calendar Add Event returning "❌ Could not parse date" for Russian shorthand time "в 19" (e.g. "Тренировка в 19"). Root cause 1: `event_parse` prompt had no rule for Russian «в X» (at X o'clock) time notation or time-of-day words (утром/вечером/днём). Root cause 2: LLMs sometimes return partial ISO "YYYY-MM-DDTHH" without ":MM" — `datetime.fromisoformat()` raises on Python ≤3.10. Fix 1: added «в X»=X:00 and time-of-day shorthand rules to `prompts.json`. Fix 2: added defensive dt_str normalization in `_finish_cal_add()`. Bump to v2026.3.37. Deploy PI2 ✅ PI1 ✅. | 2 | ~8 | claude-sonnet-4.6 | src/prompts.json, src/features/bot_calendar.py, src/core/bot_config.py, src/release_notes.json | done |
+
+**Session 46 total: 1 item, ~8 requests — calendar Russian time-idiom parse fix ✅ PI2 ✅ PI1 ✅**
+
+---
+
 ## Notes on Measurement
 
 - "Requests" = user→assistant conversation turns, not API calls.

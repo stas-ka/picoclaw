@@ -324,6 +324,9 @@ def _finish_cal_add(chat_id: int, text: str) -> None:
             dt_str = str(item.get("dt", "")).strip()
             if not title or not dt_str:
                 continue
+            # Normalize partial ISO "YYYY-MM-DDTHH" → "YYYY-MM-DDTHH:00"
+            if re.match(r'^\d{4}-\d{2}-\d{2}T\d{2}$', dt_str):
+                dt_str += ':00'
             dt = datetime.fromisoformat(dt_str)
             drafts.append({
                 "title":             title,

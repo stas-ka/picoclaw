@@ -1,5 +1,11 @@
 [
   {
+    "version": "2026.3.37",
+    "date":    "2026-3-19",
+    "title":   "Fix calendar: Russian time idioms and partial ISO dt",
+    "notes":   "- Fixed: Add Event returned 'Could not parse date' for Russian shorthand like 'Тренировка в 19'\n- Root cause 1: event_parse prompt had no rules for 'в X' (at X o'clock) or time-of-day words (утром/вечером)\n- Root cause 2: LLMs sometimes return partial ISO 'YYYY-MM-DDTHH' instead of 'YYYY-MM-DDTHH:MM' — fromisoformat() fails on Python <3.11\n- Fix 1: added prompt rules — 'в X' = X:00, утром=09:00, днём=13:00, вечером=19:00, в полдень=12:00\n- Fix 2: defensive dt_str normalization in _finish_cal_add() pads 'YYYY-MM-DDTHH' to 'YYYY-MM-DDTHH:00'"
+  },
+  {
     "version": "2026.3.36",
     "date":    "2026-3-19",
     "title":   "Fix free chat: picoclaw 402 error leaked as reply",
