@@ -736,6 +736,26 @@ Each session block contains a table with one row per completed request:
 
 ---
 
+## Session 49 — 2026-03-24
+
+| Time (UTC) | Description | Complexity | Turns | Model | Files | Status |
+|---|---|---|---|---|---|---|
+| ~20:45 | Fix 3 bugs in OpenAI model selection: (1) `_ask_openai` and `ask_llm_with_history` hardcoded `OPENAI_MODEL` env var, ignoring `active_model.txt` — fixed to use `get_active_model() or OPENAI_MODEL`; (2) callback_data used short model name instead of OpenRouter slug — fixed to use `model_id` (e.g. `openai/gpt-4.1`); (3) `is_current` comparison never matched — fixed to check `current in (name, model_id)`. Updated `_OPENAI_CATALOG`: removed deprecated gpt-4.5-preview/o1, added gpt-4.1/mini/nano + o3/o4-mini. Bump to v2026.3.40. Commit `d7e9d19`. Deploy PI2 ✅ PI1 ✅. | 3 | ~8 | claude-sonnet-4.6 | src/core/bot_llm.py, src/telegram/bot_admin.py, src/core/bot_config.py, src/release_notes.json | done |
+
+**Session 49 total: 3 bugs fixed, ~8 requests — OpenAI model selection non-functional; stale model catalog updated ✅ PI1 ✅ PI2 ✅**
+
+---
+
+## Session 50 — 2026-03-25
+
+| Time (UTC) | Description | Complexity | Turns | Model | Files | Status |
+|---|---|---|---|---|---|---|
+| ~19:00 | Fix System Chat "❌ Could not generate a command. Try again." bug: `_handle_system_message()` called `_ask_picoclaw()` (subprocess to picoclaw CLI binary), which hardcodes OpenRouter CLI ignoring `LLM_PROVIDER`. With `LLM_PROVIDER=openai` the binary fails → `None` returned → error shown. Fix: removed `_ask_picoclaw` import, added `from core.bot_llm import ask_llm as _ask_builtin_llm`, replaced call at line 539. Bump to v2026.3.41. Commit `7d60ced`. Deploy PI2 ✅ PI1 ✅. | 2 | ~5 | claude-sonnet-4.6 | src/telegram/bot_handlers.py, src/core/bot_config.py, src/release_notes.json | done |
+
+**Session 50 total: 1 bug fixed, ~5 requests — System Chat LLM routing fixed (ask_llm replaces _ask_picoclaw) ✅ PI1 ✅ PI2 ✅**
+
+---
+
 ## Notes on Measurement
 
 - "Requests" = user→assistant conversation turns, not API calls.
