@@ -21,7 +21,7 @@ import threading
 # ─── Core ────────────────────────────────────────────────────────────────────
 from core.bot_config import (
     BOT_VERSION, PICOCLAW_BIN, DIGEST_SCRIPT,
-    PIPER_MODEL_TMPFS,
+    PIPER_MODEL_TMPFS, LLM_PROVIDER,
     log,
 )
 import core.bot_state as _st
@@ -239,7 +239,7 @@ def cmd_status(message):
     text = (
         f"🖥️ *Pico Bot Status*\n\n"
         f"🎯 *Mode:* `{mode}`\n"
-        f"🤖 *LLM:* `{active_model}`\n"
+        f"🤖 *LLM:* `{LLM_PROVIDER}` › `{active_model}`\n"
         f"👤 *Role:* {role}\n\n"
         f"*Services:*\n" + "\n".join(svc_lines)
     )

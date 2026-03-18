@@ -1,5 +1,11 @@
 [
   {
+    "version": "2026.3.38",
+    "date":    "2026-3-19",
+    "title":   "Fix empty-note crashes; /status shows LLM provider",
+    "notes":   "- Fixed: opening, editing, appending, or replacing an empty note crashed with ApiTelegramException: Bad Request: message text is empty\n- Root cause: _handle_note_raw and _start_note_edit/append/replace used text/lines[0] without guarding for empty string\n- Fix: note display falls back to localized note_empty_body string; lines[0] access guarded with if lines else ''\n- /status command now shows LLM_PROVIDER prefix before active model name (e.g. picoclaw > gpt-4o-mini)"
+  },
+  {
     "version": "2026.3.37",
     "date":    "2026-3-19",
     "title":   "Fix calendar: Russian time idioms and partial ISO dt",

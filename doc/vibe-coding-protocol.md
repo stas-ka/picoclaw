@@ -716,6 +716,16 @@ Each session block contains a table with one row per completed request:
 
 ---
 
+## Session 47 — 2026-03-19
+
+| Time (UTC) | Description | Complexity | Turns | Model | Files | Status |
+|---|---|---|---|---|---|---|
+| ~10:00 | Fix 4 note handler crashes caused by empty-body notes (`ApiTelegramException: message text is empty`). Root cause: `_handle_note_raw` sent `text=""` directly; `_start_note_edit/append/replace` did `lines[0]` on empty list → IndexError. Fix: guard all `lines[0]` with `if lines else ""`; guard all `send_message` calls with `text or _t(chat_id, "note_empty_body")`. Added `note_empty_body` i18n key to RU/EN/DE in `strings.json`. Also fixed `/status` command to show `LLM_PROVIDER` prefix before active model name (imported + displayed as `{LLM_PROVIDER} › {active_model}`). Bump to v2026.3.38. Deploy PI2 ✅ PI1 ✅. | 2 | ~12 | claude-sonnet-4.6 | src/telegram/bot_handlers.py, src/strings.json, src/telegram_menu_bot.py, src/core/bot_config.py, src/release_notes.json | done |
+
+**Session 47 total: 2 items, ~12 requests — empty-note crash fix (4 functions) + /status LLM provider display ✅ PI2 ✅ PI1 ✅**
+
+---
+
 ## Notes on Measurement
 
 - "Requests" = user→assistant conversation turns, not API calls.

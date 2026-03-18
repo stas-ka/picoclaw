@@ -152,7 +152,7 @@ def _handle_note_raw(chat_id: int, slug: str) -> None:
         InlineKeyboardButton(_t(chat_id, "btn_back_short"),    callback_data=f"note_open:{slug}"),
     )
     # Send without parse_mode — every character appears exactly as stored
-    bot.send_message(chat_id, text, reply_markup=kb)
+    bot.send_message(chat_id, text or _t(chat_id, "note_empty_body"), reply_markup=kb)
 
 
 def _start_note_edit(chat_id: int, slug: str) -> None:
@@ -162,7 +162,7 @@ def _start_note_edit(chat_id: int, slug: str) -> None:
                          reply_markup=_notes_menu_keyboard(chat_id))
         return
     lines = text.splitlines()
-    note_title = lines[0].lstrip("# ").strip()
+    note_title = lines[0].lstrip("# ").strip() if lines else ""
     kb = InlineKeyboardMarkup(row_width=2)
     kb.add(
         InlineKeyboardButton(_t(chat_id, "btn_note_append"),
@@ -187,7 +187,7 @@ def _start_note_append(chat_id: int, slug: str) -> None:
     _st._user_mode[chat_id]    = "note_append_content"
     _st._pending_note[chat_id] = {"step": "append_content", "slug": slug}
     lines = text.splitlines()
-    note_title = lines[0].lstrip("# ").strip()
+    note_title = lines[0].lstrip("# ").strip() if lines else ""
     from telebot.types import ForceReply
     bot.send_message(chat_id,
                      _t(chat_id, "note_append_prompt", title=_escape_md(note_title)),
@@ -206,7 +206,7 @@ def _start_note_replace(chat_id: int, slug: str) -> None:
     _st._pending_note[chat_id] = {"step": "edit_content", "slug": slug}
 
     lines = text.splitlines()
-    note_title = lines[0].lstrip("# ").strip()
+    note_title = lines[0].lstrip("# ").strip() if lines else ""
     body_lines = lines[2:] if len(lines) > 2 else (lines[1:] if len(lines) > 1 else [])
     note_body  = "\n".join(body_lines).strip() or text
 
@@ -216,7 +216,7 @@ def _start_note_replace(chat_id: int, slug: str) -> None:
         parse_mode="Markdown",
     )
     from telebot.types import ForceReply
-    bot.send_message(chat_id, note_body, reply_markup=ForceReply(selective=False))
+    bot.send_message(chat_id, note_body or _t(chat_id, "note_empty_body"), reply_markup=ForceReply(selective=False))
 
 
 def _handle_note_delete(chat_id: int, slug: str) -> None:
