@@ -25,8 +25,9 @@ from core.bot_instance import bot
 from core.bot_prompts import PROMPTS
 from telegram.bot_access import (
     _t, _is_admin, _is_allowed, _is_developer, _with_lang, _escape_md, _truncate,
-    _safe_edit, _back_keyboard, _run_subprocess, _ask_picoclaw,
+    _safe_edit, _back_keyboard, _run_subprocess,
 )
+from core.bot_llm import ask_llm as _ask_builtin_llm
 from telegram.bot_users import (
     _list_notes_for, _load_note_text, _save_note_file, _delete_note_file,
     _slug, _find_registration, _upsert_registration,
@@ -536,7 +537,7 @@ def _handle_system_message(chat_id: int, user_text: str) -> None:
     msg = bot.send_message(chat_id, "⏳ Generating command…")
 
     def _run():
-        cmd_text = _ask_picoclaw(prompt, timeout=45)
+        cmd_text = _ask_builtin_llm(prompt, timeout=45)
         if not cmd_text:
             bot.edit_message_text("❌ Could not generate a command. Try again.",
                                   chat_id, msg.message_id)

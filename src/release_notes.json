@@ -1,5 +1,11 @@
 [
   {
+    "version": "2026.3.41",
+    "date":    "2026-3-25",
+    "title":   "Fix System Chat LLM routing",
+    "notes":   "- Fixed: System Chat returned 'Could not generate a command' for any input — it was calling the picoclaw CLI binary directly instead of routing through the configured LLM_PROVIDER (openai/OpenRouter)\n- System Chat now uses ask_llm() like all other LLM-powered features, so the active provider and model are respected"
+  },
+  {
     "version": "2026.3.40",
     "date":    "2026-3-24",
     "title":   "Fix LLM model selection, update OpenAI catalog",
