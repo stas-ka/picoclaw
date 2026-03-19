@@ -20,6 +20,7 @@ from core.bot_config import (
     ADMIN_USERS, ALLOWED_USERS,
     PICOCLAW_CONFIG, ACTIVE_MODEL_FILE,
     RELEASE_NOTES_FILE, LAST_NOTIFIED_FILE, BOT_VERSION,
+    LLM_LOCAL_FALLBACK, LLAMA_CPP_URL, LLAMA_CPP_MODEL, LLM_FALLBACK_FLAG_FILE,
     _VOICE_OPTS_DEFAULTS,
     _LOG_FILE, _ASSISTANT_LOG_FILE, _SECURITY_LOG_FILE, _VOICE_LOG_FILE, _DATASTORE_LOG_FILE,
     log,
@@ -580,7 +581,8 @@ def _handle_admin_llm_menu(chat_id: int) -> None:
         kb.add(InlineKeyboardButton(f"{prefix}  {name}", callback_data=f"llm_select:{name}"))
 
     kb.add(InlineKeyboardButton("↩️  Reset to default", callback_data="llm_select:"))
-    kb.add(InlineKeyboardButton("🔙  Admin", callback_data="admin_menu"))
+    kb.add(InlineKeyboardButton("�  Local Fallback", callback_data="admin_llm_fallback_menu"))
+    kb.add(InlineKeyboardButton("�🔙  Admin", callback_data="admin_menu"))
 
     current_label = current or "(config default: openrouter-auto)"
     text = (
@@ -740,3 +742,46 @@ def _handle_save_llm_key(chat_id: int, raw_key: str) -> None:
         bot.send_message(chat_id, "❌ Failed to save key — check Pi logs.",
                          parse_mode="Markdown")
     _handle_openai_llm_menu(chat_id)
+
+
+def _handle_admin_llm_fallback_menu(chat_id: int) -> None:
+    """Show local LLM fallback status and toggle button."""
+    flag_on = LLM_LOCAL_FALLBACK or Path(LLM_FALLBACK_FLAG_FILE).exists()
+    status  = "✅ ON" if flag_on else "⭕ OFF"
+    kb = InlineKeyboardMarkup(row_width=1)
+    toggle_label = "🔴 Turn OFF" if flag_on else "🟢 Turn ON"
+    kb.add(InlineKeyboardButton(toggle_label, callback_data="admin_llm_fallback_toggle"))
+    kb.add(InlineKeyboardButton("🔙  LLM Menu", callback_data="admin_llm_menu"))
+    url_line   = f"`{LLAMA_CPP_URL}`" if LLAMA_CPP_URL else "_not set_"
+    model_line = f"`{LLAMA_CPP_MODEL}`" if LLAMA_CPP_MODEL else "_server default_"
+    text = (
+        f"📡 *Local LLM Fallback*\n\n"
+        f"Status: *{status}*\n"
+        f"URL: {url_line}\n"
+        f"Model: {model_line}\n\n"
+        f"When ON, failed primary LLM calls fall back to the local llama.cpp server.\n"
+        f"Response is prefixed with ⚠️ `[local fallback]`."
+    )
+    try:
+        bot.send_message(chat_id, text, parse_mode="Markdown", reply_markup=kb)
+    except Exception as e:
+        log.warning(f"[LLM] fallback_menu send failed: {e}")
+        bot.send_message(chat_id, _re.sub(r"[*_`]", "", text), reply_markup=kb)
+
+
+def _handle_admin_llm_fallback_toggle(chat_id: int) -> None:
+    """Toggle LLM local fallback at runtime via flag file."""
+    flag = Path(LLM_FALLBACK_FLAG_FILE)
+    if flag.exists():
+        flag.unlink()
+        msg = "⭕ Local LLM fallback *disabled*.\n\nPrimary LLM errors will no longer fall back to local model."
+    else:
+        flag.parent.mkdir(parents=True, exist_ok=True)
+        flag.touch()
+        msg = "✅ Local LLM fallback *enabled*.\n\nFailed primary LLM calls will fall back to local llama.cpp server."
+    try:
+        bot.send_message(chat_id, msg, parse_mode="Markdown")
+    except Exception as e:
+        log.warning(f"[LLM] fallback toggle send failed: {e}")
+        bot.send_message(chat_id, _re.sub(r"[*_`]", "", msg))
+    _handle_admin_llm_fallback_menu(chat_id)

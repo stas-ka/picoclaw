@@ -82,8 +82,9 @@ ACTIVE_MODEL_FILE   = os.environ.get("ACTIVE_MODEL_FILE",
 LLM_PROVIDER        = os.environ.get("LLM_PROVIDER", "picoclaw")
 
 # Local llama.cpp fallback — enable with LLM_LOCAL_FALLBACK=1 (Feature 3.2)
-LLM_LOCAL_FALLBACK  = os.environ.get("LLM_LOCAL_FALLBACK", "0") == "1"
-LLAMA_CPP_URL       = os.environ.get("LLAMA_CPP_URL",   "http://127.0.0.1:8081")
+LLM_LOCAL_FALLBACK      = os.environ.get("LLM_LOCAL_FALLBACK", "0") == "1"
+LLM_FALLBACK_FLAG_FILE  = os.path.expanduser("~/.picoclaw/llm_fallback_enabled")  # runtime toggle
+LLAMA_CPP_URL           = os.environ.get("LLAMA_CPP_URL",   "http://127.0.0.1:8081")
 LLAMA_CPP_MODEL     = os.environ.get("LLAMA_CPP_MODEL", "")
 
 # YandexGPT (Feature 3.1)
@@ -138,7 +139,7 @@ DOCS_DIR            = os.environ.get("DOCS_DIR",
 # Bot version — bump on every user-visible deployment
 # ─────────────────────────────────────────────────────────────────────────────
 
-BOT_VERSION        = "2026.3.42"
+BOT_VERSION        = "2026.3.43"
 RELEASE_NOTES_FILE = os.environ.get(
     "RELEASE_NOTES_FILE",
     os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "release_notes.json"),

@@ -28,6 +28,7 @@ from core.bot_config import (
     LOCAL_MAX_TOKENS,
     LOCAL_TEMPERATURE,
     LLM_LOCAL_FALLBACK,
+    LLM_FALLBACK_FLAG_FILE,
     LLM_PROVIDER,
     OPENAI_API_KEY,
     OPENAI_BASE_URL,
@@ -248,7 +249,7 @@ def ask_llm(prompt: str, timeout: int = 60) -> str:
         primary_error = exc
 
     # ── Local fallback (Feature 3.2) ──────────────────────────────────────
-    if LLM_LOCAL_FALLBACK and provider != "local":
+    if (LLM_LOCAL_FALLBACK or os.path.exists(LLM_FALLBACK_FLAG_FILE)) and provider != "local":
         log.warning(
             f"[LLM] Falling back to local llama.cpp after {provider} failure: {primary_error}"
         )
@@ -385,7 +386,7 @@ def ask_llm_with_history(messages: list, timeout: int = 60) -> str:
         log.warning(f"[LLM] {provider} failed in history call: {exc}")
         primary_error = exc
 
-    if LLM_LOCAL_FALLBACK and provider != "local":
+    if (LLM_LOCAL_FALLBACK or os.path.exists(LLM_FALLBACK_FLAG_FILE)) and provider != "local":
         log.warning(
             f"[LLM] Falling back to local after {provider} failure: {primary_error}"
         )

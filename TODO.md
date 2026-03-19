@@ -92,7 +92,7 @@ Emergency fallback via `llama.cpp`. Pi 3: Qwen2-0.5B (~1 tok/s); Pi 4/5: Phi-3-m
 - [x] `ask_llm()` catches all primary errors; retries via `_ask_local()` when fallback enabled
 - [x] Fallback responses prefixed with `⚠️ [local fallback]` label
 - [x] Service staged on Pi2; starts automatically once `llama-server` binary is installed
-- [ ] Configurable, switchable via Admin Panel
+- [x] Configurable, switchable via Admin Panel
 ---
 
 ## 4. Content & Knowledge

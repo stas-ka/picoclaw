@@ -1,5 +1,11 @@
 [
   {
+    "version": "2026.3.43",
+    "date":    "2026-4-2",
+    "title":   "Local LLM Fallback — Admin Panel toggle (§3.2 complete)",
+    "notes":   "- Admin Panel: 🤖 Switch LLM → 📡 Local Fallback shows ON/OFF status and toggle button\n- Toggle writes/removes ~/.picoclaw/llm_fallback_enabled flag file — no restart needed\n- Fallback state survives bot restarts (LLM_LOCAL_FALLBACK env var OR flag file)\n- Displays configured llama.cpp URL and model in the menu"
+  },
+  {
     "version": "2026.3.42",
     "date":    "2026-4-1",
     "title":   "Logging & Monitoring (§6.1)",
