@@ -201,6 +201,26 @@ Each session block contains a table with one row per completed request:
 
 ---
 
+## Session 13 — Prior session (§3.2 Admin LLM fallback toggle — code)
+
+| Time | Request | Complexity | Requests used | Model | Files changed | Status |
+|------|---------|------------|---------------|-------|---------------|--------|
+| (prior) | §3.2 Admin Panel LLM fallback toggle via flag file (`llm_fallback_enabled`): `_handle_admin_llm_fallback_menu()`, `_handle_admin_llm_fallback_toggle()`, `LLM_FALLBACK_FLAG_FILE` constant, `📡 Local Fallback` admin button, deploy + verify v2026.3.43 on PI2 | 3 | ~12 | claude-sonnet-4.6 | core/bot_config.py, telegram/bot_admin.py, telegram_menu_bot.py, core/bot_llm.py, release_notes.json, src/services/picoclaw-telegram.service | done |
+
+**Session 13 total: 1 item, ~12 requests**
+
+---
+
+## Session 14 — Continuation (§3.2 doc sync — `/taris_update_doc`)
+
+| Time | Request | Complexity | Requests used | Model | Files changed | Status |
+|------|---------|------------|---------------|-------|---------------|--------|
+| (continuation) | `/taris_update_doc` skill: sync all documentation with v2026.3.43 — deployment.md (3 edits), llm-providers.md (6 changes incl. new §19.6 Runtime Fallback Toggle), telegram-bot.md (4 changes), bot-code-map.md (4 rows), TODO.md, README.md; commit `f2d8763` | 2 | ~8 | claude-sonnet-4.6 | doc/arch/deployment.md, doc/arch/llm-providers.md, doc/arch/telegram-bot.md, doc/bot-code-map.md, TODO.md, README.md | done |
+
+**Session 14 total: 1 item, ~8 requests**
+
+---
+
 ## Summary Table (all sessions)
 
 | Session | Date | Items | Requests | Avg complexity | Model |
@@ -217,7 +237,9 @@ Each session block contains a table with one row per completed request:
 | 10 | 2026-03-14 | 1 | ~6 | 3.0 | claude-sonnet-4.6 |
 | 11 | 2026-03-16 | 1 | ~15 | 4.0 | claude-sonnet-4.6 |
 | 12 | 2026-03-19 | 1 | ~12 | 4.0 | claude-sonnet-4.6 |
-| **Total** | | **49** | **~168** | | |
+| 13 | prior session | 1 | ~12 | 3.0 | claude-sonnet-4.6 |
+| 14 | continuation | 1 | ~8 | 2.0 | claude-sonnet-4.6 |
+| **Total** | | **51** | **~188** | | |
 
 ---
 
