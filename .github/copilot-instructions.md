@@ -6,14 +6,14 @@ These reusable task prompts live in `.github/prompts/`. Invoke them with `/skill
 
 | `/skill-name` | What it does |
 |---|---|
-| `/taris_deploy_to_target` | Copy changed files to Pi, restart service, verify journal |
-| `/taris_backup_target` | Backup a Raspberry Pi target (data, software, system config, binaries, or all) |
-| `/taris_performancetest` | Run taris performance benchmarks (storage ops, menu navigation) locally and/or on Pi targets, merge results, and print a cross-platform comparison |
-| `/run-tests` | Run voice regression T01–T21 on Pi, report results |
-| `/bump-version` | Update `BOT_VERSION`, prepend release note, commit |
-| `/test-software` | Auto-select tests based on changed files (also triggered by plain "test software") |
-| `/taris_update_doc` | Sync project documentation (`doc/arch/`, code-map, TODO, README) with current implementation |
-| `/taris_test_ui` | Run Web UI Playwright + Telegram smoke tests; detect and fill coverage gaps via playwright-mcp |
+| `/taris-deploy-to_target` | Copy changed files to Pi, restart service, verify journal |
+| `/taris-backup-target` | Backup a Raspberry Pi target (data, software, system config, binaries, or all) |
+| `/taris-performancetest` | Run taris performance benchmarks (storage ops, menu navigation) locally and/or on Pi targets, merge results, and print a cross-platform comparison |
+| `/taris-test-run-tests` | Run voice regression T01–T21 on Pi, report results |
+| `/taris-bump-version` | Update `BOT_VERSION`, prepend release note, commit |
+| `/taris-test-software` | Auto-select tests based on changed files (also triggered by plain "test software") |
+| `/taris-update-doc` | Sync project documentation (`doc/arch/`, code-map, TODO, README) with current implementation |
+| `/taris-test-ui` | Run Web UI Playwright + Telegram smoke tests; detect and fill coverage gaps via playwright-mcp |
 
 📖 Full usage guide: [`doc/copilot-skills-guide.md`](../doc/copilot-skills-guide.md)
 

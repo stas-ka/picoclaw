@@ -191,6 +191,16 @@ Each session block contains a table with one row per completed request:
 
 ---
 
+## Session 12 — 2026-03-19
+
+| Time | Request | Complexity | Requests used | Model | Files changed | Status |
+|------|---------|------------|---------------|-------|---------------|--------|
+| 06:20 UTC | Profile language setting (persist to registrations.json, restore on restart) + My Data view — 5-file feature across strings.json, bot_users.py, bot_access.py, bot_handlers.py, telegram_menu_bot.py; deploy + verify on OpenClawPI2 | 4 | ~12 | claude-sonnet-4.6 | strings.json, telegram/bot_users.py, telegram/bot_access.py, telegram/bot_handlers.py, telegram_menu_bot.py | done |
+
+**Session 12 total: 1 item, ~12 requests**
+
+---
+
 ## Summary Table (all sessions)
 
 | Session | Date | Items | Requests | Avg complexity | Model |
@@ -206,7 +216,8 @@ Each session block contains a table with one row per completed request:
 | 9 | 2026-03-13 | 2 | ~30 | 4.0 | claude-sonnet-4.6 |
 | 10 | 2026-03-14 | 1 | ~6 | 3.0 | claude-sonnet-4.6 |
 | 11 | 2026-03-16 | 1 | ~15 | 4.0 | claude-sonnet-4.6 |
-| **Total** | | **48** | **~156** | | |
+| 12 | 2026-03-19 | 1 | ~12 | 4.0 | claude-sonnet-4.6 |
+| **Total** | | **49** | **~168** | | |
 
 ---
 
@@ -753,6 +764,16 @@ Each session block contains a table with one row per completed request:
 | ~19:00 | Fix System Chat "❌ Could not generate a command. Try again." bug: `_handle_system_message()` called `_ask_picoclaw()` (subprocess to picoclaw CLI binary), which hardcodes OpenRouter CLI ignoring `LLM_PROVIDER`. With `LLM_PROVIDER=openai` the binary fails → `None` returned → error shown. Fix: removed `_ask_picoclaw` import, added `from core.bot_llm import ask_llm as _ask_builtin_llm`, replaced call at line 539. Bump to v2026.3.41. Commit `7d60ced`. Deploy PI2 ✅ PI1 ✅. | 2 | ~5 | claude-sonnet-4.6 | src/telegram/bot_handlers.py, src/core/bot_config.py, src/release_notes.json | done |
 
 **Session 50 total: 1 bug fixed, ~5 requests — System Chat LLM routing fixed (ask_llm replaces _ask_picoclaw) ✅ PI1 ✅ PI2 ✅**
+
+---
+
+## Session 51 — 2026-03-19
+
+| Time (UTC) | Description | Complexity | Turns | Model | Files | Status |
+|---|---|---|---|---|---|---|
+| 06:26 UTC | Deploy all changes to PI2 (v2026.3.41). Resumed mid-deploy from conversation summary. Deployed: web/, entry points (telegram_menu_bot.py, bot_web.py, voice_assistant.py, gmail_digest.py), data files (strings.json, release_notes.json, prompts.json). Restarted picoclaw-telegram + picoclaw-web. Journal confirmed: Version 2026.3.41, Polling Telegram, Web UI v2026.3.41 on :8080. Both services active ✅ PI2 ✅. | 1 | ~3 | claude-sonnet-4.6 | src/web/*, src/telegram_menu_bot.py, src/bot_web.py, src/strings.json, src/release_notes.json | done |
+
+**Session 51 total: 1 deployment, ~3 requests — Full PI2 deploy v2026.3.41 ✅**
 
 ---
 

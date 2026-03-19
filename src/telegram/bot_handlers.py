@@ -18,7 +18,7 @@ from typing import Optional
 
 import core.bot_state as _st
 from core.bot_config import (
-    LAST_DIGEST_FILE, DIGEST_SCRIPT,
+    LAST_DIGEST_FILE, DIGEST_SCRIPT, MAIL_CREDS_DIR,
     log,
 )
 from core.bot_instance import bot
@@ -30,7 +30,7 @@ from telegram.bot_access import (
 from core.bot_llm import ask_llm as _ask_builtin_llm
 from telegram.bot_users import (
     _list_notes_for, _load_note_text, _save_note_file, _delete_note_file,
-    _slug, _find_registration, _upsert_registration,
+    _slug, _find_registration, _upsert_registration, _set_reg_lang,
 )
 
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
@@ -306,6 +306,10 @@ def _handle_profile(chat_id: int) -> None:
         InlineKeyboardButton(_t(chat_id, "profile_btn_mailbox"),    callback_data="mail_settings"),
         InlineKeyboardButton(_t(chat_id, "web_link_btn"),           callback_data="web_link"),
     )
+    kb.add(
+        InlineKeyboardButton(_t(chat_id, "profile_btn_lang"),     callback_data="profile_set_lang"),
+        InlineKeyboardButton(_t(chat_id, "profile_btn_my_data"), callback_data="profile_my_data"),
+    )
     kb.add(InlineKeyboardButton(_t(chat_id, "btn_back"),            callback_data="menu"))
     bot.send_message(chat_id, text, parse_mode="Markdown", reply_markup=kb)
 
@@ -393,6 +397,52 @@ def _handle_web_link(chat_id: int) -> None:
     code = _st.generate_web_link_code(chat_id)
     ttl  = _st.WEB_LINK_CODE_TTL_MINUTES
     text = _t(chat_id, "web_link_code_msg", code=code, ttl=ttl)
+    bot.send_message(chat_id, text, parse_mode="Markdown",
+                     reply_markup=_back_keyboard())
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Profile: language selection
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _handle_profile_lang(chat_id: int) -> None:
+    """Show language selection keyboard."""
+    kb = InlineKeyboardMarkup(row_width=1)
+    kb.add(InlineKeyboardButton(_t(chat_id, "profile_lang_ru"), callback_data="profile_lang_ru"))
+    kb.add(InlineKeyboardButton(_t(chat_id, "profile_lang_en"), callback_data="profile_lang_en"))
+    kb.add(InlineKeyboardButton(_t(chat_id, "profile_lang_de"), callback_data="profile_lang_de"))
+    kb.add(InlineKeyboardButton(_t(chat_id, "btn_back"),        callback_data="profile"))
+    bot.send_message(chat_id, _t(chat_id, "profile_lang_title"), reply_markup=kb)
+
+
+def _set_profile_lang(chat_id: int, lang: str) -> None:
+    """Apply chosen language immediately and persist it."""
+    if lang not in ("ru", "en", "de"):
+        return
+    _st._user_lang[chat_id] = lang
+    _set_reg_lang(chat_id, lang)
+    bot.send_message(chat_id, _t(chat_id, "profile_lang_set_ok", lang=lang))
+    _handle_profile(chat_id)
+
+
+def _handle_profile_my_data(chat_id: int) -> None:
+    """Show all stored data for the user."""
+    from features.bot_contacts import _contact_count
+    from features.bot_calendar import _cal_load
+    reg = _find_registration(chat_id) or {}
+    name = reg.get("name") or str(chat_id)
+    lang = _st._user_lang.get(chat_id, "en")
+    reg_date = str(reg.get("timestamp", ""))[:10] or "\u2014"
+    notes_count = len(_list_notes_for(chat_id))
+    cal_count = len(_cal_load(chat_id))
+    contacts_count = _contact_count(chat_id)
+    mail_file = Path(MAIL_CREDS_DIR) / f"{chat_id}.json"
+    mail_status = "\u2705" if mail_file.exists() else "\u274c"
+    text = _t(chat_id, "profile_my_data_msg",
+              name=_escape_md(name), tg_id=chat_id, lang=lang,
+              reg_date=reg_date, notes_count=notes_count,
+              cal_count=cal_count, contacts_count=contacts_count,
+              mail_status=mail_status)
     bot.send_message(chat_id, text, parse_mode="Markdown",
                      reply_markup=_back_keyboard())
 

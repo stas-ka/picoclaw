@@ -100,6 +100,16 @@ def _set_reg_status(chat_id: int, status: str) -> None:
             return
 
 
+def _set_reg_lang(chat_id: int, lang: str) -> None:
+    """Persist the user's chosen interface language to the registration record."""
+    regs = _load_registrations()
+    for r in regs:
+        if r.get("chat_id") == chat_id:
+            r["lang"] = lang
+            _save_registrations(regs)
+            return
+
+
 def _get_pending_registrations() -> list[dict]:
     return [r for r in _load_registrations() if r.get("status") == "pending"]
 

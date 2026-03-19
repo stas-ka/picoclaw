@@ -77,6 +77,7 @@ from telegram.bot_handlers import (
     _handle_web_link,
     _start_profile_edit_name, _finish_profile_edit_name,
     _start_profile_change_pw, _finish_profile_change_pw,
+    _handle_profile_lang, _set_profile_lang, _handle_profile_my_data,
     _pending_profile,
 )
 
@@ -314,6 +315,15 @@ def callback_handler(call):
     elif data == "profile_change_pw":
         if not _is_allowed(cid): return _deny(cid)
         _start_profile_change_pw(cid)
+    elif data == "profile_set_lang":
+        if not _is_allowed(cid): return _deny(cid)
+        _handle_profile_lang(cid)
+    elif data.startswith("profile_lang_"):
+        if not _is_allowed(cid): return _deny(cid)
+        _set_profile_lang(cid, data[len("profile_lang_"):])
+    elif data == "profile_my_data":
+        if not _is_allowed(cid): return _deny(cid)
+        _handle_profile_my_data(cid)
     # ── Admin panel ────────────────────────────────────────────────────────
     elif data == "admin_menu":
         if _is_admin(cid):

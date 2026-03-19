@@ -84,6 +84,12 @@ _STRINGS: dict[str, dict[str, str]] = _load_strings(_STRINGS_FILE)
 
 def _set_lang(chat_id: int, from_user) -> None:
     """Store the best-supported UI language for this user ('ru' | 'de' | 'en')."""
+    # Honour manually saved language preference (beats Telegram auto-detect)
+    from telegram.bot_users import _find_registration
+    saved = (_find_registration(chat_id) or {}).get("lang")
+    if saved in ("ru", "en", "de"):
+        _user_lang[chat_id] = saved
+        return
     lc = (getattr(from_user, "language_code", "") or "").lower()
     if lc.startswith("ru"):
         _user_lang[chat_id] = "ru"

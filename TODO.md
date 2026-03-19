@@ -17,7 +17,10 @@
 | 0.5 Calendar console ignores add | Intent classifier calls `_finish_cal_add()` directly | v2026.3.29 |
 | 0.6 System Chat no role guards | `ADMIN_ALLOWED_CMDS` / `DEVELOPER_ALLOWED_CMDS` + `_classify_cmd_class()` | v2026.3.30 |
 | 0.7 Add new Contact cancel shows "btn_cancel" | Added missing `btn_cancel` i18n key to ru/en/de in `strings.json` | v2026.3.31 |
-| 0.8 Profile change password error | Fixed `account["id"]` → `account["user_id"]` key in `_finish_profile_change_pw()` | v2026.3.31 || 0.9 | Telegram-Web link code HTTP 500 on `/register` | Codes persisted to `~/.picoclaw/web_link_codes.json`; shared between Telegram and Web services | v2026.3.33 |
+| 0.8 Profile change password error | Fixed `account["id"]` → `account["user_id"]` key in `_finish_profile_change_pw()` | v2026.3.31 |
+| 0.9 Telegram-Web link code HTTP 500 on `/register` | Codes persisted to `~/.picoclaw/web_link_codes.json`; shared between Telegram and Web services | v2026.3.33 |
+| 0.10 OpenAI model selection ignored active model | Fixed default `OPENAI_MODEL` + model catalog align in `bot_config.py` / `bot_llm.py`; admin model switch now reflected correctly | v2026.3.40 |
+| 0.11 System Chat bypassed multi-LLM dispatch | `_handle_system_message()` now calls `ask_llm()` (bot_llm.py) instead of legacy `_ask_picoclaw()` | v2026.3.41 |
 ---
 
 ## 1. Open Issues &amp; Roadmap
@@ -30,8 +33,8 @@ Profile self-service hub — edit name, change password, open mailbox — in bot
 - [x] `GET /profile` + `POST /profile/name` routes in `bot_web.py` (v2026.3.29)
 - [x] `profile.html` template + `base.html` nav sidebar link (v2026.3.29)
 - [x] Playwright test: `GET /profile` returns 200 — `TestProfile` class in `test_ui.py` (v2026.3.31)
-- [] setting language per default for user
-- [] view saved information context included about user in the app
+- [x] Language selection in Profile: `_handle_profile_lang()` + `_set_profile_lang()` + `_set_reg_lang()` — persisted per user (v2026.3.31)
+- [x] View stored data summary in Profile: `_handle_profile_my_data()` — notes, calendar, contacts, mail status (v2026.3.31)
 
 ---
 
@@ -83,14 +86,13 @@ OpenRouter ✅ · OpenAI direct ✅ · YandexGPT ✅ · Gemini ✅ · Anthropic 
 ### 3.2 Local LLM — Offline Fallback ✅ Implemented (v2026.3.32)
 Emergency fallback via `llama.cpp`. Pi 3: Qwen2-0.5B (~1 tok/s); Pi 4/5: Phi-3-mini.
 → See: `doc/hardware-performance-analysis.md` §8.9
-
 - [x] `picoclaw-llm.service` systemd unit — llama-server on port 8081, `qwen2-0.5b-q4.gguf`, 4 threads, ctx 2048
 - [x] `_ask_local()` client — OpenAI-compatible `/v1/chat/completions` against `LLAMA_CPP_URL` (default `http://127.0.0.1:8081`)
 - [x] `LLM_LOCAL_FALLBACK=true` env-var — enables automatic fallback when primary provider fails
 - [x] `ask_llm()` catches all primary errors; retries via `_ask_local()` when fallback enabled
 - [x] Fallback responses prefixed with `⚠️ [local fallback]` label
 - [x] Service staged on Pi2; starts automatically once `llama-server` binary is installed
-
+- [ ] Configurable, switchable via Admin Panel
 ---
 
 ## 4. Content & Knowledge
@@ -101,24 +103,25 @@ Emergency fallback via `llama.cpp`. Pi 3: Qwen2-0.5B (~1 tok/s); Pi 4/5: Phi-3-m
 
 ### 4.1 Local RAG Knowledge Base 🔲
 
-- [ ] Embed documents with `all-MiniLM-L6-v2`
+- [ ] using local llm for RAG optional , configurable in Admin PAnel 
+- [ ] Embed documents with `all-MiniLM-L6-v2` fro local RAG
 - [ ] Vector similarity search → inject top-k context into LLM prompt
 - [ ] Commands: `/rag_on`, `/rag_off`
 - [ ] Storage: `~/.picoclaw/knowledge_base/` (documents + `embeddings.db`)
-- [ ] configuration to use local knowledges or remote RAG knowledge  service.
-- [ ] Using local knowledges is possible to use remote RAG servceis
-- [ ] Connect , using to remote service via MCP server connection as tool
+- [ ] configuration to use local knowledges for integrated RAG with local LLM and remote llm and remote RAG knowledge  service.
 - [ ] Timeout monitoring by using RAG services or by waiting for answer from LLM
 - [ ] settings for using LLM+RAG configurable (temperature, sead, system prompt, role, chunk counts) via Admin panel
 - [ ] settings incl. credentials to connect to remote RAG MCP service via Admin panel
 - [ ] settings for configuration of local RAG service via Admin panel
 - [ ] information for the user about restrictions for uploadable documents and size of database over telegram and web ui
-- [ ] logging in DB information about  founded chunks and prompt by requests to llm (input) and results from llm inclusive returned system information
-- [ ] after uploading document shall be saved statistic about source document parsing, chuncking, mebedding as protocol in the database
+- [ ] logging in DB information about  founded chunks and prompt by requests to llm (input) and results from llm inclusive returned system information . Access via Admin panel to last RAG activities(log outpus)
+- [ ] after uploading document shall be saved statistic about source document parsing, chuncking, embedding as protocol in the database . Output statistic for Admin by loading documents 
 
 ### 4.2 [ ] optimize local RAG
 
 ### 4.2 [ ] Implement remote  RAG service as MCP service
+- [ ] Using local knowledges is possible to use remote RAG servceis
+- [ ] Connect , using to remote service via MCP server connection as tool
 ---
 
 ## 5. Voice Pipeline
@@ -171,7 +174,9 @@ Baseline: Pi 3 B+ ~115 s total; target <25 s with all opts ON.
 ### 6.5 Recovery Testing 🔲
 
 - [ ] Test full recovery on a different hardware device — flash image backup, restore all services, verify bot + voice + calendar come up cleanly on fresh Pi
-
+- [] Review existed tests, test suite. extending of regression and additional test if it's needed
+- implementing test agent to implement tests for using in copilot by changing, fixing, extending functionality
+- implementing agent to run all kinds tests depend on kind of changing and kind and taget of deploying  
 ---
 
 ## 7. Demo Features for Client Presentations 🔲
@@ -184,6 +189,19 @@ Quick-win features — Level A (LLM-only, <2 h), B (helpers, 2–4 h), C (impres
 ---
 
 ## 8. Web UI & CRM Platform
+### 8.2 Rename Assistent to Taris / TARIS and Plattform to SINTA
+[] - rename assistant and Application to Taris
+[] - Update UI, knowledges, prompts etc. for new name
+[] - rename software platform, stack  from Picoclaw to SINTA Platform. 
+[] - rename Project local and in git
+
+### 8.3 Testing UI
+[] - integrate tests of telegram client in existed testframework for Web UI based on playwright
+[] -  telegram client tests shall be executable automaticaly 
+[] - implementing telegram regression tests for existed functionality
+[] - integrate running tests in existed agents and skills 
+[] - synchronising web ui and telegram tests
+[] - creating agent for UI tests to use from copilot
 
 ### 8.4 CRM Platform Vision 💡
 
