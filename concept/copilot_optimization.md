@@ -467,24 +467,23 @@ After implementing the proposals, measure:
 
 ---
 
-## 9. Implementation Tracker (updated 2026-03-19)
+## 9. Implementation Tracker (updated 2026-04-02)
 
 | Proposal | Description | Status |
 |---|---|---|
-| P-1 | Fix `safe-update` `applyTo: "**"` → narrow glob | 🔲 Pending |
+| P-1 | Fix `safe-update` `applyTo: "**"` → narrow glob | ✅ Done |
 | P-2 | Slim `copilot-instructions.md` — remove T01–T21 table, patterns, remote host | ✅ Done |
 | P-3 | Replace "ALWAYS read bot-code-map.md" with "search it" | ✅ Done |
 | P-4 | Split `doc/architecture.md` into `doc/arch/*.md` (8 topic files) | ✅ Done |
-| P-5 | Split `src/bot_web.py` (83 KB → 3 modules) | 🔲 Pending |
-| P-6 | Shorten `bot-deploy.instructions.md` + `safe-update.instructions.md` | 🔲 Pending |
-| P-7 | Move accounting task from `INSTRUCTIONS.md` to `concept/` | 🔲 Pending |
+| P-5 | Split `src/bot_web.py` (83 KB → 3 modules) | 🔲 Deferred (4–8 h, deployment risk — standalone sprint) |
+| P-6 | Shorten `bot-deploy.instructions.md` + `safe-update.instructions.md` | ✅ Done |
+| P-7 | Move accounting task from `INSTRUCTIONS.md` to `concept/` | ✅ Done |
 | P-8 | Add `doc/quick-ref.md` — single 3 KB always-read index | ✅ Done |
-| P-9 | Add `#file:` anchor pattern to skills guide | 🔲 Pending |
+| P-9 | Add `#file:` anchor pattern to skills guide | ✅ Done |
 | G-1 | Create `doc/vibe-coding-guidelines.md` — artifact structuring rules | ✅ Done (2026-03-19) |
 
-**Baseline tokens (current estimate after P-2, P-3, P-4, P-8):**  
+**Baseline tokens (current estimate after P-1..P-9, except P-5):**  
 Instructions ~1 200 tok + 1 source file ~12 000 tok = ~13 200 tok first request.  
 Sessions sustain ~6–8 turns before compaction (up from 2–3 turns before optimizations).
 
-**Remaining quick wins:** P-1, P-6, P-7 (combined effort < 1 h).  
-**Major remaining work:** P-5 (split `bot_web.py`) — high impact, 4–8 h, dedicated task required.
+**All quick wins complete.** P-5 (split `bot_web.py`) remains explicitly deferred — high impact but requires 4–8 h dedicated sprint due to deployment complexity.

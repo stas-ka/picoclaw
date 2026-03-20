@@ -1647,6 +1647,72 @@ def t_regression_check(results: list[TestResult], gt: dict, **_) -> list[TestRes
     return [TestResult("regression_check", "PASS", time.time()-t0, msg)]
 
 
+def t_system_chat_clean_output(**_) -> list[TestResult]:
+    """T26 — _SPINNER_RE must not strip ASCII -/|\\ (bug-fix guard);
+    ask_llm_or_raise must be importable and callable from core.bot_llm."""
+    results: list[TestResult] = []
+
+    # Live-import core.bot_llm so we test the actual deployed code.
+    if str(PICOCLAW_DIR) not in sys.path:
+        sys.path.insert(0, str(PICOCLAW_DIR))
+    try:
+        import importlib as _il
+        bot_llm = _il.import_module("core.bot_llm")
+        clean = getattr(bot_llm, "_clean_output", None)
+    except Exception as exc:
+        return [TestResult("syschat:import", "FAIL", 0.0,
+                           f"Cannot import core.bot_llm: {exc}")]
+
+    if not callable(clean):
+        return [TestResult("syschat:import", "FAIL", 0.0,
+                           "_clean_output not found in core.bot_llm")]
+
+    # Part 1 — ASCII characters that appear in bash commands must be preserved.
+    cases = [
+        ("df -h",          "df -h"),
+        ("cat /etc/hosts", "cat /etc/hosts"),
+        ("ls | grep foo",  "ls | grep foo"),
+        ("ls -la /home",   "ls -la /home"),
+    ]
+    t0 = time.time()
+    failures = []
+    for inp, expected in cases:
+        got = clean(inp)
+        if got != expected:
+            failures.append(f"  {inp!r} \u2192 {got!r}, want {expected!r}")
+    dur = time.time() - t0
+    if failures:
+        results.append(TestResult("syschat:ascii_preserved", "FAIL", dur,
+                                  f"{len(failures)}/{len(cases)} cases failed:\n" + "\n".join(failures)))
+    else:
+        results.append(TestResult("syschat:ascii_preserved", "PASS", dur,
+                                  f"All {len(cases)} ASCII-char cases preserved correctly"))
+
+    # Part 2 — Braille spinner chars must still be stripped.
+    t0 = time.time()
+    got = clean("\u280b\u2819ls\u2839")
+    dur = time.time() - t0
+    if got == "ls":
+        results.append(TestResult("syschat:spinner_stripped", "PASS", dur,
+                                  f"Braille stripped correctly \u2192 '{got}'"))
+    else:
+        results.append(TestResult("syschat:spinner_stripped", "FAIL", dur,
+                                  f"Expected 'ls', got '{got}'"))
+
+    # Part 3 — ask_llm_or_raise must exist and be callable.
+    t0 = time.time()
+    fn = getattr(bot_llm, "ask_llm_or_raise", None)
+    dur = time.time() - t0
+    if callable(fn):
+        results.append(TestResult("syschat:ask_llm_or_raise_exists", "PASS", dur,
+                                  "ask_llm_or_raise is callable"))
+    else:
+        results.append(TestResult("syschat:ask_llm_or_raise_exists", "FAIL", dur,
+                                  "ask_llm_or_raise missing from core.bot_llm"))
+
+    return results
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Runner
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1681,6 +1747,8 @@ TEST_FUNCTIONS = [
     t_rag_lr_products,
     # Web link code tests (T25)
     t_web_link_code_roundtrip,
+    # System-chat clean-output / ask_llm_or_raise regression (T26)
+    t_system_chat_clean_output,
 ]
 
 
