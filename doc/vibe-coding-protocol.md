@@ -911,3 +911,15 @@ Every ~3 months, measure baseline health:
 | — | TODO 8.3: Offline Telegram regression test suite — 8 classes, 31 tests, pytest 9.0.2; conftest passthrough-decorator two-mock architecture (WEB_ONLY=1 guard, _passthrough_deco side_effect for message_handler/callback_query_handler); covers TestCmdStart(4), TestCallbackMode(4), TestCallbackAdmin(9), TestCallbackMenu(3), TestVoiceHandler(3), TestTextHandlerNotes(2), TestTextHandlerAdmin(2), TestChatMode(3); voice_handler double-condition fix (_pending_error_protocol + msg.voice assert); 31/31 PASS in 0.22s | 4 | ~25 | claude-sonnet-4.6 | src/tests/telegram/conftest.py, src/tests/telegram/test_telegram_bot.py, src/tests/telegram/pytest.ini | done |
 
 **Session 60 total: 2 items, ~28 turns — Taris rename (14 files, 21 replacements) + 31/31 Telegram regression tests ✅**
+
+---
+
+### Session 61 — 2026-04-07
+
+**Focus:** `/taris-update-doc` scope `todo` — collapse TODO 8.2+8.3, update doc/test-suite.md
+
+| Time (UTC) | Description | Complexity | Turns | Model | Files | Status |
+|---|---|---|---|---|---|---|
+| — | `/taris-update-doc TODO 8.2 8.3`: collapsed both completed entries in TODO.md to single `✅ Implemented (v2026.4.7)` lines; added Category F (offline Telegram regression) to doc/test-suite.md: quick-ref table row, categories overview row, new §6b section (31 tests, 8 classes, run commands, arch notes), §7 Targets table updated | 2 | ~3 | claude-sonnet-4.6 | TODO.md, doc/test-suite.md | done |
+
+**Session 61 total: 1 item, ~3 turns — doc sync for TODO 8.2+8.3 ✅**
