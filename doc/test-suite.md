@@ -23,6 +23,7 @@ Use it any time a user says "test the software", "run tests", or asks whether so
 | `src/core/store_sqlite.py` / `src/core/bot_db.py` | SQLite integration T22–T23 | Pi |
 | RAG document upload / `bot_web.py` knowledge routes | RAG quality T24 | Pi |
 | `src/core/bot_state.py` (`generate_web_link_code` / `validate_web_link_code`) | Web link code T25 | Pi |
+| `src/tests/telegram/test_telegram_bot.py` or `src/tests/telegram/conftest.py` | Telegram offline regression (Category F — all 31 tests) | Local machine |
 
 ---
 
@@ -35,6 +36,7 @@ Use it any time a user says "test the software", "run tests", or asks whether so
 | **C — Hardware audio** | Bash shell scripts (`test_*.sh`, `check_*.sh`) | Pi (direct) | Manual/CI |
 | **D — Mic capture** | Python (`test_mic.py`) | Pi (direct) | Manual |
 | **E — Smoke / deployment** | `plink` + `journalctl` | Pi (remote) | Manual |
+| **F — Offline Telegram regression** | pytest (`test_telegram_bot.py`) | Local machine | Yes |
 
 ---
 
@@ -336,12 +338,67 @@ Run smoke tests after every deployment. They are the fastest sanity check — if
 
 ---
 
+## 6b. Category F — Offline Telegram Regression Tests
+
+**File:** `src/tests/telegram/test_telegram_bot.py`  
+**Config:** `src/tests/telegram/conftest.py`  
+**Pytest ini:** `src/tests/telegram/pytest.ini`  
+**Technology:** pytest + `unittest.mock` (no Telegram API calls, no Pi required)  
+**Target:** Runs entirely on the local development machine
+
+### 6b.1 Run commands
+
+```bat
+rem Run all 31 offline Telegram tests
+cd d:\Projects\workspace\picoclaw\src\tests\telegram && py -m pytest test_telegram_bot.py -v
+
+rem Run a single class
+cd d:\Projects\workspace\picoclaw\src\tests\telegram && py -m pytest test_telegram_bot.py::TestCallbackAdmin -v
+
+rem Run with coverage (optional)
+cd d:\Projects\workspace\picoclaw\src\tests\telegram && py -m pytest test_telegram_bot.py -v --tb=short
+```
+
+### 6b.2 Test classes and what they cover
+
+| Class | Tests | What it validates |
+|---|---|---|
+| `TestCmdStart` | 4 | `/start` — new user, allowed user, blocked user, pending registration |
+| `TestCallbackMode` | 4 | Callback mode switches: `mode_chat`, `mode_system`, `voice_session`, `cancel` |
+| `TestCallbackAdmin` | 9 | Admin panel: add/remove/list users, pending approvals, reg approve/block, voice opts menu, LLM menu |
+| `TestCallbackMenu` | 3 | Core menu callbacks: `menu`, `help`, `profile` |
+| `TestVoiceHandler` | 3 | Voice pipeline routing: allowed user, guest blocked, admin |
+| `TestTextHandlerNotes` | 2 | Note creation multi-step flow: title input, content input |
+| `TestTextHandlerAdmin` | 2 | Admin-mode text routing: pending LLM key, pending add-user |
+| `TestChatMode` | 3 | Free-chat mode: allowed, denied, LLM response forwarded |
+
+### 6b.3 Architecture notes
+
+- `conftest.py` sets `WEB_ONLY=1` environment variable to skip `bot_web.py` FastAPI import during module load.
+- All Telegram API calls (`bot.send_message`, `bot.answer_callback_query`, etc.) are mocked via `unittest.mock.patch`.
+- Module-level state dicts (`_user_mode`, `_pending_note`, etc.) are reset between tests via `autouse` fixtures.
+- No network, no Pi, no credentials required — safe for CI / local dev.
+
+### 6b.4 When to run
+
+Run offline Telegram regression after any change to:
+- `src/telegram_menu_bot.py` (handler dispatch, callback routing)
+- `src/telegram/bot_access.py` (access control, keyboard builders)
+- `src/telegram/bot_admin.py` (admin panel handlers)
+- `src/telegram/bot_handlers.py` (user handlers, notes flow)
+- `src/telegram/bot_users.py` (registration data layer)
+- Any new callback key added to `handle_callback()`
+
+These tests run in **< 1 second** locally and should be run before every commit involving the Telegram bot.
+
+---
+
 ## 7. Targets: Engineering vs Production
 
 | Target | Host | Purpose | Tests allowed |
 |---|---|---|---|
-| **Engineering (Pi1)** | `OpenClawPI` / `100.81.143.126` | Primary development Pi — all test types | All categories A–E |
-| **Production (Pi2)** | `OpenClawPI2` | Second Pi, stable deployments, UI test target | Category B (UI), Category E (smoke) |
+| **Engineering (Pi1)** | `OpenClawPI` / `100.81.143.126` | Primary development Pi — all test types | All categories A–E; F runs locally |
+| **Production (Pi2)** | `OpenClawPI2` | Second Pi, stable deployments, UI test target | Category B (UI), Category E (smoke); F runs locally |
 
 **Rules:**
 - Run destructive tests (audio hardware, regression) on engineering Pi1 first.

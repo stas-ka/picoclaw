@@ -63,7 +63,8 @@ Role validation on every command/callback, security event logging, configurable 
 
 - [ ] Security event logging (`security.log`)
 - [ ] Configurable access rules (admin UI + config file); runtime policy updates without restart
-
+### 1.3 Contact Book ✅ Implemented (v2026.3.30)
+[] Add additional fields for contact
 ---
 
 
@@ -81,8 +82,10 @@ Role validation on every command/callback, security event logging, configurable 
 
 ## 3. LLM Provider Support
 - [] Uploaded from user Documents shall be used only in your context and can be shared with other users, in first step with all
-- [] Admin can adminstrate(view, delete) all uploaded documents from all users and which user which document uploaded and status of sharing documents 
+- [] Admin can administrate(view, delete) all uploaded documents from all users and which user which document uploaded and status of sharing documents 
 - [] Admin can remove sharing documents for uploaded documents from user to all 
+- [] Uploaded documents can be downloaded in original format 
+- [] ( nice to have) if is possible to show txt, pdf, rtf, docx, md documents
 
 ### 3.1 Multi-LLM Provider Support ✅ Implemented (v2026.3.32)
 OpenRouter ✅ · OpenAI direct ✅ · YandexGPT ✅ · Gemini ✅ · Anthropic ✅ · local llama.cpp ✅
@@ -108,9 +111,13 @@ Emergency fallback via `llama.cpp`. Pi 3: Qwen2-0.5B (~1 tok/s); Pi 4/5: Phi-3-m
 ---
 
 ## 4. Content & Knowledge
+- [ ] Timeout monitoring by using RAG services or by waiting for answer from LLM
+- [ ] settings for using LLM+RAG configurable (temperature, sead, system prompt, role, chunk counts) via Admin panel
+- [ ] settings incl. credentials to connect to remote RAG MCP service via Admin panel
+- [ ] information for the user about restrictions for uploadable documents and size of database over telegram and web ui
+- [ ] logging in DB information about  founded chunks and prompt by requests to llm (input) and results from llm inclusive returned system information . Access via Admin panel to last RAG activities(log outpus)
+- [ ] after uploading document shall be saved statistic about source document parsing, chuncking, embedding as protocol in the database . Output statistic for Admin by loading documents 
 
-### 4.0 Contact Book ✅ Implemented (v2026.3.30)
-[] Add additional fields for contact
 
 ---
 
@@ -122,18 +129,13 @@ Emergency fallback via `llama.cpp`. Pi 3: Qwen2-0.5B (~1 tok/s); Pi 4/5: Phi-3-m
 - [ ] Commands: `/rag_on`, `/rag_off`
 - [ ] Storage: `~/.picoclaw/knowledge_base/` (documents + `embeddings.db`)
 - [ ] configuration to use local knowledges for integrated RAG with local LLM and remote llm and remote RAG knowledge  service.
-- [ ] Timeout monitoring by using RAG services or by waiting for answer from LLM
-- [ ] settings for using LLM+RAG configurable (temperature, sead, system prompt, role, chunk counts) via Admin panel
-- [ ] settings incl. credentials to connect to remote RAG MCP service via Admin panel
 - [ ] settings for configuration of local RAG service via Admin panel
-- [ ] information for the user about restrictions for uploadable documents and size of database over telegram and web ui
-- [ ] logging in DB information about  founded chunks and prompt by requests to llm (input) and results from llm inclusive returned system information . Access via Admin panel to last RAG activities(log outpus)
-- [ ] after uploading document shall be saved statistic about source document parsing, chuncking, embedding as protocol in the database . Output statistic for Admin by loading documents 
+
 
 ### 4.2 [ ] optimize local RAG
 
 ### 4.2 [ ] Implement remote  RAG service as MCP service
-- [ ] Using local knowledges is possible to use remote RAG servceis
+- [ ] Using local knowledges is possible and connect to use remote RAG services as additional
 - [ ] Connect , using to remote service via MCP server connection as tool
 ---
 
@@ -163,7 +165,7 @@ Baseline: Pi 3 B+ ~115 s total; target <25 s with all opts ON.
 - [x] Admin Telegram UI: 📊 Logs button — tail last 50 lines per category
 - [x] Log rotation (`src/services/picoclaw-logrotate`) — daily, 7 days, compress, copytruncate
 - [x] Telegram alert handler: CRITICAL/ERROR forwarded to admins on startup
-- [ ] create skill to download logs 
+- [ ] create skill to download logs from target
 
 ### 6.2 Host–Project Synchronization 🔲
 
@@ -203,19 +205,10 @@ Quick-win features — Level A (LLM-only, <2 h), B (helpers, 2–4 h), C (impres
 ---
 
 ## 8. Web UI & CRM Platform
-### 8.2 Rename Assistent to Taris / TARIS and Plattform to SINTA
-[] - rename assistant and Application to Taris
-[] - Update UI, knowledges, prompts etc. for new name
-[] - rename software platform, stack  from Picoclaw to SINTA Platform. 
-[] - rename Project local and in git
+### 8.2 Rename Assistant to Taris / TARIS and Platform to SINTA ✅ Implemented (v2026.4.7)
 
-### 8.3 Testing UI
-[] - integrate tests of telegram client in existed testframework for Web UI based on playwright
-[] -  telegram client tests shall be executable automaticaly 
-[] - implementing telegram regression tests for existed functionality
-[] - integrate running tests in existed agents and skills 
-[] - synchronising web ui and telegram tests
-[] - creating agent for UI tests to use from copilot
+### 8.3 Offline Telegram Regression Suite ✅ Implemented (v2026.4.7)
+31 offline unit tests (`src/tests/telegram/test_telegram_bot.py`) — 8 classes covering: CmdStart, CallbackMode, CallbackAdmin, CallbackMenu, VoiceHandler, TextHandlerNotes, TextHandlerAdmin, ChatMode. Runs locally, no Pi required.
 
 ### 8.4 CRM Platform Vision 💡
 
@@ -267,57 +260,66 @@ Config-driven switch: `STORE_BACKEND=sqlite|postgres` in `bot.env`. Binary files
 - [x] `src/setup/migrate_to_db.py` — JSON → adapter migration (Phase 3, idempotent)
 - [ ] `src/setup/migrate_sqlite_to_pg.py` — pico.db → PostgreSQL (Phase 5)
 - [ ] Tests T22 `sqlite_schema`, T23 `migration_idempotent`, T24 `vector_search_basic`, T25 `store_adapter_contract`, T26 `credential_encryption`
+### 9.1 Storing of user data in the local database not in files
+- [] all existed user data shall be migrated to database. create scripts for migration and migrate data.
+- [] Notes shall be storde in Database not in files (Attention restriction of size of notes shall be transparently for user)
+- [] Calendar data shall be stored in database
+- [] profile user data and user settings shall be stored in database
+- [] all kinds of memory(conversations context) shall be stored in the database
+- [] all user contacts shall be stored in the database
+- [] last interactions, opened ui and status of ui shall be storde in the database 
+- [] all new implemented functions with focus of using of data shall be use database and fiels to save data
 
 ## 10. Upload and using documents as Knowlegdes
-- Function to upload and administration documents (upload, view,  delete , share to all , set title, set hash/label, share to other users in system)
-- Using documents as knowledgebase in chat in multimodal RAG way
-- documents can be contain text, images, tables
-- documents used as knowledegs shall assigned to user or can be shared to use from all users as knowledges
-- documents can be replaced through other document if documents are identical by hash, name, size parameters and after confirmation from user to replace already stored document with new. User shall see name and descrition already existed document
-- criteria of compAring of documnts shall be configurable in Admin panel
-- quality consistency check created chunks after uploading of document
+-[] Function to upload and administration documents (upload, view,  delete , share to all , set title, set hash/label, share to other users in system)
+- [] Using documents as knowledgebase in chat in multimodal RAG way
+- [] documents can be contain text, images, tables
+- [] documents used as knowledegs shall assigned to user or can be shared to use from all users as knowledges
+- [] documents can be replaced through other document if documents are identical by hash, name, size parameters and after confirmation from user to replace already stored document with new. User shall see name and descrition already existed document
+- [] criteria of compAring of documnts shall be configurable in Admin panel
+- [] quality consistency check created chunks after uploading of document
 
 ### 10.1 Short-, middle and Long-term memories 
 Before implementaion of memories shall be analyse how can be implemented . here is first draft, proposal for implelemnation:
-- implement short-term, middle-term, long-term memories 
-- conversations after reaching maximal short memory size of conversation shall be set as middle-term memory 
-- middle-term memory after reaching a size shall be cleaned and summariazed/compacted and meregd together with long-term memory
-- cleaning all kind of memories if user its wishes in profile 
-- setting all memories parameters in Admin panel
-- all kind of memories can be used as context in conversations with user per default or user can switch off using memories in conversations
+- [] implement short-term, middle-term, long-term memories 
+- [] conversations after reaching maximal short memory size of conversation shall be set as middle-term memory 
+- [] middle-term memory after reaching a size shall be cleaned and summariazed/compacted and meregd together with long-term memory
+- [] cleaning all kind of memories if user its wishes in profile 
+- [] setting all memories parameters in Admin panel
+- [] all kind of memories can be used as context in conversations with user per default or user can switch off using memories in conversations
 
 ## 11. Central control dashboard (primary per voice)
-- IMplementing central dashboard to control and run all activities of the asstsiant
-- all functions can be runned and controled from this board. Steering can be do per voice or per text input.
-- ui shall be switchable  per voice to functional ui part to run activities
-- all activities can be used later as knowledge for conversation with assistant and for running new activities. Context depended activities. This fucntion shall be deactivatable
-- all activities shall be  stored in databse as activities and as text for LLM context 
+- [] IMplementing central dashboard to control and run all activities of the asstsiant
+- [] all functions can be runned and controled from this board. Steering can be do per voice or per text input.
+- [] ui shall be switchable  per voice to functional ui part to run activities
+- [] all activities can be used later as knowledge for conversation with assistant and for running new activities. Context depended activities. This fucntion shall be deactivatable
+- [] all activities shall be  stored in databse as activities and as text for LLM context 
 
 ## 12. Input all textes in all application parts per voice in one window
-- all inputs of textes shall be possible per voice exceptional confirmation of runnig activities
+- [] all inputs of textes shall be possible per voice exceptional confirmation of runnig activities
 
 ## 13. Implementing smart CRM 
-- Implementing open fuctions if they are not already implemented from concept\additional\crm_system_requirements.md and concept\additional\SYSTEM_REQUIREMENTS_SmartClient360.md
-- all inputs and switching between  all windows shall be controlable per voice. Smart client. 
-- smart input of text and automatical set values in the input fields 
+- [] Implementing open fuctions if they are not already implemented from concept\additional\crm_system_requirements.md and concept\additional\SYSTEM_REQUIREMENTS_SmartClient360.md
+- [] all inputs and switching between  all windows shall be controlable per voice. Smart client. 
+- [] smart input of text and automatical set values in the input fields 
 
 
 ## 14. Developer Board
-- Impelementing developer board to extend , update, remove functionality of applciation based on agent principe
+- [] Impelementing developer board to extend , update, remove functionality of applciation based on agent principe
 
 
-## 15. Connecting Calendar, E-Mails, Drives from Google and Yandex
+## [] 15. Connecting Calendar, E-Mails, Drives from Google and Yandex
 
 
 ## 16 Implementing functions of personal assistant
-- - Implementing open fuctions if they are not already implemented from concept\additional\KIM_PACKAGES.md
+- [] Implementing open fuctions if they are not already implemented from concept\additional\KIM_PACKAGES.md
 
-## 17. Implementing  Max messenger UI analog Telegram
+## [] 17. Implementing  Max messenger UI analog Telegram
 
-## 18. Using ZeroClaw instead PicoClaw
+## [] 18. Using ZeroClaw instead PicoClaw
 → [Hardware Requirements Report §4.2](doc/hw-requirements-report.md) — ZeroClaw feasibility analysis (text-only; voice not viable on 512 MB)
 
-## 19. Using OpenClaw instead PicoClaw
+## [] 19. Using OpenClaw instead PicoClaw
 → [Hardware Requirements Report §4.3 + §6](doc/hw-requirements-report.md) — OpenClaw configurations (Pi 5, RK3588, Jetson); full local AI stack
 
 ---
