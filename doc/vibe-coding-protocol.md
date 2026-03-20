@@ -35,6 +35,17 @@ Each session block contains a table with one row per completed request:
 
 ---
 
+## Quarterly Review
+
+Every ~3 months, measure baseline health:
+
+1. `wc -c .github/copilot-instructions.md` — target < 2,000 chars
+2. Check session log: average turns-before-compaction ≥ 8
+3. Check any instruction file > 3 KB — candidate for compression
+4. Review `doc/quick-ref.md` — still accurate?
+
+---
+
 ## Session Log
 
 ---
@@ -833,3 +844,10 @@ Each session block contains a table with one row per completed request:
 - Time estimates for sessions 1–4 reconstructed from git commit timestamps.
 - Session 5 onward: tracked from message metadata (UTC timestamps recorded above).
 - Update this file at the end of each session with actual turn counts.
+
+| 06:03 UTC | | | | Topic 20 final: back-links to all 9 doc/todo files + TODO.md update | P-11+docs | 2 | 12 | claude-sonnet-4-6 | doc/todo/*.md, TODO.md | done |
+
+| Time (UTC) | Description | Complexity | Turns | Model | Files | Status |
+|---|---|---|---|---|---|---|
+| 06:08 UTC | Add new entry to vibe coding protocol | 1 | 1 | claude-sonnet-4.6 | doc/vibe-coding-protocol.md | done |
+| 06:09 UTC | Add vibe coding protocol entry (session start) | 1 | 1 | claude-sonnet-4.6 | doc/vibe-coding-protocol.md | done |

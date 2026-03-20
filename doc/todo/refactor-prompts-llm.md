@@ -230,3 +230,6 @@ py -m pytest src/tests/ui/test_ui.py -v --base-url https://openclawpi2:8080 --br
 - [ ] All T01–T13 voice regression tests PASS (T07/T08 still use same logic, just loaded from PROMPTS)
 - [ ] Web UI Playwright: all TestAuth, TestDashboard, TestChat, TestCalendar, TestNotes tests PASS
 - [ ] Changing a prompt template in `prompts.json` and restarting the service immediately reflects the change without code modification
+
+---
+→ [Back to TODO.md §4 — LLM Prompts Refactor](../../TODO.md)

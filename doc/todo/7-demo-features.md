@@ -61,3 +61,6 @@ Above + B1 Search + B4 Summariser + C1 Image analysis + C4 Quiz
 **Flagship (already implemented):**
 Smart Calendar — user says "remind me tomorrow at 10 for a team meeting",
 bot replies by voice "saved", sends morning briefing + reminder push
+
+---
+→ [Back to TODO.md §7 — Demo Features](../../TODO.md)

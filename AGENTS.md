@@ -7,6 +7,7 @@ This file stores persistent state for AI coding agents. See `.github/copilot-ins
 - Keep persistent operational knowledge in this file so future sessions can continue quickly.
 - Use this file as the first reference for recurring document/accounting tasks.
 - **Testing ("test software" / "run tests" / "verify changes"):** always read `doc/test-suite.md` first — it has the complete decision table, all run commands, and the Copilot chat-mode protocol. Never scan test files manually every session.
+- **Context optimization:** Start every session with `#file:doc/quick-ref.md`. Avoid `@workspace`. Use `/skill-name` for deploy/test workflows. Keep sessions ≤ 10 turns to avoid compaction.
 
 ## Remote Host
 
@@ -43,7 +44,11 @@ After every completed request, append a row to `doc/vibe-coding-protocol.md`.
 | Field | How to measure |
 |---|---|
 | `Time` | UTC timestamp from `<current_datetime>` tag |
+| `Time start` | UTC timestamp from `<start_datetime>` tag |
+| `Time end` |UTC timestamp from `<end_datetime>` tag |
+| `Duration` | duration from `<duration>` tag |
 | `Request` | One-line description |
+| `Steps/Todos` | One-line description |
 | `Complexity` | 1 (trivial) – 5 (architecture change) |
 | `Requests used` | Number of user→assistant turns |
 | `Model` | Model ID from `<model_information>` tag |
@@ -52,5 +57,5 @@ After every completed request, append a row to `doc/vibe-coding-protocol.md`.
 
 Row format:
 ```
-| HH:MM UTC | description | 1–5 | N turns | model-id | files | done |
+| HH:MM UTC | | HH:MM UTC || HH:MM UTC | MM |description | 1–5 | N turns | model-id | files | done |
 ```

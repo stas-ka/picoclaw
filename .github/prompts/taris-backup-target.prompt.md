@@ -3,9 +3,9 @@ mode: agent
 description: Backup a Raspberry Pi target (data, software, system config, binaries, or all).
 ---
 
-# Backup Pi Target (`/taris_backup_target`)
+# Backup Pi Target (`/taris-backup-target`)
 
-**Usage**: `/taris_backup_target [host] [type] [path]`
+**Usage**: `/taris-backup-target [host] [type] [path]`
 
 | Parameter | Values | Default |
 |---|---|---|

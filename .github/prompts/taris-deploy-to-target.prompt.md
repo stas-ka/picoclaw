@@ -3,9 +3,9 @@ mode: agent
 description: Deploy picoclaw software to a Raspberry Pi target (PI2 first, then PI1).
 ---
 
-# Deploy to Target (`/taris_deploy_to_target`)
+# Deploy to Target (`/taris-deploy-to-target`)
 
-**Usage**: `/taris_deploy_to_target [host]`
+**Usage**: `/taris-deploy-to-target [host]`
 
 | Parameter | Values | Default |
 |---|---|---|

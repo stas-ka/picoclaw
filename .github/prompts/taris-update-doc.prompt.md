@@ -3,9 +3,9 @@ mode: agent
 description: Sync project documentation with the current implementation — update doc/arch/, bot-code-map, README, and TODO.md after any code changes.
 ---
 
-# Update Documentation (`/taris_update_doc`)
+# Update Documentation (`/taris-update-doc`)
 
-**Usage**: `/taris_update_doc [scope]`
+**Usage**: `/taris-update-doc [scope]`
 
 | Parameter | Values | Default |
 |---|---|---|

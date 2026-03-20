@@ -1,5 +1,5 @@
 ---
-applyTo: "src/bot_db.py,src/bot_state.py,src/bot_config.py,tools/migrate_to_db.py"
+applyTo: "src/core/bot_db.py,src/core/bot_state.py,src/core/bot_config.py,src/setup/migrate_to_db.py"
 ---
 
 # Safe Update Protocol — Skill
@@ -12,93 +12,20 @@ Use this protocol for any update that changes data formats, adds/removes modules
 2. Target host reachable: `plink -pw "%HOSTPWD%" -batch stas@OpenClawPI "echo ok"`
 3. Backup location exists: `backup/snapshots/`
 
-## Step 1 — Create Backup on Pi
+## Steps (9-step protocol)
 
-```bat
-for /f %%i in ('powershell -c "Get-Date -Format yyyyMMdd_HHmmss"') do set TS=%%i
-for /f %%v in ('plink -pw "%HOSTPWD%" -batch stas@%TARGETHOST% "grep BOT_VERSION /home/stas/.picoclaw/bot_config.py ^| head -1 ^| cut -d'\"' -f2"') do set VER=%%v
-set BNAME=picoclaw_backup_%TARGETHOST%_v%VER%_%TS%
+Full commands → `/taris-deploy-to-target` skill or `doc/quick-ref.md` §Deploy Pipeline.
 
-plink -pw "%HOSTPWD%" -batch stas@%TARGETHOST% ^
-  "tar czf /tmp/%BNAME%.tar.gz -C /home/stas/.picoclaw ^
-    --exclude=vosk-model-small-ru --exclude=vosk-model-small-de ^
-    --exclude='*.onnx' --exclude='ggml-*.bin' ^
-    . 2>/dev/null && echo BACKUP_OK"
-```
-
-Expected: `BACKUP_OK`. If not — **stop, do not proceed**.
-
-## Step 2 — Verify Backup
-
-```bat
-plink -pw "%HOSTPWD%" -batch stas@%TARGETHOST% ^
-  "tar tzf /tmp/%BNAME%.tar.gz | grep -E '\.(json|db|txt|env)$' | head -30"
-```
-
-Confirm you see: `bot.env`, `config.json`, `pico.db`, `voice_opts.json`.
-
-## Step 3 — Download Backup Locally
-
-```bat
-if not exist backup\snapshots\%BNAME% mkdir backup\snapshots\%BNAME%
-pscp -pw "%HOSTPWD%" stas@%TARGETHOST%:/tmp/%BNAME%.tar.gz backup\snapshots\%BNAME%\
-```
-
-**Do not proceed until the backup is on local disk.**
-
-## Step 4 — Stop Services
-
-```bat
-plink -pw "%HOSTPWD%" -batch stas@OpenClawPI ^
-  "echo %HOSTPWD% | sudo -S systemctl stop picoclaw-telegram picoclaw-web picoclaw-voice 2>/dev/null; echo STOPPED"
-```
-
-## Step 5 — Deploy New Code
-
-```bat
-pscp -pw "%HOSTPWD%" src\bot_config.py src\bot_state.py src\bot_instance.py stas@OpenClawPI:/home/stas/.picoclaw/
-pscp -pw "%HOSTPWD%" src\bot_access.py src\bot_users.py src\bot_voice.py    stas@OpenClawPI:/home/stas/.picoclaw/
-pscp -pw "%HOSTPWD%" src\bot_admin.py  src\bot_handlers.py                  stas@OpenClawPI:/home/stas/.picoclaw/
-pscp -pw "%HOSTPWD%" src\telegram_menu_bot.py src\strings.json src\release_notes.json stas@OpenClawPI:/home/stas/.picoclaw/
-```
-
-## Step 6 — Run Migration (schema changes only)
-
-```bat
-plink -pw "%HOSTPWD%" -batch stas@OpenClawPI ^
-  "python3 /home/stas/.picoclaw/migrate_to_db.py --source=/home/stas/.picoclaw && echo MIGRATION_OK"
-```
-
-Expected: `MIGRATION_OK`. If not — **rollback immediately** (Step 9).
-
-## Step 7 — Start Services
-
-```bat
-plink -pw "%HOSTPWD%" -batch stas@OpenClawPI ^
-  "echo %HOSTPWD% | sudo -S systemctl start picoclaw-telegram picoclaw-web 2>/dev/null && sleep 3 && journalctl -u picoclaw-telegram -n 12 --no-pager"
-```
-
-Expected: `[INFO] Version : 2026.X.Y`, `[INFO] Polling Telegram…`
-
-## Step 8 — Run Regression Tests
-
-```bat
-rem Voice regression
-plink -pw "%HOSTPWD%" -batch stas@OpenClawPI "python3 /home/stas/.picoclaw/tests/test_voice_regression.py"
-
-rem Web UI
-python -m pytest src/tests/ui/test_ui.py -v --base-url https://openclawpi:8080 --browser chromium
-```
-
-## Step 9 — Rollback (if tests fail)
-
-```bat
-plink -pw "%HOSTPWD%" -batch stas@OpenClawPI "echo %HOSTPWD% | sudo -S systemctl stop picoclaw-telegram picoclaw-web 2>/dev/null"
-pscp -pw "%HOSTPWD%" backup\snapshots\%BNAME%\%BNAME%.tar.gz stas@OpenClawPI:/tmp/
-plink -pw "%HOSTPWD%" -batch stas@OpenClawPI "tar xzf /tmp/%BNAME%.tar.gz -C /home/stas/.picoclaw --overwrite && echo RESTORE_OK"
-```
-
-Then redeploy the previous code version from git and restart services.
+**Condensed checklist:**
+1. Create backup on Pi → expect `BACKUP_OK`
+2. Verify backup contents (bot.env, pico.db, config.json present)
+3. Download backup: `pscp … backup\snapshots\%BNAME%\` — **DO NOT PROCEED** until local
+4. Stop services: `systemctl stop picoclaw-telegram picoclaw-web picoclaw-voice`
+5. Deploy changed files (see `doc/quick-ref.md` §Deploy Pipeline for pscp commands)
+6. Run migration if schema changed: `python3 migrate_to_db.py → MIGRATION_OK`
+7. Start services + verify journal: `[INFO] Version : X.Y.Z` + `Polling Telegram…`
+8. Run regression tests: `test_voice_regression.py` + UI Playwright
+9. On failure: restore from backup → `RESTORE_OK`
 
 ## Rules
 

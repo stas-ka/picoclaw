@@ -13,7 +13,7 @@
 
 | Skill | Invocation | Purpose |
 |---|---|---|
-| **taris_deploy-to-target** | `/taris_deploy-to-target` | Full Pi deployment lifecycle — incremental file deploy, full module deploy, Web UI deploy, service file deploy, safe update with backup, voice regression tests, post-deploy verification, PI1 promotion. Covers **OpenClawPI2 (test)** and **OpenClawPI (production)**. |
+| **taris-deploy-to-target** | `/taris-deploy-to-target` | Full Pi deployment lifecycle — incremental file deploy, full module deploy, Web UI deploy, service file deploy, safe update with backup, voice regression tests, post-deploy verification, PI1 promotion onyl after confirmation. Coversed **OpenClawPI2 (development and test)** and **OpenClawPI (production)**. |
 
 Skill files: [`.github/skills/`](.github/skills/)
 

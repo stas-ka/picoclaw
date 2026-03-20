@@ -179,3 +179,6 @@ def trim_history(chat_id: int, keep: int = 15) -> None: ...
 - [ ] T23 `migration_idempotent`: run `migrate_to_db.py` twice on same source → no duplicate rows, no error
 - [ ] Update T18 (`profile_resilience`) to test DB read path when available
 - [ ] All existing tests must pass with DB initialised — use `:memory:` DB for test isolation (set `PICO_DB=:memory:` env var)
+
+---
+→ [Back to TODO.md §9 — Storage Architecture](../../TODO.md)

@@ -5,6 +5,14 @@
 ---
 
 ## 0. Known bugs
+- [] System chat error . Not enough admin rights to run commands. LOg from Telegram:
+[18.03.2026 20:05] SU: how much space i have on flash
+[18.03.2026 20:05] Smart PicoClaw Bot: ❌ Could not generate a command. Try again.
+[20.03.2026 06:28] Smart PicoClaw Bot: 📄 taris
+
+- [] Title of Note is not changable only text. Add function to Change Titel of Note 
+- [] Two steps to add or change content of Notes is not needed. Addding Add , Change function for Note already in First step. Second step to remove 
+- [] After Update is  Note not visible and operations to change is not more available. After update show Note and switch to previous step with visualisation buttons to add or Change of text  
 
 ### Bugs — Fixed in this Sprint ✅
 
@@ -66,10 +74,15 @@ Role validation on every command/callback, security event logging, configurable 
 - [x] Store per-user conversation history (sliding window, default 15 messages)
 - [x] Inject last N messages as context into LLM prompt
 - [x] Optional: persist across restarts (JSON / SQLite)
+- [] Delete personly context (memory) for User via Profile menu after confirmation
+
 
 ---
 
 ## 3. LLM Provider Support
+- [] Uploaded from user Documents shall be used only in your context and can be shared with other users, in first step with all
+- [] Admin can adminstrate(view, delete) all uploaded documents from all users and which user which document uploaded and status of sharing documents 
+- [] Admin can remove sharing documents for uploaded documents from user to all 
 
 ### 3.1 Multi-LLM Provider Support ✅ Implemented (v2026.3.32)
 OpenRouter ✅ · OpenAI direct ✅ · YandexGPT ✅ · Gemini ✅ · Anthropic ✅ · local llama.cpp ✅
@@ -83,7 +96,6 @@ OpenRouter ✅ · OpenAI direct ✅ · YandexGPT ✅ · Gemini ✅ · Anthropic 
 - [x] 14 provider constants added to `src/core/bot_config.py`
 - [x] `picoclaw` (default) provider wraps existing OpenRouter CLI — all existing behaviour unchanged
 
-### 3.2 Local LLM — Offline Fallback ✅ Implemented (v2026.3.43)
 Emergency fallback via `llama.cpp`. Pi 3: Qwen2-0.5B (~1 tok/s); Pi 4/5: Phi-3-mini.
 → See: `doc/hardware-performance-analysis.md` §8.9
 - [x] `picoclaw-llm.service` systemd unit — llama-server on port 8081, `qwen2-0.5b-q4.gguf`, 4 threads, ctx 2048
@@ -98,6 +110,7 @@ Emergency fallback via `llama.cpp`. Pi 3: Qwen2-0.5B (~1 tok/s); Pi 4/5: Phi-3-m
 ## 4. Content & Knowledge
 
 ### 4.0 Contact Book ✅ Implemented (v2026.3.30)
+[] Add additional fields for contact
 
 ---
 
@@ -156,7 +169,9 @@ Baseline: Pi 3 B+ ~115 s total; target <25 s with all opts ON.
 
 - [ ] rsync-based sync script `src/` → Pi
 - [ ] Git-based deployment hook
-- [ ] creaet tools and skill to backup data from target to lcoal host and upload to cloud.dev2null.de
+- [ ] create tools and skill to backup data from target to local host and upload to cloud.dev2null.de
+- [] Implement calling Backup and Recovery function for Admin
+→ [CRM roadmap & phases](doc/todo/8.4-crm-platform.md)
 
 ### 6.3 Deployment Workflow Enhancements 🔲
 
@@ -205,7 +220,12 @@ Quick-win features — Level A (LLM-only, <2 h), B (helpers, 2–4 h), C (impres
 ### 8.4 CRM Platform Vision 💡
 
 Contacts → Deals → Custom fields → White-label. Core platform C0 done (v2026.3.28).
-→ [CRM roadmap & phases](doc/todo/8.4-crm-platform.md)
+ [] UI: Human nice interface and interactions personly in Name of Taris. 
+ [] Running implemented activities per voice
+ [] Intelligent alarms
+ [] Intelligent notifation 
+
+
 
 ### 8.5 Not planed : NiceGUI Integration 💡
 
@@ -302,37 +322,37 @@ Before implementaion of memories shall be analyse how can be implemented . here 
 
 ---
 
-## 20. Copilot Performance Optimization 🔄
+## 20. Copilot Performance Optimization ✅ Implemented (v2026.3.43)
 
 Reduce context-window consumption so Copilot sessions sustain 8–10 turns without compaction.  
 → [Analysis & Proposals](concept/copilot_optimization.md) | [Vibe Coding Guidelines](doc/vibe-coding-guidelines.md)
 
 **Root causes:** auto-loaded instructions too large, duplicate deploy steps in 4 locations, "ALWAYS read" pulls 39 KB docs, `safe-update.instructions.md` scoped to `**`.
 
-### 20.1 Quick wins (< 2 h total) 🔲
+### 20.1 Quick wins ✅ All done
 
 - [x] **P-4** Split `doc/architecture.md` into `doc/arch/*.md` (8 topic files) — ✅ done
 - [x] **P-3** Replace "ALWAYS read bot-code-map.md" with "search it" instruction — ✅ done
 - [x] **P-8** Add `doc/quick-ref.md` — single 3 KB always-read index — ✅ done
 - [x] **P-2** Slim `copilot-instructions.md` — remove T01–T21 table and duplicate patterns — ✅ done
-- [ ] **P-1** Fix `safe-update.instructions.md` `applyTo: "**"` → narrow to `bot_db.py,migrate_to_db.py,bot_state.py,bot_config.py`
-- [ ] **P-7** Move accounting task from `INSTRUCTIONS.md` to `concept/` — separate unrelated content
-- [ ] **P-6** Shorten `bot-deploy.instructions.md` — replace full `pscp`/`plink` blocks with pointer to `/taris-deploy-to-target`
+- [x] **P-1** Fix `safe-update.instructions.md` `applyTo` glob → narrowed to 4 concrete paths — ✅ done
+- [x] **P-7** Move accounting task from `INSTRUCTIONS.md` to `concept/` — ✅ done
+- [x] **P-6** Shorten `bot-deploy.instructions.md` — §§2–5 condensed, pointer to `/taris-deploy-to-target` — ✅ done
 
-### 20.2 Medium effort (2–4 h each) 🔲
+### 20.2 Medium effort ✅ All done
 
-- [ ] **P-6b** Shorten `safe-update.instructions.md` — compress to checklist + pointer to SKILL.md (~1 KB)
-- [ ] **P-6c** Shorten `bot-coding.instructions.md` — keep only the top-5 patterns, pointer to `dev-patterns.md`
-- [ ] **P-9** Update `doc/copilot-skills-guide.md` — add `#file:` section-anchor examples and `@workspace` warning
-- [ ] **P-10** Add token-budget review table to `doc/vibe-coding-guidelines.md` sprint checklist
+- [x] **P-6b** Shorten `safe-update.instructions.md` — Steps 1–9 bat blocks → 9-item checklist — ✅ done
+- [x] **P-6c** Shorten `bot-coding.instructions.md` — doc-maintenance + Piper chain removed, pointer to `/taris-update-doc` — ✅ done
+- [x] **P-9** Update `doc/copilot-skills-guide.md` — `#file:` tip box + `@workspace` warning added — ✅ done
+- [x] **P-10** Add token-budget review table to `doc/vibe-coding-guidelines.md` sprint checklist — ✅ done
 
-### 20.3 Larger refactors (4–8 h each) 🔲
+### 20.3 Larger refactors
 
-- [ ] **P-5** Split `src/bot_web.py` (83 KB) into `bot_web_app.py` + `bot_web_api.py` + `bot_web_render.py` (~25–40 KB each)
-- [ ] **P-11** Review all `doc/todo/*.md` specs — ensure each links back to its TODO.md section and is < 10 KB
+- [ ] **P-5** Split `src/bot_web.py` (83 KB) into `bot_web_app.py` + `bot_web_api.py` + `bot_web_render.py` (~25–40 KB each) — **deferred** (4–8 h, deployment risk; schedule as standalone sprint)
+- [x] **P-11** Back-link footers added to all 9 `doc/todo/*.md` specs; `storage-architecture.md` noted as 18 KB (> 10 KB target, trimming deferred) — ✅ done
 
-### 20.4 Guidelines & Process 🔲
+### 20.4 Guidelines & Process ✅ All done
 
 - [x] **G-1** Create `doc/vibe-coding-guidelines.md` — artifact structuring rules, session habits, naming conventions — ✅ done
-- [ ] **G-2** Add quarterly review reminder: measure baseline tokens, turns-before-compaction from `doc/vibe-coding-protocol.md`
-- [ ] **G-3** Add optimization item to session-start checklist in `AGENTS.md`
+- [x] **G-2** Add quarterly review section to `doc/vibe-coding-protocol.md` — ✅ done
+- [x] **G-3** Add context-optimization bullet to session-start checklist in `AGENTS.md` — ✅ done

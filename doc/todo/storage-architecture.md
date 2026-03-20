@@ -453,3 +453,6 @@ cryptography>=42.0.0       # Fernet encryption for stored credentials
 psycopg[binary,pool]>=3.2.0
 pgvector>=0.3.0
 ```
+
+---
+→ [Back to TODO.md §9 — Storage Architecture](../../TODO.md)

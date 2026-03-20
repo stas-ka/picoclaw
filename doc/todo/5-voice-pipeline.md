@@ -55,3 +55,6 @@ With `persistent_piper` + `tmpfs_model` + `piper_low_model` all ON: estimated **
 - [ ] Split Piper timer: model load time vs inference time
 - [ ] Log char count going into Piper (correlate with inference time)
 - [ ] Collect 10-run timing sample per STT/TTS path on Pi 3 B+
+
+---
+→ [Back to TODO.md §5 — Voice Pipeline](../../TODO.md)

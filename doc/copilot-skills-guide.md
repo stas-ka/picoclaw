@@ -35,8 +35,8 @@ These are reusable, task-specific prompt templates that you invoke **on demand**
 | `run-tests.prompt.md` | `/run-tests` | Runs voice regression T01–T21 on Pi, reports pass/fail |
 | `bump-version.prompt.md` | `/bump-version` | Updates `BOT_VERSION`, prepends release note, commits |
 | `test-software.prompt.md` | `/test-software` | Auto-selects which tests to run based on changed files |
-| `taris_update_doc.prompt.md` | `/taris_update_doc` | Syncs `doc/arch/`, `bot-code-map.md`, `README.md`, `TODO.md`, skill registry with current implementation |
-| `taris_test_ui.prompt.md` | `/taris_test_ui` | Runs Web UI Playwright + Telegram smoke tests; uses playwright-mcp to detect and fill coverage gaps |
+| `taris-update-doc.prompt.md` | `/taris-update-doc` | Sync all project documentation after code changes (arch topic files, code-map, TODO + spec links, README, user guide, help text) |
+| `taris-test-ui.prompt.md` | `/taris-test-ui` | Runs Web UI Playwright + Telegram smoke tests; uses playwright-mcp to detect and fill coverage gaps |
 
 ---
 
@@ -60,6 +60,13 @@ Attach the prompt file as context in your chat message:
 ```
 #deploy-bot.prompt.md  please deploy the latest changes
 ```
+
+> **Tip — use `#file:` to scope context precisely:**
+> ```
+> #file:src/core/bot_config.py:1-50  what does the version bump logic do?
+> #file:doc/quick-ref.md  how do I deploy only changed files?
+> ```
+> Line ranges (`filename:start-end`) keep context tight. Prefer this over `@workspace`.
 
 ### Method 3 — Plain text (for `test-software`)
 The `test-software` skill is designed to activate automatically when Copilot sees requests like:
@@ -101,6 +108,8 @@ Once enabled, typing `/` in Copilot Chat will show all available prompts from `.
 | Plain text like "test software" | Works best with `/test-software`, or just say it — the auto-instructions will guide Copilot |
 
 **Bottom line:** You only need to explicitly invoke a skill (`/skill-name`) when you want to run a specific workflow. For everyday coding assistance, the workspace instructions are always loaded and no extra prompt is needed.
+
+> ⚠️ **Avoid `@workspace`** — it scans all project files and can consume 2,000–5,000 tokens per query, triggering compaction in 3–4 turns. Use `#file:doc/quick-ref.md` or `#file:doc/bot-code-map.md` instead.
 
 ---
 

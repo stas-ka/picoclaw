@@ -136,23 +136,5 @@ Before deploying, ask: *"Which target(s) shall I deploy to? (OpenClawPI / OpenCl
 
 ## Documentation Maintenance
 
-When adding new functionality, update in the **same commit**:
-
-| Document | Update when |
-|---|---|
-| `README.md` | New features, new setup steps, directory changes |
-| `doc/architecture.md` | New component, service, file, or pipeline stage |
-| `doc/hardware-performance-analysis.md` | New hardware, tuning, or timing measurements |
-| `backup/device/README.md` | New software, services, or cron jobs on Pi |
-
-## Piper Model Priority Chain
-
-```
-tmpfs_model enabled AND /dev/shm/piper/... exists → fastest
-    ↓ else
-piper_low_model enabled AND ~/.picoclaw/ru_RU-irina-low.onnx exists → low model
-    ↓ else
-default → ~/.picoclaw/ru_RU-irina-medium.onnx
-```
-
-Insert new priority levels in `_piper_model_path()`.
+When adding features: update `doc/arch/<topic>.md` + `README.md` in same commit.  
+Full doc update: use `/taris-update-doc` skill.

@@ -3,9 +3,9 @@ mode: agent
 description: Run and extend Web UI (Playwright) and Telegram smoke tests. Use playwright-mcp live browser inspection to detect untested routes and add missing test coverage.
 ---
 
-# Test UI (`/taris_test_ui`)
+# Test UI (`/taris-test-ui`)
 
-**Usage**: `/taris_test_ui [scope]`
+**Usage**: `/taris-test-ui [scope]`
 
 | Parameter | Values | Default |
 |---|---|---|
