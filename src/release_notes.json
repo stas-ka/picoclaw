@@ -1,5 +1,11 @@
 [
   {
+    "version": "2026.4.11",
+    "date":    "2026-4-11",
+    "title":   "Screen DSL Loader - Phase 3: Main & Admin Menus (TODO 21.3)",
+    "notes":   "- Main menu converted to screens/main_menu.yaml with RBAC visible_roles\n- Admin menu converted to screens/admin_menu.yaml with {pending_badge} variable substitution\n- 11 new i18n keys added to strings.json (ru/en/de)\n- Telegram callbacks menu and admin_menu wired to DSL load_screen() + render_screen()"
+  },
+  {
     "version": "2026.4.10",
     "date":    "2026-4-10",
     "title":   "Screen DSL Loader - Phase 1 + Phase 2 (TODO 21)",

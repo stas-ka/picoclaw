@@ -45,6 +45,7 @@ from ui.render_telegram import render_screen
 # ─── Data layer ───────────────────────────────────────────────────────────────
 from telegram.bot_users import (
     _upsert_registration, _is_blocked_reg, _is_pending_reg,
+    _get_pending_registrations,
     _slug, _load_note_text, _save_note_file,
 )
 
@@ -274,7 +275,11 @@ def callback_handler(call):
     if data == "menu":
         _st._user_mode.pop(cid, None)
         _st._pending_cmd.pop(cid, None)
-        _send_menu(cid)
+        role = "admin" if _is_admin(cid) else "guest" if _is_guest(cid) else "user"
+        ctx = UserContext(user_id=cid, chat_id=cid, lang=_lang(cid), role=role)
+        screen = load_screen("screens/main_menu.yaml", ctx,
+                             t_func=lambda _lang_arg, key: _t(cid, key))
+        render_screen(screen, cid, bot)
 
     # ── Mail digest ────────────────────────────────────────────────────────
     elif data == "digest":
@@ -331,7 +336,13 @@ def callback_handler(call):
     # ── Admin panel ────────────────────────────────────────────────────────
     elif data == "admin_menu":
         if _is_admin(cid):
-            _handle_admin_menu(cid)
+            pending_count = len(_get_pending_registrations())
+            pending_badge = f"  ({pending_count} new)" if pending_count else ""
+            ctx = UserContext(user_id=cid, chat_id=cid, lang=_lang(cid), role="admin")
+            screen = load_screen("screens/admin_menu.yaml", ctx,
+                                 variables={"pending_badge": pending_badge},
+                                 t_func=lambda _lang_arg, key: _t(cid, key))
+            render_screen(screen, cid, bot)
         else:
             bot.send_message(cid, _t(cid, "admin_only"))
 

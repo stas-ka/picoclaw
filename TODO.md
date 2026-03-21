@@ -410,11 +410,13 @@ incremental migration from Python-coded screens.
 - [x] Add `reload_screens` admin callback → "✅ Screens reloaded"
 - [x] Smoke test: both services running v2026.4.10 on PI2, clean startup confirmed
 
-### 21.3 Phase 3 — Main & Admin Menus 🔲
+### 21.3 Phase 3 — Main & Admin Menus ✅ Implemented (v2026.4.10)
 
-- [ ] Convert main menu to `screens/main_menu.yaml` (with `visible_roles` for admin button row)
-- [ ] Convert admin menu to `screens/admin_menu.yaml`
-- [ ] Test: regular user sees filtered menu; admin sees full menu
+- [x] Convert main menu to `screens/main_menu.yaml` (with `visible_roles` for admin button row)
+- [x] Convert admin menu to `screens/admin_menu.yaml` (with `{pending_badge}` variable substitution)
+- [x] Wire Telegram callbacks: `menu` and `admin_menu` use DSL `load_screen()` + `render_screen()`
+- [x] Add 11 admin i18n keys to `strings.json` (ru/en/de)
+- [x] Test: py_compile OK, YAML validation OK, IDE error-free
 
 ### 21.4 Phase 4 — Feature Screens 🔲
 

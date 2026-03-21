@@ -948,3 +948,10 @@ Every ~3 months, measure baseline health:
 | 08:29 | PI1 symlink collateral fix: accidental `rm -f ~/.taris/vosk-model-small-ru` ran on PI1 (wrong host) during the fix. Real model data (`~/.picoclaw/vosk-model-small-ru` 88MB) untouched. Recreated symlink with `ln -s`, verified PI1 service journal clean v2026.4.9, polling ✅ | 1 | ~3 | claude-sonnet-4-6 | — (infra/data only) | done |
 
 **Session 63 total: 2 infra fixes, ~11 turns — PI2 Vosk STT restored + PI1 symlink collateral repaired ✅**
+
+### Session 64 — Phase 3: Main & Admin Menus (Screen DSL)
+
+| Time | Description | C | Turns | Model | Files | Status |
+|---|---|---|---|---|---|---|
+| 14:00 UTC | Phase 3 TODO 21.3: Convert main menu + admin menu to YAML Screen DSL. Created `screens/main_menu.yaml` (11 button_rows, RBAC visible_roles), `screens/admin_menu.yaml` (10 button_rows, {pending_badge} variable substitution). Added 11 admin i18n keys (ru/en/de) to strings.json. Wired `menu` and `admin_menu` callbacks in telegram_menu_bot.py to use `load_screen()` + `render_screen()`. Web UI auto-served via Phase 2 generic `/screen/{screen_id}` route. All static checks pass. | 4 | ~30 | claude-sonnet-4-6 | screens/main_menu.yaml, screens/admin_menu.yaml, strings.json, telegram_menu_bot.py, TODO.md | done |
+| 23:35 UTC | Deploy Phase 3 (TODO 21.3) to PI2. Version bump 2026.4.10→2026.4.11. Backup 228MB. Deployed 6 files (bot_config.py, telegram_menu_bot.py, strings.json, release_notes.json, main_menu.yaml, admin_menu.yaml). Both services verified: taris-telegram v2026.4.11 polling ✅, taris-web v2026.4.11 on :8080 ✅ | 2 | ~12 | claude-sonnet-4-6 | bot_config.py, release_notes.json | done |
