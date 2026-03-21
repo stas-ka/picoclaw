@@ -23,7 +23,7 @@ Skill files: [`.github/skills/`](.github/skills/)
 
 | Agent | Invocation | Purpose |
 |---|---|---|
-| **SU first Copilot Agent** | `@SU first Copilot Agent` | Review and test PicoClaw — uses shell, search, edit, web, SSH tools. Good for end-to-end code review, test execution, and debugging. |
+| **SU first Copilot Agent** | `@SU first Copilot Agent` | Review and test taris — uses shell, search, edit, web, SSH tools. Good for end-to-end code review, test execution, and debugging. |
 
 Agent files: [`.github/agents/`](.github/agents/)
 
