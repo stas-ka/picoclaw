@@ -10,9 +10,7 @@
 [18.03.2026 20:05] Smart PicoClaw Bot: ❌ Could not generate a command. Try again.
 [20.03.2026 06:28] Smart PicoClaw Bot: 📄 taris
 
-- [] Title of Note is not changable only text. Add function to Change Titel of Note 
-- [] Two steps to add or change content of Notes is not needed. Addding Add , Change function for Note already in First step. Second step to remove 
-- [] After Update is  Note not visible and operations to change is not more available. After update show Note and switch to previous step with visualisation buttons to add or Change of text  
+
 
 ### Bugs — Fixed in this Sprint ✅
 
@@ -415,3 +413,11 @@ incremental migration from Python-coded screens.
 - [ ] Admin panel page: CodeMirror YAML editor + live preview pane
 - [ ] `PUT /admin/screens/{id}` route to save edited YAML to `src/screens/`
 - [ ] Auto-trigger `reload_screens()` on save
+
+## 22. Notes
+### 22.1. Download and Upload Notes
+- [] Every user can download all Notes(in Zip) or every Note seprate
+- [] Deleting of Note needs confiramtion of user  
+- [] Title of Note shall be changable now is only text is possible to change only text. Add function to Change Titel of Note 
+- [] Two steps to add or change content of Notes is not needed. Addding Add , Change function for Note already in First step. Second step to remove 
+- [] After Update is  Note not visible and operations to change is not more available. After update show Note and switch to previous step with visualisation buttons to add or Change of text  
