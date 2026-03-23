@@ -194,6 +194,7 @@ Full regression test run on both PIs. **Vosk wins decisively** on Raspberry Pi h
 - [ ] Git-based deployment hook
 - [ ] create tools and skill to backup data from target to local host and upload to cloud.dev2null.de
 - [] Implement calling Backup and Recovery function for Admin
+
 → [CRM roadmap & phases](doc/todo/8.4-crm-platform.md)
 
 ### 6.3 Deployment Workflow Enhancements 🔲
@@ -446,3 +447,20 @@ incremental migration from Python-coded screens.
 - [] Title of Note shall be changable now is only text is possible to change only text. Add function to Change Titel of Note 
 - [] Two steps to add or change content of Notes is not needed. Addding Add , Change function for Note already in First step. Second step to remove 
 - [] After Update is  Note not visible and operations to change is not more available. After update show Note and switch to previous step with visualisation buttons to add or Change of text  
+
+---
+
+## 23. Research & Comparison — Hybrid RAG vs Google Grounding 🔲
+
+Validate the Hybrid Tiered RAG architecture (Variant C) against Google's server-side Grounding and the Worksafety reference implementation.
+→ [Concept paper](concept/rag-memory-architecture.md) · [Extended research](concept/rag-memory-extended-research.md)
+
+- [ ] 23.1 OpenClaw on Laptop — install Sintaris platform (Taris) on laptop for local development and RAG comparison experiments
+- [ ] 23.2 n8n + PostgreSQL clone on Laptop — replicate Worksafety orchestration stack locally for comparison baseline
+- [ ] 23.3 Karpathy nanochat framework — research and install on OpenClaw laptop for edge LLM fine-tuning experiments
+- [ ] 23.4 Hybrid RAG on Google Grounding — bind OpenClaw to Gemini Grounding API; evaluate server-side RAG quality vs local FTS5+vector
+- [ ] 23.5 Clone Worksafety DB + n8n app on OpenClaw — replicate Worksafety knowledge base and workflows on OpenClaw hardware
+- [ ] 23.6 Clone Worksafety DB for Google Grounding case — prepare Worksafety dataset as test corpus for Gemini Grounding evaluation
+- [ ] 23.7 Configure research environment — set up evaluation metrics (precision, recall, latency, cost) for cross-platform comparison
+- [ ] 23.8 Implement Worksafety workflow on OpenClaw with Google Grounding — port n8n RAG pipeline to Taris architecture, bind to Gemini Grounding
+- [ ] 23.9 Compare Hybrid RAG vs Google Grounding — run identical queries through both pipelines, measure quality/latency/cost; document results
