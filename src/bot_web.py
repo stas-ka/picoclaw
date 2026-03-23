@@ -53,7 +53,7 @@ from fastapi.templating import Jinja2Templates
 
 from core.bot_config import (
     BOT_VERSION, TARIS_BIN, TARIS_CONFIG, NOTES_DIR,
-    ACTIVE_MODEL_FILE, RELEASE_NOTES_FILE, log,
+    ACTIVE_MODEL_FILE, RELEASE_NOTES_FILE, TARIS_API_TOKEN, LLM_PROVIDER, log,
 )
 from security.bot_auth import (
     find_account_by_username, create_account, verify_password,
@@ -2053,6 +2053,7 @@ async def admin_page(request: Request):
         stats=system_status,
         users=admin_users,
         llm_models=llm_models,
+        llm_provider=LLM_PROVIDER,
         voice_opts=voice_opts,
         release_notes=release_notes,
         msg=msg,
@@ -2131,6 +2132,48 @@ async def admin_reset_password(
     uname = account.get("username", user_id) if account else user_id
     log.info(f"[Admin] Password reset for user '{uname}' by admin '{user.get('username')}'")
     return Response(headers={"HX-Redirect": f"/admin?msg=Password+reset+for+{uname}"})
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Internal REST API — used by skill-taris (sintaris-openclaw)
+# Auth: Authorization: Bearer <TARIS_API_TOKEN>
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _verify_api_token(request: Request) -> None:
+    """Raise HTTP 401 when the Bearer token is missing or wrong."""
+    if not TARIS_API_TOKEN:
+        raise HTTPException(401, detail="API token not configured (TARIS_API_TOKEN)")
+    auth = request.headers.get("Authorization", "")
+    token = auth.removeprefix("Bearer ").strip()
+    if token != TARIS_API_TOKEN:
+        raise HTTPException(401, detail="Invalid API token")
+
+
+@app.get("/api/status")
+async def api_status(request: Request):
+    """Health check for skill-taris and external monitors."""
+    _verify_api_token(request)
+    return JSONResponse({"status": "ok", "version": BOT_VERSION, "provider": LLM_PROVIDER})
+
+
+@app.post("/api/chat")
+async def api_chat(request: Request):
+    """Send a prompt to the active LLM and return the reply.
+
+    Body (JSON): {"message": "...", "timeout": 60}
+    Response:    {"reply": "..."}
+    """
+    _verify_api_token(request)
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(400, detail="Invalid JSON body")
+    message = (body.get("message") or "").strip()
+    if not message:
+        raise HTTPException(400, detail="'message' field is required")
+    t = min(int(body.get("timeout", 60)), 120)
+    reply = ask_llm(message, timeout=t)
+    return JSONResponse({"reply": reply})
 
 
 # ─────────────────────────────────────────────────────────────────────────────

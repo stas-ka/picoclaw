@@ -70,6 +70,15 @@ REGISTRATIONS_FILE  = os.environ.get("REGISTRATIONS_FILE",
 TARIS_BIN        = os.environ.get("TARIS_BIN", "/usr/bin/taris")
 TARIS_CONFIG     = os.environ.get("TARIS_CONFIG",
                           os.path.expanduser("~/.taris/config.json"))
+
+# OpenClaw AI gateway — optional provider (Feature §4.2 remote integration)
+# Falls back to taris/picoclaw automatically when OPENCLAW_BIN is not found.
+OPENCLAW_BIN     = os.environ.get("OPENCLAW_BIN",     os.path.expanduser("~/.local/bin/openclaw"))
+OPENCLAW_SESSION = os.environ.get("OPENCLAW_SESSION", "taris")
+OPENCLAW_TIMEOUT = int(os.environ.get("OPENCLAW_TIMEOUT", "60"))
+
+# Internal API token — authenticates skill-taris (sintaris-openclaw) on /api/* routes
+TARIS_API_TOKEN  = os.environ.get("TARIS_API_TOKEN", "")
 ACTIVE_MODEL_FILE   = os.environ.get("ACTIVE_MODEL_FILE",
                           os.path.expanduser("~/.taris/active_model.txt"))
 

@@ -30,6 +30,9 @@ from core.bot_config import (
     LLM_LOCAL_FALLBACK,
     LLM_FALLBACK_FLAG_FILE,
     LLM_PROVIDER,
+    OPENCLAW_BIN,
+    OPENCLAW_SESSION,
+    OPENCLAW_TIMEOUT,
     OPENAI_API_KEY,
     OPENAI_BASE_URL,
     OPENAI_MODEL,
@@ -255,6 +258,41 @@ def _ask_anthropic(prompt: str, timeout: int) -> str:
     return result["content"][0]["text"].strip()
 
 
+def _ask_openclaw(prompt: str, timeout: int) -> str:
+    """Call OpenClaw AI gateway as an LLM provider.
+
+    Uses ``openclaw agent --message <prompt> --json --session <session>``
+    and parses the JSON reply.  Returns empty string if the binary is not
+    found so that ``ask_llm()`` can fall back to the next provider.
+    """
+    import shutil
+    bin_path = OPENCLAW_BIN
+    if not os.path.isfile(bin_path) and not shutil.which(bin_path):
+        raise FileNotFoundError(f"openclaw binary not found: {bin_path}")
+
+    cmd = [bin_path, "agent", "--message", prompt, "--json", "--session", OPENCLAW_SESSION]
+    env = {**os.environ, "NO_COLOR": "1"}
+    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, env=env)
+    raw = (proc.stdout or "").strip()
+
+    if proc.returncode != 0:
+        err = (proc.stderr or raw or "")[:300]
+        log.warning(f"[LLM] openclaw rc={proc.returncode}: {err}")
+        raise RuntimeError(f"openclaw exited rc={proc.returncode}: {err[:80]}")
+
+    if not raw:
+        raise RuntimeError("openclaw returned empty output")
+
+    try:
+        data = json.loads(raw)
+        text = (data.get("content") or data.get("text") or data.get("response") or "").strip()
+        if not text:
+            raise ValueError("no content key in openclaw JSON response")
+        return text
+    except (json.JSONDecodeError, ValueError):
+        return _clean_output(raw)
+
+
 def _ask_local(prompt: str, timeout: int) -> str:
     """Call local llama.cpp server (OpenAI-compatible /v1/chat/completions)."""
     url = f"{LLAMA_CPP_URL.rstrip('/')}/v1/chat/completions"
@@ -275,7 +313,8 @@ def _ask_local(prompt: str, timeout: int) -> str:
 # ─────────────────────────────────────────────────────────────────────────────
 
 _DISPATCH = {
-    "taris":  _ask_taris,
+    "taris":     _ask_taris,
+    "openclaw":  _ask_openclaw,
     "openai":    _ask_openai,
     "yandexgpt": _ask_yandexgpt,
     "gemini":    _ask_gemini,
@@ -459,9 +498,11 @@ def ask_llm_with_history(messages: list, timeout: int = 60) -> str:
             result = _http_post_json(url, headers, {"contents": contents}, timeout)
             return result["candidates"][0]["content"]["parts"][0]["text"].strip()
 
-        else:  # taris or unknown — format history as plain text
+        else:  # taris, openclaw, or unknown — format history as plain text
             prompt = _format_history_as_text(messages)
-            return _ask_taris(prompt, timeout)
+            fn = _DISPATCH.get(provider, _ask_taris)
+            t = OPENCLAW_TIMEOUT if provider == "openclaw" else timeout
+            return fn(prompt, t)
 
     except subprocess.TimeoutExpired as exc:
         log.warning(f"[LLM] {provider} timed out ({timeout}s) in history call")
