@@ -955,3 +955,17 @@ Every ~3 months, measure baseline health:
 |---|---|---|---|---|---|---|
 | 14:00 UTC | Phase 3 TODO 21.3: Convert main menu + admin menu to YAML Screen DSL. Created `screens/main_menu.yaml` (11 button_rows, RBAC visible_roles), `screens/admin_menu.yaml` (10 button_rows, {pending_badge} variable substitution). Added 11 admin i18n keys (ru/en/de) to strings.json. Wired `menu` and `admin_menu` callbacks in telegram_menu_bot.py to use `load_screen()` + `render_screen()`. Web UI auto-served via Phase 2 generic `/screen/{screen_id}` route. All static checks pass. | 4 | ~30 | claude-sonnet-4-6 | screens/main_menu.yaml, screens/admin_menu.yaml, strings.json, telegram_menu_bot.py, TODO.md | done |
 | 23:35 UTC | Deploy Phase 3 (TODO 21.3) to PI2. Version bump 2026.4.10→2026.4.11. Backup 228MB. Deployed 6 files (bot_config.py, telegram_menu_bot.py, strings.json, release_notes.json, main_menu.yaml, admin_menu.yaml). Both services verified: taris-telegram v2026.4.11 polling ✅, taris-web v2026.4.11 on :8080 ✅ | 2 | ~12 | claude-sonnet-4-6 | bot_config.py, release_notes.json | done |
+
+**Session 64 total: 2 items, ~42 turns — YAML Screen DSL Phase 3 + PI2 deploy ✅**
+
+---
+
+### Session 65 — 2026-04-11 (UTC)
+
+**Focus:** Integrate Karpathy AutoResearch into RAG research roadmap (TODO §23)
+
+| Time (UTC) | Description | Complexity | Turns | Model | Files | Status |
+|---|---|---|---|---|---|---|
+| — | Integrated Karpathy AutoResearch (`karpathy/autoresearch`, 51.1K ⭐) into RAG research roadmap. Added ~180-line §6b to extended research (3-file paradigm, Taris RAG adaptation with rag_score composite metric, per-architecture configs for Pi/X1/VPS, community forks, integration pipeline). Updated §1 scope, §8.1/8.2 tables (score 4.40→4.45), §9.4/9.5 recommendations, Appendix sources. Rewrote TODO.md §23 from 9→12 items with AutoResearch evaluation methodology. Updated main concept paper executive summary + implementation timeline. | 4 | ~20 | claude-opus-4.6 | concept/rag-memory-extended-research.md, concept/rag-memory-architecture.md, TODO.md, doc/vibe-coding-protocol.md | done |
+
+**Session 65 total: 1 item, ~20 turns — AutoResearch integration into RAG roadmap ✅**

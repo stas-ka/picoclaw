@@ -33,7 +33,7 @@ Taris requires an integrated **RAG (Retrieval-Augmented Generation) + Multi-Leve
 
 **Recommended approach:** **Variant C — Hybrid Tiered RAG** with adaptive retrieval pipeline, FTS5 as universal baseline, optional vector search on capable hardware, and a 3-tier memory compaction system using LLM summarization.
 
-> 📖 **Extended Research:** See [rag-memory-extended-research.md](rag-memory-extended-research.md) for detailed analysis of advanced memory concepts (MemGPT/Letta, Mem0, RAPTOR), vector database comparison (LanceDB, ChromaDB, Qdrant, hnswlib), document processing (Docling), Google Grounding, edge LLM fine-tuning (nanochat), and Worksafety-superassistant reference patterns. The extended research raises the Variant C score from 4.15 → 4.40.
+> 📖 **Extended Research:** See [rag-memory-extended-research.md](rag-memory-extended-research.md) for detailed analysis of advanced memory concepts (MemGPT/Letta, Mem0, RAPTOR), vector database comparison (LanceDB, ChromaDB, Qdrant, hnswlib), document processing (Docling), Google Grounding, edge LLM fine-tuning (nanochat), autonomous experimentation (Karpathy AutoResearch), and Worksafety-superassistant reference patterns. The extended research raises the Variant C score from 4.15 → 4.45.
 
 ### Key Decision: Why Not a Single Off-the-Shelf Framework?
 
@@ -847,6 +847,10 @@ Week 4:  Phase D — Remote RAG (2-3 days)
 
 Future:  Phase E — Multimodal (5-7 days)
          └── E1-E7: Image/table extraction + CLIP
+
+Eval:    AutoResearch Evaluation (ongoing, after Phase B)
+         └── Automated overnight experiments per architecture
+             (Pi SSH, AI X1 native, VPS SSH) — see extended-research §6b
 ```
 
 ---

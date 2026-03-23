@@ -15,8 +15,9 @@ This document extends the original concept paper (Variant C: Hybrid Tiered RAG, 
 3. **Advanced document processing** — Docling (IBM) for multi-format local parsing
 4. **Server-side RAG** — Google Grounding with Google Search API
 5. **Edge LLM fine-tuning** — Karpathy nanochat for domain-specific models
-6. **Reference architecture** — Worksafety-superassistant project (patterns to adopt/avoid)
-7. **Impact assessment** on the recommended Variant C architecture
+6. **Autonomous research** — Karpathy AutoResearch for agent-driven architecture evaluation
+7. **Reference architecture** — Worksafety-superassistant project (patterns to adopt/avoid)
+8. **Impact assessment** on the recommended Variant C architecture
 
 ### Guiding Principle
 
@@ -685,6 +686,190 @@ nanochat pipeline:
 
 ---
 
+## 6b. Autonomous Research — Karpathy AutoResearch
+
+### 6b.1 Overview
+
+| Property | Value |
+|----------|-------|
+| Repository | `karpathy/autoresearch` — 51.1K ⭐, 7.1K forks |
+| License | MIT |
+| Language | Python 83.5% |
+| Core concept | AI agents iteratively run experiments to optimize a single metric, autonomously |
+| GPU requirement | Single NVIDIA GPU (community forks for macOS, Windows, AMD) |
+
+**AutoResearch** is Karpathy's framework for autonomous AI-driven experimentation. An AI agent (Claude) reads a research agenda (`program.md`), modifies a training file (`train.py`), runs a 5-minute experiment, evaluates the result against a metric (`val_bpb`), and decides whether to keep or discard the change — all fully automatically.
+
+### 6b.2 Architecture — 3-File Paradigm
+
+```
+autoresearch/
+  prepare.py    ← FIXED: data preparation + utility functions (never modified by agent)
+  train.py      ← AGENT-MODIFIED: the file the AI agent experiments with
+  program.md    ← HUMAN-WRITTEN: research agenda + evaluation rules for the agent
+```
+
+**Workflow loop:**
+```
+1. Agent reads program.md (research agenda)
+2. Agent reads current train.py
+3. Agent proposes a modification to train.py
+4. Modified train.py runs (5-minute wall-clock budget)
+5. Metric evaluated (val_bpb — validation bits per byte)
+6. If improved → keep change. If not → revert.
+7. Repeat (~12 experiments/hour, ~100 overnight)
+```
+
+**Key design choices:**
+- **Single file scope:** Agent only modifies `train.py` — simplicity prevents cascade failures
+- **Fixed time budget:** Every experiment takes exactly 5 minutes — predictable resource usage
+- **Self-contained:** No external dependencies beyond GPU, model weights, and dataset
+- **Metric-driven:** `val_bpb` is vocabulary-size-independent, enabling fair cross-model comparison
+
+### 6b.3 Adaptation for Taris RAG Evaluation
+
+AutoResearch's original target is LLM **training** optimization. For Taris, the **paradigm** is transferable to RAG pipeline architecture evaluation across hardware tiers:
+
+| AutoResearch Original | Taris RAG Adaptation |
+|----------------------|---------------------|
+| `program.md` → LLM training research agenda | `program.md` → RAG architecture evaluation agenda |
+| `train.py` → model training script | `evaluate.py` → RAG pipeline configuration + benchmark |
+| `prepare.py` → tokenizer + dataset prep | `prepare.py` → test corpus + ground truth preparation |
+| `val_bpb` metric | Composite metric: precision, recall, F1, latency, memory, cost |
+| 5-min training budget | 5-min evaluation budget per configuration |
+| Single NVIDIA GPU | Target-specific: Pi 3, Pi 5, AI X1, VPS |
+
+**Adapted research loop:**
+```
+1. Agent reads program.md (RAG evaluation agenda)
+2. Agent reads current evaluate.py (RAG pipeline config)
+3. Agent proposes a configuration change:
+   - Chunk size (256 / 512 / 1024 chars)
+   - Retrieval method (FTS5 only / vector only / hybrid)
+   - Embedding model (MiniLM-L6-v2 / all-MiniLM-L12 / none)
+   - Reranking strategy (none / LLM-as-judge / cross-encoder)
+   - Top-k value (3 / 5 / 10)
+   - Memory tier (short-only / short+middle / full 3-tier)
+4. evaluate.py runs against test corpus (5-min budget)
+5. Composite metric calculated:
+   rag_score = 0.35×precision + 0.25×recall + 0.20×(1/latency_norm) + 0.10×(1/memory_norm) + 0.10×(1/cost_norm)
+6. If rag_score improved → keep. If not → revert.
+7. Repeat (~12 configs/hour)
+```
+
+### 6b.4 Per-Architecture AutoResearch Configuration
+
+AutoResearch requires adaptation for each hardware tier. The README explicitly provides smaller-platform tuning knobs:
+
+#### Raspberry Pi (PicoClaw / OpenClaw Pi 5)
+
+AutoResearch cannot run *on* a Pi (no NVIDIA GPU for training), but evaluation experiments can target the Pi remotely:
+
+```
+program.md for Pi evaluation:
+  - Target: Pi 3 (1 GB RAM) or Pi 5 (8 GB RAM)
+  - Constraints: max 500 MB RAM for RAG, max 5s latency
+  - evaluate.py SSH → Pi → run benchmark → collect metrics
+  - Metric: rag_score with heavy latency/memory weighting
+
+evaluate.py execution:
+  1. SSH to target Pi
+  2. Apply RAG configuration (chunk size, retrieval method, top-k)
+  3. Run 20 test queries from ground truth
+  4. Measure: precision, recall, latency_p95, peak_ram_mb
+  5. Report composite rag_score back to agent
+```
+
+#### AI X1 (OpenClaw with GPU)
+
+If the AI X1 has an NVIDIA GPU, AutoResearch runs natively for both LLM training (nanochat) AND RAG evaluation:
+
+```
+program.md for AI X1:
+  - Full autoresearch capabilities (training + evaluation)
+  - Can evaluate local LLM quality as part of RAG pipeline
+  - Larger parameter space: embedding models up to 768-dim, 7B local LLM
+  - Metric: rag_score with balanced weighting (quality > latency)
+```
+
+#### VPS (Server deployment)
+
+Full AutoResearch with maximum parameter space:
+
+```
+program.md for VPS:
+  - Full compute budget, no memory constraints
+  - Evaluate pgvector vs Qdrant vs LanceDB
+  - Evaluate GPT-4o vs Claude vs Gemini as RAG generator
+  - Evaluate full RAPTOR tree vs flat chunks
+  - Metric: rag_score with heavy quality weighting (cost acceptable)
+```
+
+### 6b.5 Smaller Platform Adaptations (from AutoResearch README)
+
+For running AutoResearch itself (the agent loop) on resource-constrained hardware:
+
+| Knob | Default | Smaller Value | Effect |
+|------|---------|---------------|--------|
+| Dataset | FineWeb-Edu 10B | TinyStories | 10× smaller, faster iteration |
+| `vocab_size` | 32768 | 256 (byte-level) | Much smaller embedding layer |
+| `MAX_SEQ_LEN` | 1024 | 256 | 4× less memory per sample |
+| `DEPTH` | 8 (layers) | 4 | 2× faster training |
+| `WINDOW_PATTERN` | `"LSL"` | `"L"` (local only) | No sliding window overhead |
+| `TOTAL_BATCH_SIZE` | 2^18 | 2^14 | 16× less memory |
+| Experiment budget | 5 min | 3 min | More experiments per hour |
+
+These knobs are applicable when running AutoResearch on the AI X1 for nanochat training experiments (§6 above).
+
+### 6b.6 Notable Community Forks
+
+| Fork | Platform | Maintainer |
+|------|----------|------------|
+| macOS (Apple Silicon) | MPS backend | @miolini, @trevin-creator |
+| Windows | CUDA on Windows | @jsegov |
+| AMD | ROCm | @andyluo7 |
+
+### 6b.7 Integration with Taris Evaluation Pipeline
+
+**Proposed directory structure on OpenClaw:**
+
+```
+~/.taris/autoresearch/
+  program.md              ← Research agenda (per-architecture variant)
+  prepare.py              ← Test corpus preparation + ground truth
+  evaluate.py             ← RAG pipeline configuration (agent-modified)
+  results/
+    pi3/                  ← Results for Pi 3 target
+    pi5/                  ← Results for Pi 5 target
+    x1/                   ← Results for AI X1 target
+    vps/                  ← Results for VPS target
+  baselines/
+    variant_c_default.json ← Baseline metrics for current Variant C implementation
+```
+
+**Evaluation flow:**
+```
+OpenClaw (with GPU, runs AutoResearch agent)
+    │
+    ├── SSH → Pi 3 (OpenClawPI): evaluate RAG on 1 GB RAM
+    │     └── rag_score for Pi 3 config → results/pi3/
+    │
+    ├── SSH → Pi 5 (OpenClawPI2): evaluate RAG on 8 GB RAM
+    │     └── rag_score for Pi 5 config → results/pi5/
+    │
+    ├── Local: evaluate RAG on AI X1
+    │     └── rag_score for X1 config → results/x1/
+    │
+    └── SSH → VPS: evaluate RAG on server
+          └── rag_score for VPS config → results/vps/
+```
+
+**Cross-architecture comparison:** After N experiments per target, the agent produces a Pareto frontier of configurations per platform — showing the optimal tradeoff between quality, latency, memory, and cost for each hardware tier.
+
+**Evaluation:** AutoResearch provides the missing **automated experimentation methodology** for the §23 research agenda. Instead of manually testing RAG configurations, an AI agent systematically explores the configuration space overnight. The 3-file paradigm (`program.md` / `evaluate.py` / `prepare.py`) maps cleanly onto the RAG evaluation use case. Main effort: writing the initial `program.md` per architecture and implementing `evaluate.py` with SSH-based remote benchmarking.
+
+---
+
 ## 7. Reference Architecture — Worksafety-superassistant
 
 ### 7.1 Project Overview
@@ -788,6 +973,7 @@ The extended research confirms Variant C as the correct choice and suggests thes
 | Multi-signal scoring | Worksafety | B (RAG) | +0.5d (extend RRF) |
 | Google Search grounding mode | Google API | D (remote) | +0.5d |
 | nanochat fine-tuning pipeline | Karpathy | E+ (future) | +3d (laptop setup) |
+| AutoResearch evaluation framework | Karpathy | B–D (evaluation) | +2d (program.md + evaluate.py per target) |
 
 ### 8.2 Updated Variant C Score
 
@@ -798,8 +984,8 @@ The extended research confirms Variant C as the correct choice and suggests thes
 | Offline capability (15%) | 5 | 5 |
 | Scalability (15%) | 3 | **3.5** (LanceDB path for Pi 5, Qdrant path for server) |
 | Simplicity (15%) | 4 | 4 (same adapter pattern) |
-| Future-proofing (10%) | 4 | **4.5** (nanochat pipeline, MCP, Google Search) |
-| **Weighted Score** | **4.15** | **4.40** |
+| Future-proofing (10%) | 4 | **4.5** (nanochat pipeline, AutoResearch eval, MCP, Google Search) |
+| **Weighted Score** | **4.15** | **4.45** |
 
 ### 8.3 Updated System Architecture
 
@@ -884,15 +1070,18 @@ User query
 
 ### 9.4 Long-term (Future phases)
 
-1. Set up **nanochat training pipeline** on OpenClaw laptop
-2. Fine-tune domain-specific models for: calendar NL parsing, intent classification, system command generation
-3. Deploy quantized fine-tuned models to Pi 5 via llama.cpp
-4. Evaluate **LDA topic modeling** from Worksafety as lightweight alternative to embeddings on Pi 3
+1. Set up **AutoResearch evaluation framework** on OpenClaw (GPU): write `program.md` per architecture (Pi 3, Pi 5, AI X1, VPS), implement `evaluate.py` with SSH-based remote benchmarking
+2. Run **automated RAG architecture experiments** overnight: ~100 configurations per target, agent-driven optimization of chunk size, retrieval method, embedding model, reranking, top-k
+3. Set up **nanochat training pipeline** on OpenClaw laptop
+4. Fine-tune domain-specific models for: calendar NL parsing, intent classification, system command generation
+5. Deploy quantized fine-tuned models to Pi 5 via llama.cpp
+6. Use **AutoResearch for nanochat training optimization**: `program.md` → training agenda, `train.py` → model config, `val_bpb` metric, automated hyperparameter search
+7. Evaluate **LDA topic modeling** from Worksafety as lightweight alternative to embeddings on Pi 3
 
 ### 9.5 Technology Selection Summary
 
-| Component | PicoClaw (Pi 3) | OpenClaw (Pi 5) | Server | Laptop (Training) |
-|-----------|:--------------:|:---------------:|:------:|:-----------------:|
+| Component | PicoClaw (Pi 3) | OpenClaw (Pi 5) | Server | Laptop / AI X1 (Training + Eval) |
+|-----------|:--------------:|:---------------:|:------:|:-------------------------------:|
 | FTS5 | ✅ Primary | ✅ Baseline | ✅ Baseline | ✅ |
 | Vector search | hnswlib (5 MB) | LanceDB (50 MB) | Qdrant / pgvector | LanceDB |
 | Embeddings | MiniLM-L6-v2 ONNX | MiniLM-L6-v2 ONNX | MiniLM or larger | OpenAI / local |
@@ -900,6 +1089,7 @@ User query
 | Memory | 3-tier + facts | 3-tier + facts | 3-tier + facts | N/A |
 | LLM | Cloud + local fallback | Cloud + local 3B | Cloud + local 7B | nanochat training |
 | Google Search | Via cloud LLM | ✅ Gemini API | ✅ Gemini API | Dev/test |
+| AutoResearch | Target (via SSH) | Target (via SSH) | Target (via SSH) | ✅ Agent host |
 
 ---
 
@@ -918,6 +1108,7 @@ User query
 | Google Grounding | Gemini API `google_search` tool | Real-time web search integration with citations |
 | nanochat | `github.com/karpathy/nanochat` (50K ⭐) | Complete LLM training harness, single `--depth` dial |
 | Worksafety-superassistant | Local project analysis | Structure-aware chunking, 3-signal scoring, query caching |
+| AutoResearch | `github.com/karpathy/autoresearch` (51.1K ⭐) | Autonomous AI-driven experimentation, 3-file paradigm for iterative optimization |
 
 ---
 
