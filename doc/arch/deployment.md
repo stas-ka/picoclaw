@@ -55,28 +55,62 @@ User (Telegram)
 
 ## 12. File Layout on Pi
 
+The runtime data directory is `~/.taris/` by default. Override with `TARIS_HOME` env var
+(see §13 `TARIS_HOME`) for alternative deployments (local dev, multi-instance).
+
 ```
-/home/stas/.taris/
-  telegram_menu_bot.py          ← entry point (v2026.3.28)
-  bot_config.py                 ← constants, env loading, logging
-  bot_state.py                  ← mutable runtime state dicts
-  bot_instance.py               ← TeleBot singleton
-  bot_security.py               ← 3-layer prompt injection guard
-  bot_access.py                 ← access control, i18n, keyboards, _ask_taris
-  bot_users.py                  ← registration + notes file I/O
-  bot_voice.py                  ← full voice pipeline: STT/TTS/VAD + multi-part TTS
-  bot_calendar.py               ← smart calendar: CRUD, NL parser, reminders, briefing
-  bot_admin.py                  ← admin panel handlers
-  bot_handlers.py               ← user handlers: chat, digest, notes, profile, system
-  bot_mail_creds.py             ← per-user IMAP credentials + digest
-  bot_email.py                  ← send-as-email SMTP
-  bot_error_protocol.py         ← error protocol: collect text/voice/photo → save → email
+/home/stas/.taris/          ← TARIS_HOME (default)
+  ── entry points ──
+  telegram_menu_bot.py          ← Telegram bot entry point
+  bot_web.py                    ← FastAPI web UI entry point
   voice_assistant.py            ← standalone voice daemon
-  strings.json                  ← i18n UI strings (ru / de / en — 115 keys)
+  gmail_digest.py               ← legacy shared digest cron (deprecated)
+
+  ── Python packages (subdirectories) ──
+  core/
+    bot_config.py               ← constants, TARIS_DIR, env loading, logging
+    bot_state.py                ← mutable runtime state dicts
+    bot_instance.py             ← TeleBot singleton
+    bot_db.py                   ← SQLite schema + connection helper
+    bot_llm.py                  ← pluggable LLM backend abstraction
+    bot_prompts.py              ← prompt templates
+    store_base.py               ← DataStore Protocol definition
+    store.py                    ← factory singleton (sqlite / postgres)
+    store_sqlite.py             ← SQLite adapter
+    store_postgres.py           ← PostgreSQL + pgvector adapter (OpenClaw)
+  security/
+    bot_security.py             ← 3-layer prompt injection guard
+    bot_auth.py                 ← JWT/bcrypt web authentication
+  telegram/
+    bot_access.py               ← access control, i18n, keyboards, _ask_taris
+    bot_admin.py                ← admin panel handlers
+    bot_handlers.py             ← user handlers: chat, digest, notes, profile, system
+    bot_users.py                ← registration + notes file I/O
+  features/
+    bot_voice.py                ← full voice pipeline: STT/TTS/VAD + multi-part TTS
+    bot_calendar.py             ← smart calendar: CRUD, NL parser, reminders, briefing
+    bot_contacts.py             ← contact book CRUD
+    bot_mail_creds.py           ← per-user IMAP credentials + digest
+    bot_email.py                ← send-as-email SMTP
+    bot_error_protocol.py       ← error protocol: collect text/voice/photo → save → email
+    bot_documents.py            ← document upload / RAG knowledge base
+  ui/
+    bot_ui.py                   ← Screen DSL dataclasses: Screen, Button, Card, Toggle
+    bot_actions.py              ← action handlers returning Screen objects
+    render_telegram.py          ← Telegram renderer: Screen → send_message / InlineKeyboard
+    screen_loader.py            ← YAML/JSON screen file loader (10 widget types)
+  screens/                      ← Declarative YAML screen definitions
+    main_menu.yaml · admin_menu.yaml · help.yaml
+    notes_menu.yaml · note_view.yaml · note_raw.yaml · note_edit.yaml
+    profile.yaml · profile_lang.yaml · profile_my_data.yaml
+    screen.schema.json          ← JSON Schema (draft-07) for screen validation
+
+  ── shared data ──
+  strings.json                  ← i18n UI strings (ru / de / en)
   release_notes.json            ← versioned changelog
   config.json                   ← taris LLM config (model_list, agents)
-  bot.env                       ← BOT_TOKEN + ALLOWED_USERS + ADMIN_USERS
-  gmail_digest.py               ← legacy shared digest cron (deprecated)
+  prompts.json                  ← LLM prompt templates
+  bot.env                       ← BOT_TOKEN + ALLOWED_USERS + ADMIN_USERS (secrets)
 
   ── Web UI channel ──
   bot_web.py                    ← FastAPI application: HTTP routes, Jinja2, HTMX endpoints
@@ -146,11 +180,51 @@ User (Telegram)
 
 ## 13. Configuration Reference
 
+### `TARIS_HOME` — Runtime Data Directory
+
+Set `TARIS_HOME` in the OS environment **before** starting Python to redirect
+all data paths away from the default `~/.taris/`.
+
+```bash
+export TARIS_HOME=~/projects/sintaris-openclaw-local-deploy/.taris
+python3 telegram_menu_bot.py
+```
+
+This is the primary mechanism for local development deploys, multi-instance
+setups, and CI environments. All 31 path constants in `bot_config.py` resolve
+relative to `TARIS_DIR = os.environ.get("TARIS_HOME") or ~/.taris`.
+
+**Do not set `TARIS_HOME` inside `bot.env`** — the env var must be present
+before `bot_config.py` is imported (it is needed to find `bot.env` itself).
+
+---
+
+### Local Development Deploy
+
+`~/projects/sintaris-openclaw-local-deploy/` is the local OpenClaw deployment.
+It contains symlinks into `src/` and a `.taris/` data directory:
+
+```
+~/projects/sintaris-openclaw-local-deploy/
+  core/ features/ security/ telegram/ ui/ screens/ web/  ← symlinks to src/
+  telegram_menu_bot.py  bot_web.py  strings.json         ← symlinks to src/
+  .taris/
+    bot.env       ← credentials (BOT_TOKEN, ALLOWED_USER, OPENAI_API_KEY)
+    taris.db      ← SQLite database (auto-created)
+    notes/  calendar/  contacts/  ...
+  run_telegram.sh   ← sets TARIS_HOME, starts Telegram bot
+  run_web.sh        ← sets TARIS_HOME + WEB_ONLY=1, starts uvicorn --reload
+  run_all.sh        ← starts both in background
+```
+
+---
+
 ### `bot_config.py` constants
 
 | Constant | Value | Env override | Description |
 |---|---|---|---|
-| `BOT_VERSION` | `"2026.3.28"` | — | Version string; bump on every user-visible change |
+| `TARIS_DIR` | `~/.taris` | `TARIS_HOME` | Runtime data directory — base for all paths |
+| `BOT_VERSION` | `"2026.4.13"` | — | Version string; bump on every user-visible change |
 | `PIPER_BIN` | `/usr/local/bin/piper` | `PIPER_BIN` | Piper TTS wrapper binary |
 | `PIPER_MODEL` | `~/.taris/ru_RU-irina-medium.onnx` | `PIPER_MODEL` | Default Piper voice model |
 | `PIPER_MODEL_LOW` | `~/.taris/ru_RU-irina-low.onnx` | `PIPER_MODEL_LOW` | Low-quality Piper model |

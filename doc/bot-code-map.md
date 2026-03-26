@@ -31,10 +31,14 @@ bot_actions ← bot_web         ← Web renderer (reads bot_actions output via J
 
 | Module | Package | Lines | Responsibility |
 |---|---|---|---|
-| `bot_config.py` | `core/` | ~120 | Constants, env loading, logging setup — no deps |
+| `bot_config.py` | `core/` | ~120 | Constants, env loading, logging setup — no deps; exports `TARIS_DIR` |
 | `bot_state.py` | `core/` | ~115 | Mutable runtime dicts, voice_opts/dynamic_users I/O; web link codes |
 | `bot_instance.py` | `core/` | ~12 | `bot = TeleBot(...)` singleton |
-| `bot_db.py` | `core/` | ~60 | SQLite init and connection helper |
+| `bot_db.py` | `core/` | ~60 | SQLite schema + `init_db()` + thread-local connection; uses `TARIS_DIR` |
+| `store_base.py` | `core/` | ~60 | `DataStore` Protocol + `StoreCapabilityError` |
+| `store.py` | `core/` | ~50 | Factory singleton `create_store()` — selects SQLite or PostgreSQL adapter; uses `TARIS_DIR` |
+| `store_sqlite.py` | `core/` | ~320 | Full SQLite adapter with optional sqlite-vec vector support |
+| `store_postgres.py` | `core/` | ~200 | PostgreSQL + pgvector adapter (OpenClaw / VPS) |
 | `bot_llm.py` | `core/` | ~250 | Pluggable LLM backend — 6 providers via `LLM_PROVIDER`; `ask_llm()` unified entry point; shared by Telegram + Web |
 | `bot_security.py` | `security/` | ~200 | 3-layer prompt injection guard; `SECURITY_PREAMBLE`; `_wrap_user_input()` |
 | `bot_auth.py` | `security/` | ~200 | JWT/bcrypt authentication, `accounts.json` — Web UI only |
@@ -63,22 +67,25 @@ No imports from other `bot_*` modules. Root of the dependency tree.
 
 | Symbol / Function | Purpose |
 |---|---|
+| `TARIS_DIR` | Runtime data directory — `os.environ.get("TARIS_HOME") or ~/.taris` |
+| `_th(rel)` | Helper: `os.path.join(TARIS_DIR, rel)` — used internally for all 31 path constants |
 | `BOT_VERSION` | `"YYYY.M.D"` — bump on every user-visible change |
 | `BOT_TOKEN` | Telegram bot token from `bot.env` |
 | `ALLOWED_USERS` | `set[int]` — full-access chat IDs |
 | `ADMIN_USERS` | `set[int]` — admin chat IDs |
+| `DEVICE_VARIANT` | `"picoclaw"` or `"openclaw"` — controls variant-specific features |
 | `TARIS_BIN` | `/usr/bin/picoclaw` |
-| `TARIS_CONFIG` | `~/.taris/config.json` |
-| `ACTIVE_MODEL_FILE` | `~/.taris/active_model.txt` |
+| `TARIS_CONFIG` | `TARIS_DIR/config.json` |
+| `ACTIVE_MODEL_FILE` | `TARIS_DIR/active_model.txt` |
 | `PIPER_BIN` | `/usr/local/bin/piper` |
-| `PIPER_MODEL` | `~/.taris/ru_RU-irina-medium.onnx` |
+| `PIPER_MODEL` | `TARIS_DIR/ru_RU-irina-medium.onnx` |
 | `PIPER_MODEL_TMPFS` | `/dev/shm/piper/...` (RAM-disk copy) |
-| `PIPER_MODEL_LOW` | `~/.taris/ru_RU-irina-low.onnx` |
+| `PIPER_MODEL_LOW` | `TARIS_DIR/ru_RU-irina-low.onnx` |
 | `WHISPER_BIN` | `/usr/local/bin/whisper-cpp` |
-| `WHISPER_MODEL` | `~/.taris/ggml-base.bin` |
-| `VOSK_MODEL_PATH` | `~/.taris/vosk-model-small-ru/` |
-| `NOTES_DIR` | `~/.taris/notes/` |
-| `_PENDING_TTS_FILE` | `~/.taris/pending_tts.json` |
+| `WHISPER_MODEL` | `TARIS_DIR/ggml-base.bin` |
+| `VOSK_MODEL_PATH` | `TARIS_DIR/vosk-model-small-ru/` |
+| `NOTES_DIR` | `TARIS_DIR/notes/` |
+| `_PENDING_TTS_FILE` | `TARIS_DIR/pending_tts.json` |
 | `_VOICE_OPTS_DEFAULTS` | All 10 voice-opt flags (all `False`) |
 | `_load_env_file(path)` | Parse `KEY=VALUE` file → `os.environ` |
 | `log` | `logging.getLogger("taris-tgbot")` |
@@ -118,6 +125,29 @@ Imports: `bot_config` only.
 | Symbol | Purpose |
 |---|---|
 | `bot` | `telebot.TeleBot(BOT_TOKEN, parse_mode="Markdown")` — shared by all modules |
+
+---
+
+## core/bot_db.py — SQLite Layer
+
+Imports: `bot_config` (incl. `TARIS_DIR`).
+
+| Symbol / Function | Purpose |
+|---|---|
+| `DB_PATH` | `TARIS_DIR/taris.db` — SQLite database file path |
+| `init_db(conn)` | `CREATE TABLE IF NOT EXISTS` for all tables — safe to call on every startup |
+| `get_conn()` | Thread-local `sqlite3.Connection` (auto-opens + inits on first use per thread) |
+
+---
+
+## core/store.py — DataStore Factory
+
+Imports: `bot_config` (incl. `TARIS_DIR`), `store_base`.
+
+| Symbol / Function | Purpose |
+|---|---|
+| `create_store()` | Reads `STORE_BACKEND`; returns SQLite or PostgreSQL adapter |
+| `store` | Module-level singleton — `from core.store import store` |
 
 ---
 
@@ -214,7 +244,7 @@ Pure functions — no Telegram API calls. Imports: `bot_config` only.
 
 ## bot_voice.py — Voice Pipeline
 
-Imports: `bot_config`, `bot_state`, `bot_instance`, `bot_access`, `bot_users`.
+Imports: `bot_config` (incl. `TARIS_DIR`), `bot_state`, `bot_instance`, `bot_access`, `bot_users`.
 
 ### Orphaned TTS tracker
 
@@ -566,7 +596,7 @@ Imports: `bot_config` only. Shared by Telegram and Web channels.
 
 ## bot_auth.py — Web UI Authentication
 
-Imports: `bot_config` only. Used by Web UI channel exclusively.
+Imports: `bot_config` (incl. `TARIS_DIR`). Used by Web UI channel exclusively.
 
 ### Account management
 
