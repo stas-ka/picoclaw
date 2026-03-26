@@ -995,3 +995,14 @@ Every ~3 months, measure baseline health:
 | 22:26 UTC | 22:18 UTC | 22:28 UTC | 10 min | Sync docs with TARIS_HOME changes: update §12 file layout to current package structure, add TARIS_HOME section + local dev deploy to §13, add TARIS_DIR/store/bot_db sections to bot-code-map | deployment.md: §12 package dirs, §13 TARIS_HOME + local deploy; bot-code-map.md: TARIS_DIR in bot_config section, add bot_db + store sections, add store_*.py to inventory, update bot_auth/bot_voice import notes | 1 | 2 | claude-sonnet-4.6 | doc/arch/deployment.md, doc/bot-code-map.md, doc/vibe-coding-protocol.md | done |
 
 **Session 67 total: 1 item, ~2 turns — Documentation sync ✅**
+
+
+---
+
+## Session 68 — §25.4 Embedding Service + §25.5 Voice Pipeline OpenClaw
+
+| Time | Time start | Time end | Duration | Request | Steps/Todos | Complexity | Requests used | Model | Files changed | Status |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 03:00 UTC | 03:00 UTC | 03:20 UTC | 20 min | Implement §25.4 (Embedding Service) and §25.5 (Voice Pipeline + NPU) for OpenClaw variant | 1. EMBED_MODEL/EMBED_KEEP_RESIDENT/EMBED_DIMENSION/VOICE_BACKEND constants in bot_config.py; 2. bot_embeddings.py EmbeddingService (fastembed-first, sentence-transformers fallback); 3. wire embeddings into bot_documents.py _store_text_chunks(); 4. VOICE_BACKEND import + --device cuda in bot_voice.py; 5. install_embedding_model.sh + setup_voice_openclaw.sh scripts; 6. bot.env.example docs; 7. version bump 2026.4.14; 8. TODO.md update | 3 | 1 | claude-sonnet-4.6 | src/core/bot_config.py, src/core/bot_embeddings.py, src/features/bot_documents.py, src/features/bot_voice.py, src/setup/bot.env.example, src/setup/install_embedding_model.sh, src/setup/setup_voice_openclaw.sh, src/release_notes.json, TODO.md | done |
+
+**Session 68 total: 2 items (§25.4 + §25.5), ~1 turn — Embedding Service + Voice Pipeline ✅**
