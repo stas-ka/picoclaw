@@ -983,3 +983,15 @@ Every ~3 months, measure baseline health:
 | 23:05 UTC | 21:53 UTC | 23:10 UTC | 77 min | Add TARIS_HOME env var support to all bot modules; create ~/projects/sintaris-openclaw-local-deploy/ with symlinks, .taris/ data dir, bot.env template, run_telegram.sh/run_web.sh/run_all.sh startup scripts | Add TARIS_DIR+_th() to bot_config.py (31 paths), update bot_db.py/bot_web.py/store.py/bot_auth.py/migrate_to_db.py/bot_voice.py to import TARIS_DIR; create deploy dir with 3 scripts; verify all 99 tests pass | 2 | 4 | claude-sonnet-4.6 | src/core/bot_config.py, src/core/bot_db.py, src/core/store.py, src/bot_web.py, src/security/bot_auth.py, src/setup/migrate_to_db.py, src/features/bot_voice.py | done |
 
 **Session 66 total: 1 item, ~4 turns — TARIS_HOME support + local deploy setup ✅**
+
+---
+
+### Session 67 — 2026-03-26 (UTC)
+
+**Focus:** Documentation sync (taris-update-doc skill)
+
+| Time (UTC) | Start | End | Duration | Description | Steps/Todos | Complexity | Turns | Model | Files | Status |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 22:26 UTC | 22:18 UTC | 22:28 UTC | 10 min | Sync docs with TARIS_HOME changes: update §12 file layout to current package structure, add TARIS_HOME section + local dev deploy to §13, add TARIS_DIR/store/bot_db sections to bot-code-map | deployment.md: §12 package dirs, §13 TARIS_HOME + local deploy; bot-code-map.md: TARIS_DIR in bot_config section, add bot_db + store sections, add store_*.py to inventory, update bot_auth/bot_voice import notes | 1 | 2 | claude-sonnet-4.6 | doc/arch/deployment.md, doc/bot-code-map.md, doc/vibe-coding-protocol.md | done |
+
+**Session 67 total: 1 item, ~2 turns — Documentation sync ✅**
