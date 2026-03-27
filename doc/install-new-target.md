@@ -1,11 +1,17 @@
 # Installing Taris Bot on a New Target
 
-**Last updated:** 2026-03-12  
-**Applies to:** OpenClawPI, OpenClawPI2, or any new Raspberry Pi  
-**OS:** Raspberry Pi OS Bookworm (64-bit Lite), aarch64
+**Last updated:** 2026-03-27  
+**Applies to:**
+- **PicoClaw variant** — OpenClawPI, OpenClawPI2, or any new Raspberry Pi (aarch64)
+- **OpenClaw variant** — Laptop / AI PC running Ubuntu 22.04+ (x86_64), alongside `sintaris-openclaw`
 
 Use this guide for a complete fresh deployment from a bare OS image.
 For incremental updates to an existing host, see `doc/update_strategy.md`.
+For integration architecture (PicoClaw ↔ OpenClaw), see `doc/arch/openclaw-integration.md`.
+
+---
+
+## Part A — PicoClaw: Raspberry Pi Installation
 
 ---
 
@@ -382,3 +388,253 @@ pscp -pw "%HOSTPWD%" src\strings.json src\release_notes.json stas@OpenClawPI:/ho
 rem Restart service
 plink -pw "%HOSTPWD%" -batch stas@OpenClawPI "echo %HOSTPWD% | sudo -S systemctl restart taris-telegram && sleep 3 && journalctl -u taris-telegram -n 8 --no-pager"
 ```
+
+---
+
+## Part B — OpenClaw: Laptop / AI PC Installation
+
+This section covers installing Taris on a laptop or AI PC (x86_64) as the **OpenClaw variant**, running alongside the `sintaris-openclaw` AI gateway.
+
+**Prerequisites:**
+- Ubuntu 22.04 LTS or Debian 12 (x86_64)
+- Python 3.11+, git, ffmpeg installed
+- [sintaris-openclaw](https://github.com/stas-ka/sintaris-openclaw) installed (see `sintaris-openclaw/docs/install.md`)
+- Internet connection for initial downloads
+
+---
+
+### B.1 — Clone the repo and install Python dependencies
+
+```bash
+# Clone sintaris-pl (already done if using sintaris-openclaw-local-deploy)
+git clone https://github.com/stas-ka/sintaris-pl ~/projects/sintaris-pl
+cd ~/projects/sintaris-pl
+
+# Checkout the taris-openclaw branch (has OpenClaw integration)
+git checkout taris-openclaw
+
+# Install Python packages
+pip3 install -r deploy/requirements.txt
+```
+
+---
+
+### B.2 — Set up the local deploy directory
+
+`sintaris-openclaw-local-deploy` provides a symlink-based launcher so you can run
+Taris locally without copying files. Source changes in `sintaris-pl/src/` are
+reflected immediately.
+
+```bash
+# Create the local deploy directory
+mkdir -p ~/projects/sintaris-openclaw-local-deploy
+cd ~/projects/sintaris-openclaw-local-deploy
+
+# Create symlinks into sintaris-pl/src/
+for mod in core features security telegram ui screens; do
+  ln -sf ~/projects/sintaris-pl/src/$mod ./$mod
+done
+ln -sf ~/projects/sintaris-pl/src/telegram_menu_bot.py ./telegram_menu_bot.py
+ln -sf ~/projects/sintaris-pl/src/bot_web.py ./bot_web.py
+ln -sf ~/projects/sintaris-pl/src/strings.json ./strings.json
+ln -sf ~/projects/sintaris-pl/src/prompts.json ./prompts.json
+ln -sf ~/projects/sintaris-pl/src/release_notes.json ./release_notes.json
+ln -sf ~/projects/sintaris-pl/src/web ./web
+```
+
+---
+
+### B.3 — Configure credentials
+
+```bash
+mkdir -p ~/projects/sintaris-openclaw-local-deploy/.taris
+
+# Create bot.env with your secrets
+cat > ~/projects/sintaris-openclaw-local-deploy/.taris/bot.env << 'EOF'
+BOT_TOKEN=<your_telegram_bot_token>
+ALLOWED_USERS=<your_telegram_user_id>
+ADMIN_USERS=<your_telegram_user_id>
+DEVICE_VARIANT=openclaw
+LLM_PROVIDER=openclaw
+TARIS_API_TOKEN=<generate_with: python3 -c "import secrets; print(secrets.token_hex(32))">
+EOF
+
+chmod 600 ~/projects/sintaris-openclaw-local-deploy/.taris/bot.env
+```
+
+> **`TARIS_API_TOKEN`**: This token authorises `skill-taris` (in sintaris-openclaw) to call
+> Taris `/api/*` endpoints. After generating it, also write it to:
+> ```bash
+> echo "<token>" > ~/.openclaw/skills/skill-taris/api-keys.txt
+> chmod 600 ~/.openclaw/skills/skill-taris/api-keys.txt
+> ```
+
+---
+
+### B.4 — Create run scripts
+
+Create `~/projects/sintaris-openclaw-local-deploy/run_telegram.sh`:
+```bash
+#!/usr/bin/env bash
+set -e
+cd "$(dirname "$0")"
+export TARIS_HOME="$(pwd)/.taris"
+export PYTHONPATH="$(pwd)"
+python3 telegram_menu_bot.py
+```
+
+Create `~/projects/sintaris-openclaw-local-deploy/run_web.sh`:
+```bash
+#!/usr/bin/env bash
+set -e
+cd "$(dirname "$0")"
+export TARIS_HOME="$(pwd)/.taris"
+export PYTHONPATH="$(pwd)"
+export WEB_ONLY=1
+uvicorn bot_web:app --host 0.0.0.0 --port 8080 --reload
+```
+
+Create `~/projects/sintaris-openclaw-local-deploy/run_all.sh`:
+```bash
+#!/usr/bin/env bash
+set -e
+cd "$(dirname "$0")"
+export TARIS_HOME="$(pwd)/.taris"
+export PYTHONPATH="$(pwd)"
+
+./run_telegram.sh &
+echo $! > .taris/telegram.pid
+
+WEB_ONLY=1 uvicorn bot_web:app --host 0.0.0.0 --port 8080 &
+echo $! > .taris/web.pid
+
+echo "Taris running. Stop with: kill \$(cat .taris/telegram.pid) \$(cat .taris/web.pid)"
+```
+
+```bash
+chmod +x run_telegram.sh run_web.sh run_all.sh
+```
+
+---
+
+### B.5 — Install the voice stack (x86_64)
+
+Run the OpenClaw voice setup script from `sintaris-pl`:
+
+```bash
+bash ~/projects/sintaris-pl/src/setup/setup_voice_openclaw.sh
+```
+
+This installs:
+- Vosk x86_64 model (`vosk-model-small-ru`) into `~/.taris/`
+- Piper binary + Russian TTS model (`ru_RU-irina-medium.onnx`)
+- Sets `VOICE_BACKEND=cpu` (use `cuda` for GPU acceleration)
+
+For GPU-accelerated voice (NVIDIA):
+```bash
+# Set VOICE_BACKEND in bot.env
+echo "VOICE_BACKEND=cuda" >> ~/.taris/bot.env
+```
+
+---
+
+### B.6 — Install the embedding model (optional, for RAG)
+
+```bash
+bash ~/projects/sintaris-pl/src/setup/install_embedding_model.sh
+```
+
+Downloads `all-MiniLM-L6-v2` (ONNX) into `~/.taris/`. Used by `bot_embeddings.py` for document RAG.
+
+---
+
+### B.7 — Start Taris
+
+```bash
+cd ~/projects/sintaris-openclaw-local-deploy
+./run_all.sh
+
+# Or start individually:
+./run_web.sh    # Web UI on http://localhost:8080
+./run_telegram.sh   # Telegram bot
+```
+
+---
+
+### B.8 — Connect OpenClaw ↔ Taris
+
+Ensure the `skill-taris` API token matches:
+
+```bash
+# In Taris bot.env:
+grep TARIS_API_TOKEN ~/projects/sintaris-openclaw-local-deploy/.taris/bot.env
+
+# In sintaris-openclaw skill-taris:
+cat ~/.openclaw/skills/skill-taris/api-keys.txt
+
+# Both must be the same value. Test:
+curl -s -H "Authorization: Bearer $(cat ~/.openclaw/skills/skill-taris/api-keys.txt)" \
+  http://localhost:8080/api/status | python3 -m json.tool
+# Expected: {"status": "ok", "version": "2026.x.x", ...}
+```
+
+Then restart the OpenClaw gateway to reload the skill:
+```bash
+systemctl --user restart openclaw-gateway.service
+```
+
+---
+
+### B.9 — Verify
+
+```bash
+# 1. Taris Web UI is running
+curl -sk https://localhost:8080/ | grep "Taris"
+
+# 2. Taris API is reachable (from OpenClaw)
+openclaw agent -m "Taris, what is your status?" --json
+
+# 3. Telegram bot is active
+# Send a message to your Telegram bot — it should respond
+
+# 4. LLM routing works
+# In Telegram, open Free Chat and send: "Hello from OpenClaw"
+# Response should come via the openclaw provider
+```
+
+---
+
+### B.10 — Optional: PostgreSQL backend
+
+For full OpenClaw capabilities (pgvector RAG, multi-user data at scale):
+
+```bash
+sudo apt install postgresql-16 postgresql-16-pgvector -y
+pip3 install psycopg2-binary
+
+sudo -u postgres psql -c "CREATE USER taris WITH PASSWORD 'changeme'; CREATE DATABASE taris_db OWNER taris;"
+sudo -u postgres psql -d taris_db -c "CREATE EXTENSION IF NOT EXISTS vector;"
+
+# Add to bot.env:
+echo "STORE_BACKEND=postgres" >> ~/projects/sintaris-openclaw-local-deploy/.taris/bot.env
+echo "DB_URL=postgresql://taris:changeme@localhost/taris_db" >> ~/projects/sintaris-openclaw-local-deploy/.taris/bot.env
+echo "STORE_VECTORS=on" >> ~/projects/sintaris-openclaw-local-deploy/.taris/bot.env
+```
+
+Restart Taris after configuration changes.
+
+---
+
+### B.11 — Loop Guard (important!)
+
+⚠️ **Circular dependency prevention:**
+
+If `LLM_PROVIDER=openclaw` is set in Taris **and** `skill-taris` is active in OpenClaw,
+do NOT configure `skill-taris` to send chat/LLM requests to Taris — this creates an
+infinite loop. Safe usage pattern:
+
+- `skill-taris` → call `GET /api/status` to check Taris health ✅
+- `skill-taris` → call `POST /api/chat` to query notes/calendar ✅
+- `skill-taris` → relay general LLM chat to Taris ❌ (loop if `LLM_PROVIDER=openclaw`)
+
+See `doc/arch/openclaw-integration.md` for the full loop-prevention guide.

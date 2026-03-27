@@ -1,8 +1,20 @@
 # OpenClaw Integration Architecture
 
+**Version:** `2026.4.13`  
+→ Architecture index: [architecture.md](../architecture.md)  
+→ Deployment variants: [deployment.md §Deployment Variants](deployment.md)  
+→ Installation guide: [../install-new-target.md §Part B](../install-new-target.md)
+
 ## Overview
 
-Taris (sintaris-pl) ist bidirektional mit OpenClaw (sintaris-openclaw) integriert.
+Taris (`sintaris-pl`) supports two deployment variants, controlled by `DEVICE_VARIANT` in `bot.env`:
+
+| Variant | Hardware | LLM | REST API | Storage |
+|---|---|---|---|---|
+| **PicoClaw** | Raspberry Pi 3/4/5 | taris/picoclaw → openai/local | — | SQLite |
+| **OpenClaw** | Laptop / AI PC (x86_64) | openclaw → GPT-5+/Codex | `/api/status` + `/api/chat` | SQLite or PostgreSQL+pgvector |
+
+In the OpenClaw variant, Taris is bidirectionally integrated with `sintaris-openclaw` (Node.js AI gateway).
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -132,3 +144,30 @@ Getestete Szenarien:
 - Fehlerbehandlung: rc≠0, leerer Output, Timeout
 - Dispatch-Routing: `LLM_PROVIDER=openclaw` → `_ask_openclaw`
 - `ask_llm_with_history`: Conversation als Text-Transcript formatiert
+
+---
+
+## Implementation Status (v2026.4.13)
+
+| Component | Status | Location |
+|---|---|---|
+| `DEVICE_VARIANT` constant | ✅ Implemented | `src/core/bot_config.py` |
+| `OPENCLAW_BIN` constant | ✅ Implemented | `src/core/bot_config.py` |
+| `TARIS_API_TOKEN` constant | ✅ Implemented | `src/core/bot_config.py` |
+| `_ask_openclaw()` LLM provider | ✅ Implemented | `src/core/bot_llm.py` |
+| `LLM_PROVIDER=openclaw` dispatch | ✅ Implemented | `src/core/bot_llm.py` |
+| `GET /api/status` REST endpoint | ✅ Implemented | `src/bot_web.py` |
+| `POST /api/chat` REST endpoint | ✅ Implemented | `src/bot_web.py` |
+| Bearer-token authentication | ✅ Implemented | `src/bot_web.py` |
+| Fallback chain (openclaw→taris→local) | ✅ Implemented | `src/core/bot_llm.py` |
+| 18 unit tests for `_ask_openclaw()` | ✅ Implemented | `src/tests/llm/` |
+| `store_postgres.py` PostgreSQL adapter | ✅ Implemented | `src/core/store_postgres.py` |
+| `bot_embeddings.py` EmbeddingService | ✅ Implemented | `src/core/bot_embeddings.py` |
+| `setup_voice_openclaw.sh` | ✅ Implemented | `src/setup/setup_voice_openclaw.sh` |
+| `install_embedding_model.sh` | ✅ Implemented | `src/setup/install_embedding_model.sh` |
+| `TARIS_HOME` configurable data dir | ✅ Implemented | `src/core/bot_config.py` |
+| `sintaris-openclaw-local-deploy` | ✅ Implemented | `~/projects/sintaris-openclaw-local-deploy/` |
+| `skill-taris` in sintaris-openclaw | ✅ Implemented | `sintaris-openclaw/skills/skill-taris/` |
+| `migrate_sqlite_to_pg.py` | 🔲 Planned | §25.7 |
+| pgvector HNSW RAG pipeline | 🔲 Planned | §25.6 Phase B |
+| Screen DSL `visible_variants` | 🔲 Planned | §21.6 |

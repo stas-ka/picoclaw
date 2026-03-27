@@ -270,14 +270,14 @@ Config-driven switch: `STORE_BACKEND=sqlite|postgres` in `bot.env`. Binary files
 | Phase 2d | `documents` + `vec_embeddings` tables; `upsert_embedding` / `search_similar` | 🔲 |
 | Phase 3 | `migrate_to_db.py` — JSON → adapter (idempotent) | ✅ |
 | Phase 4 | Switch all reads to adapter; remove JSON writes | 🔲 |
-| Phase 5 | `store_postgres.py` PostgreSQL adapter; test on OpenClaw | 🔲 |
+| Phase 5 | `store_postgres.py` PostgreSQL adapter; test on OpenClaw | ✅ Done (v2026.4.13) |
 | Phase 6 | RAG (§4.1) via `search_similar()`; conversation memory (§2.1) via `append_history()` | 🔲 |
 
 - [x] `src/core/bot_db.py` schema + `init_db()` on startup — SQLite Phase 1 (v2026.3.30)
 - [x] `src/core/store_base.py` — `DataStore` Protocol definition + `StoreCapabilityError`
 - [x] `src/core/store.py` — `create_store()` factory + module-level `store` singleton
 - [x] `src/core/store_sqlite.py` — full SQLite adapter incl. sqlite-vec optional vector support
-- [ ] `src/core/store_postgres.py` — PostgreSQL + pgvector adapter (OpenClaw)
+- [x] `src/core/store_postgres.py` — PostgreSQL + pgvector adapter (OpenClaw) ✅ (v2026.4.13)
 - [ ] `src/core/bot_db.py` extended — add `documents` table; vec_embeddings created dynamically
 - [ ] `src/setup/install_sqlite_vec.sh` — install sqlite-vec wheel on Pi target
 - [x] `src/setup/migrate_to_db.py` — JSON → adapter migration (Phase 3, idempotent)
@@ -342,9 +342,46 @@ Before implementaion of memories shall be analyse how can be implemented . here 
 ## [] 18. Using ZeroClaw instead PicoClaw
 → [Hardware Requirements Report §4.2](doc/hw-requirements-report.md) — ZeroClaw feasibility analysis (text-only; voice not viable on 512 MB)
 
-## 19. OpenClaw Platform 💡
+## 19. OpenClaw Platform 🔄 Core integration implemented
+
+Taris runs as an additional deployment variant on OpenClaw (laptop / AI PC) alongside the PicoClaw (Raspberry Pi) variant.
 → Full deployment plan: **§25 Deployment Plan: OpenClaw (Laptop / AI X1 / Pi 5 8 GB / RK3588)**
 → Hardware specs and options: [doc/hw-requirements-report.md §1.3](doc/hw-requirements-report.md)
+→ Integration architecture: [doc/arch/openclaw-integration.md](doc/arch/openclaw-integration.md)
+→ Related project: [sintaris-openclaw](https://github.com/stas-ka/sintaris-openclaw) — Node.js AI gateway + `skill-taris` + MCP server
+
+### 19.1 Core Integration ✅ Implemented (v2026.4.13)
+
+- [x] `DEVICE_VARIANT=openclaw` constant in `bot_config.py` (default: `picoclaw`)
+- [x] `OPENCLAW_BIN` constant — `~/.local/bin/openclaw` (env override)
+- [x] `LLM_PROVIDER=openclaw` — `_ask_openclaw()` in `bot_llm.py`; JSON output parsing; plaintext fallback
+- [x] REST API: `POST /api/chat` + `GET /api/status` in `bot_web.py`; Bearer-token auth via `TARIS_API_TOKEN`
+- [x] `skill-taris` in sintaris-openclaw calls these endpoints → bidirectional integration
+- [x] Loop-prevention guard: documented in `doc/arch/openclaw-integration.md`
+- [x] Fallback chain: `openclaw` → `taris/picoclaw` → local `llama.cpp`
+- [x] 18 unit tests for `_ask_openclaw()` in `src/tests/llm/` — all green
+- [x] `TARIS_HOME` env var — configurable data directory for local dev and multi-instance
+
+### 19.2 Infrastructure ✅ Implemented (v2026.4.13)
+
+- [x] `src/core/store_postgres.py` — 696-line PostgreSQL + pgvector adapter (DataStore Protocol)
+- [x] `src/core/bot_embeddings.py` — `EmbeddingService`: fastembed + sentence-transformers fallback; `EMBED_MODEL` / `EMBED_DIMENSION` constants
+- [x] `src/setup/setup_voice_openclaw.sh` — x86_64 Vosk + Piper install; `VOICE_BACKEND=cpu|cuda|openvino`
+- [x] `src/setup/install_embedding_model.sh` — download + verify embedding model
+- [x] `bot.env.example` updated with `DEVICE_VARIANT`, `OPENCLAW_BIN`, `TARIS_API_TOKEN`
+
+### 19.3 Local Development Deploy ✅ Implemented (v2026.4.13)
+
+- [x] `sintaris-openclaw-local-deploy/` — symlink launcher for running Taris locally
+- [x] `run_all.sh` / `run_telegram.sh` / `run_web.sh` — start/stop scripts with `TARIS_HOME` set
+- [x] `sintaris-openclaw` (`skill-taris`) installed and connected to local Taris instance
+- [x] Documentation: `doc/arch/openclaw-integration.md`; `doc/arch/deployment.md §13 Local Development Deploy`
+
+### 19.4 Pending
+
+- [ ] `src/setup/migrate_sqlite_to_pg.py` — taris.db → PostgreSQL migration script (§25.7)
+- [ ] pgvector HNSW index and full RAG pipeline on PostgreSQL (§25.6 Phase B)
+- [ ] Screen DSL: `visible_variants: [openclaw]` buttons shown only on OpenClaw (§21.6)
 
 ---
 
@@ -457,7 +494,7 @@ incremental migration from Python-coded screens.
 Validate the Hybrid Tiered RAG architecture (Variant C) against Google's server-side Grounding and the Worksafety reference implementation. Use **Karpathy AutoResearch** (`karpathy/autoresearch`) as the autonomous evaluation framework — agent-driven experiments across three target architectures: Raspberry Pi (mini PC), OpenClaw on AI X1 (GPU), VPS.
 → [Concept paper](concept/rag-memory-architecture.md) · [Extended research](concept/rag-memory-extended-research.md) (§6b AutoResearch)
 
-- [ ] 23.1 OpenClaw on Laptop — install Sintaris platform (Taris) on laptop for local development and RAG comparison experiments
+- [x] 23.1 OpenClaw on Laptop — Taris running locally via `sintaris-openclaw-local-deploy/` with `TARIS_HOME`, symlinks into `sintaris-pl/src/`; `skill-taris` connected ✅ (v2026.4.13)
 - [ ] 23.2 n8n + PostgreSQL clone on Laptop — replicate Worksafety orchestration stack locally for comparison baseline
 - [ ] 23.3 Karpathy nanochat + AutoResearch — install nanochat (edge LLM training) and autoresearch (autonomous evaluation) on OpenClaw laptop (AI X1); verify GPU access
 - [ ] 23.4 Hybrid RAG on Google Grounding — bind OpenClaw to Gemini Grounding API; evaluate server-side RAG quality vs local FTS5+vector
