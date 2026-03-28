@@ -1,6 +1,6 @@
 # Taris Bot — Architecture
 
-**Version:** `2026.3.32` · **Last updated:** March 2026
+**Version:** `2026.3.28` · **Last updated:** March 2026
 
 This document is an **index**. All architectural content lives in topic files under `doc/arch/`.
 Do NOT read this file beyond the table below — load only the specific topic file you need.
@@ -9,7 +9,9 @@ Do NOT read this file beyond the table below — load only the specific topic fi
 
 | Topic | File | When to read |
 |---|---|---|
-| System overview, process hierarchy | [overview.md](arch/overview.md) | Understanding overall structure |
+| System overview, channels, ecosystem map | [overview.md](arch/overview.md) | Understanding overall structure; variant comparison |
+| **PicoClaw variant** (Raspberry Pi) | [picoclaw.md](arch/picoclaw.md) | Pi hardware, Vosk STT, Piper TTS, deploy workflow |
+| **OpenClaw variant** (Laptop/PC) | [openclaw-integration.md](arch/openclaw-integration.md) | faster-whisper, Ollama, REST API, sintaris-openclaw integration |
 | Voice pipeline (STT/TTS/VAD/hotword/PipeWire) | [voice-pipeline.md](arch/voice-pipeline.md) | Modifying `bot_voice.py` or `voice_assistant.py` |
 | Telegram bot modules, chat routing, callbacks | [telegram-bot.md](arch/telegram-bot.md) | Adding handlers, callbacks, menu buttons |
 | Security, RBAC, prompt injection guard | [security.md](arch/security.md) | Modifying `bot_security.py` or access logic |

@@ -23,12 +23,14 @@ ask_llm(prompt, timeout=60)
         ▼
    _DISPATCH[provider](prompt, timeout)
         │
-        ├── "taris"    → _ask_taris()  ← CLI subprocess: taris agent -m
-        ├── "openai"      → _ask_openai()    ← REST: api.openai.com (or OPENAI_BASE_URL)
-        ├── "yandexgpt"   → _ask_yandexgpt() ← REST: llm.api.cloud.yandex.net
-        ├── "gemini"      → _ask_gemini()    ← REST: generativelanguage.googleapis.com
-        ├── "anthropic"   → _ask_anthropic() ← REST: api.anthropic.com
-        └── "local"       → _ask_local()     ← HTTP: localhost:8081 (llama.cpp server)
+        ├── "taris"      → _ask_taris()      ← CLI subprocess: taris agent -m (PicoClaw binary)
+        ├── "openai"     → _ask_openai()     ← REST: api.openai.com (or OPENAI_BASE_URL)
+        ├── "yandexgpt"  → _ask_yandexgpt()  ← REST: llm.api.cloud.yandex.net
+        ├── "gemini"     → _ask_gemini()     ← REST: generativelanguage.googleapis.com
+        ├── "anthropic"  → _ask_anthropic()  ← REST: api.anthropic.com
+        ├── "local"      → _ask_local()      ← HTTP: localhost:8081 (llama.cpp server)
+        ├── "openclaw"   → _ask_openclaw()   ← CLI subprocess: openclaw agent -m --json  [OpenClaw]
+        └── "ollama"     → _ask_ollama()     ← HTTP: localhost:11434 (Ollama server)      [OpenClaw]
         │
         ▼
   [on error AND (LLM_LOCAL_FALLBACK=true OR flag-file exists) AND provider != "local"]
@@ -41,12 +43,14 @@ ask_llm(prompt, timeout=60)
 
 | `LLM_PROVIDER` | Env vars required | Default model | Notes |
 |---|---|---|---|
-| `taris` | *(default — uses `~/.taris/config.json`)* | OpenRouter/gpt-4o-mini | Existing behaviour; model chosen via Admin panel |
-| `openai` | `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `OPENAI_MODEL` | `gpt-4o-mini` | Also works with any OpenAI-compatible API (Groq, Together, etc.) |
+| `taris` | *(default — uses `~/.taris/config.json`)* | OpenRouter/gpt-4o-mini | PicoClaw binary; model chosen via Admin panel |
+| `openai` | `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `OPENAI_MODEL` | `gpt-4o-mini` | Also works with OpenRouter, Groq, Together, etc. |
 | `yandexgpt` | `YANDEXGPT_API_KEY`, `YANDEXGPT_FOLDER_ID`, `YANDEXGPT_MODEL_URI` | `yandexgpt-lite` | Russian language optimised |
 | `gemini` | `GEMINI_API_KEY`, `GEMINI_MODEL` | `gemini-2.0-flash` | Google Generative AI |
 | `anthropic` | `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL` | `claude-3-5-haiku-20241022` | Anthropic Claude |
 | `local` | `LLAMA_CPP_URL` (default `http://127.0.0.1:8081`) | *(as loaded in llama-server)* | Fully offline; requires `taris-llm.service` |
+| `openclaw` | `OPENCLAW_BIN` (default `~/.local/bin/openclaw`) | via OpenClaw gateway | **OpenClaw only**; subprocess call with `--session-id taris` |
+| `ollama` | `OLLAMA_URL` (default `http://127.0.0.1:11434`), `OLLAMA_MODEL` | `qwen2:0.5b` | **OpenClaw default**; local offline; install via `setup_llm_openclaw.sh` |
 
 ### 19.3 Offline Fallback (Feature 3.2)
 
@@ -110,6 +114,15 @@ LLM_PROVIDER=taris
 # Local llama.cpp (if LLM_PROVIDER=local or as fallback target)
 # LLAMA_CPP_URL=http://127.0.0.1:8081
 # LLAMA_CPP_MODEL=qwen2-0.5b-q4.gguf
+
+# OpenClaw AI Gateway (if LLM_PROVIDER=openclaw — OpenClaw variant only)
+# OPENCLAW_BIN=~/.local/bin/openclaw
+# Install: bash ~/projects/sintaris-openclaw/scripts/setup.sh
+
+# Ollama local LLM (if LLM_PROVIDER=ollama — recommended for OpenClaw)
+# OLLAMA_URL=http://127.0.0.1:11434
+# OLLAMA_MODEL=qwen2:0.5b
+# Install: bash src/setup/setup_llm_openclaw.sh
 ```
 
 ### 19.6 Runtime Fallback Toggle (Admin Panel)
