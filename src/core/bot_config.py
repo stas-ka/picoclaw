@@ -217,6 +217,14 @@ EMBED_KEEP_RESIDENT  = os.environ.get("EMBED_KEEP_RESIDENT", "1") == "1"
 EMBED_DIMENSION      = int(os.environ.get("EMBED_DIMENSION", "384"))
 
 # ─────────────────────────────────────────────────────────────────────────────
+# RAG (Retrieval-Augmented Generation) — FTS5 local knowledge base
+# ─────────────────────────────────────────────────────────────────────────────
+RAG_ENABLED    = os.environ.get("RAG_ENABLED",    "1") == "1"
+RAG_TOP_K      = int(os.environ.get("RAG_TOP_K",      "3"))
+RAG_CHUNK_SIZE = int(os.environ.get("RAG_CHUNK_SIZE", "512"))
+RAG_FLAG_FILE  = os.path.expanduser("~/.taris/rag_disabled")
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Bot version — bump on every user-visible deployment
 # ─────────────────────────────────────────────────────────────────────────────
 
