@@ -1,5 +1,15 @@
 [
   {
+    "version": "2026.3.37",
+    "date":    "2026-03-28",
+    "title":   "Fix voice LLM routing + Whisper hallucination guard",
+    "changes": [
+      "bot_voice.py: replace _ask_taris() with ask_llm() — voice now respects LLM_PROVIDER/fallback chain",
+      "bot_voice.py: add Whisper hallucination guard rejecting known false-positive phrases",
+      "Fixes: Telegram voice replies failing with 'picoclaw: No such file or directory'"
+    ]
+  },
+  {
     "version": "2026.3.36",
     "date":    "2026-03-28",
     "title":   "Username change + Telegram-Web unified account linking",

@@ -33,9 +33,10 @@ from core.bot_config import (
 from core.bot_instance import bot
 from telegram.bot_access import (
     _t, _lang, _safe_edit, _back_keyboard, _voice_back_keyboard,
-    _escape_tts, _escape_md, _truncate, _with_lang_voice, _ask_taris,
+    _escape_tts, _escape_md, _truncate, _with_lang_voice,
     _is_guest,
 )
+from core.bot_llm import ask_llm
 from telegram.bot_users import (
     _slug, _list_notes_for, _load_note_text, _save_note_file,
 )
@@ -445,6 +446,15 @@ def _stt_faster_whisper(raw_pcm: bytes, sample_rate: int, lang: str = "ru") -> O
         text = " ".join(seg.text.strip() for seg in segments).strip()
         if not text:
             log.debug("[FasterWhisper] no speech detected")
+            return None
+
+        # Hallucination guard: reject known false-positive phrases Whisper emits on short/noisy audio
+        _HALLUCINATIONS = {
+            "and that's the whole thing", "thank you", "thanks for watching",
+            "thanks for watching!", "you", ".", "..", "...",
+        }
+        if text.lower().rstrip(".!? ") in _HALLUCINATIONS or len(text) < 3:
+            log.warning(f"[FasterWhisper] hallucination rejected: {text!r}")
             return None
 
         log.debug(f"[FasterWhisper] transcript ({info.language}, {info.language_probability:.2f}): {text[:80]}")
@@ -1076,7 +1086,7 @@ def _handle_voice_message(chat_id: int, voice_obj) -> None:
             return
 
         _ts = time.time()
-        response = _ask_taris(_with_lang_voice(chat_id, text), timeout=90)
+        response = ask_llm(_with_lang_voice(chat_id, text), timeout=90)
         _timing["LLM"] = time.time() - _ts
 
         if not response:
