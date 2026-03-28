@@ -778,3 +778,153 @@ class TestChatMode:
         mock_sys.assert_called_once_with(admin_chat_id, "show free disk space")
 
         _reset_state(admin_chat_id)
+
+
+# ===========================================================================
+# 9.  Voice — system mode routing and admin role preservation
+# ===========================================================================
+
+class TestVoiceSystemModeRouting:
+    """Regression tests: voice messages respect system mode and admin role.
+
+    Guard for the bug where voice messages in system mode bypassed the admin
+    check and returned 'not allowed' to admin users.
+    """
+
+    def test_voice_in_system_mode_routes_to_system_handler(
+        self,
+        mock_bot,
+        admin_chat_id,
+        make_message,
+    ):
+        """Voice from an admin in 'system' mode MUST route to _handle_voice_message.
+
+        The voice pipeline itself checks the mode and calls _handle_system_message
+        internally — the outer handler just calls _handle_voice_message for all
+        allowed users (mode-switching is delegated to bot_voice.py).
+        """
+        msg = make_message(admin_chat_id, "", content_type="voice")
+        msg.voice = MagicMock()
+        _reset_state(admin_chat_id)
+        _st._user_mode[admin_chat_id] = "system"
+
+        with patch.object(tmb, "bot", mock_bot), \
+             patch("telegram_menu_bot._is_allowed", return_value=True), \
+             patch("telegram_menu_bot._handle_voice_message") as mock_voice, \
+             patch("telegram_menu_bot._set_lang"):
+            tmb.voice_handler(msg)
+
+        mock_voice.assert_called_once_with(admin_chat_id, msg.voice)
+        _reset_state(admin_chat_id)
+
+    def test_voice_system_mode_non_admin_still_routed_to_pipeline(
+        self,
+        mock_bot,
+        user_chat_id,
+        make_message,
+    ):
+        """Voice from a non-admin with mode='system' still calls the pipeline.
+
+        The outer voice_handler doesn't block on role — that happens inside
+        _handle_voice_message → _handle_system_message. This test ensures
+        the voice handler itself doesn't short-circuit for non-admins.
+        """
+        msg = make_message(user_chat_id, "", content_type="voice")
+        msg.voice = MagicMock()
+        _reset_state(user_chat_id)
+        _st._user_mode[user_chat_id] = "system"
+
+        with patch.object(tmb, "bot", mock_bot), \
+             patch("telegram_menu_bot._is_allowed", return_value=True), \
+             patch("telegram_menu_bot._handle_voice_message") as mock_voice, \
+             patch("telegram_menu_bot._set_lang"):
+            tmb.voice_handler(msg)
+
+        mock_voice.assert_called_once_with(user_chat_id, msg.voice)
+        _reset_state(user_chat_id)
+
+    def test_text_system_mode_non_admin_blocked_at_text_handler(
+        self,
+        mock_bot,
+        user_chat_id,
+        make_message,
+    ):
+        """Text handler in 'system' mode MUST block non-admins with security_admin_only.
+
+        This is the defense-in-depth guard in telegram_menu_bot.text_handler.
+        """
+        msg = make_message(user_chat_id, "show uptime")
+        _reset_state(user_chat_id)
+        _st._user_mode[user_chat_id] = "system"
+
+        with patch.object(tmb, "bot", mock_bot), \
+             patch("telegram_menu_bot._is_allowed", return_value=True), \
+             patch("telegram_menu_bot._is_admin", return_value=False), \
+             patch("telegram_menu_bot._set_lang"), \
+             patch("telegram_menu_bot._handle_system_message") as mock_sys:
+            tmb.text_handler(msg)
+
+        mock_sys.assert_not_called()
+        _reset_state(user_chat_id)
+
+
+# ===========================================================================
+# 10.  Screen DSL — menu rendering uses variant-aware role filtering
+# ===========================================================================
+
+class TestScreenDSLRoleFiltering:
+    """Regression tests: Screen DSL renders correct buttons per role/variant."""
+
+    def test_menu_callback_invokes_screen_loader(
+        self,
+        mock_bot,
+        user_chat_id,
+        make_callback,
+    ):
+        """The 'menu' callback must call load_screen for main_menu.yaml."""
+        call = make_callback(user_chat_id, "menu")
+        _reset_state(user_chat_id)
+
+        with patch.object(tmb, "bot", mock_bot), \
+             patch("telegram_menu_bot._is_allowed", return_value=True), \
+             patch("telegram_menu_bot._is_admin", return_value=False), \
+             patch("telegram_menu_bot._is_guest", return_value=False), \
+             patch("telegram_menu_bot._set_lang"), \
+             patch("telegram_menu_bot.load_screen") as mock_load, \
+             patch("telegram_menu_bot.render_screen"):
+            mock_load.return_value = MagicMock()
+            tmb.callback_handler(call)
+
+        mock_load.assert_called_once()
+        args, _ = mock_load.call_args
+        assert "main_menu" in args[0], f"Expected main_menu.yaml, got {args[0]}"
+
+    def test_admin_gets_admin_role_in_screen_render(
+        self,
+        mock_bot,
+        admin_chat_id,
+        make_callback,
+    ):
+        """Admin user must receive 'admin' role context when menu is rendered."""
+        call = make_callback(admin_chat_id, "menu")
+        _reset_state(admin_chat_id)
+
+        captured_ctx = []
+
+        def _capture_load(screen_path, ctx, **kw):
+            captured_ctx.append(ctx)
+            return MagicMock()
+
+        with patch.object(tmb, "bot", mock_bot), \
+             patch("telegram_menu_bot._is_allowed", return_value=True), \
+             patch("telegram_menu_bot._is_admin", return_value=True), \
+             patch("telegram_menu_bot._is_guest", return_value=False), \
+             patch("telegram_menu_bot._set_lang"), \
+             patch("telegram_menu_bot.load_screen", side_effect=_capture_load), \
+             patch("telegram_menu_bot.render_screen"):
+            tmb.callback_handler(call)
+
+        assert captured_ctx, "load_screen was not called"
+        assert captured_ctx[0].role == "admin", (
+            f"Expected role='admin' in context, got: {captured_ctx[0].role}"
+        )

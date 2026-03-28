@@ -10,7 +10,8 @@ These reusable task prompts live in `.github/prompts/`. Invoke them with `/skill
 | `/taris-deploy-openclaw-target` | Deploy OpenClaw variant locally to TariStation2 (engineering) and remote TariStation1/SintAItion (production) |
 | `/taris-backup-target` | Backup a Raspberry Pi target (data, software, system config, binaries, or all) |
 | `/taris-performancetest` | Run taris performance benchmarks (storage ops, menu navigation) locally and/or on Pi targets, merge results, and print a cross-platform comparison |
-| `/taris-test-run-tests` | Run voice regression T01–T21 on Pi, report results |
+| `/taris-test-run-tests` | Run voice regression T01–T41 on Pi, report results |
+| `/taris-run-full-tests` | Run full test suite: telegram offline, screen loader, LLM, voice regression (local + Pi), Web UI Playwright |
 | `/taris-bump-version` | Update `BOT_VERSION`, prepend release note, commit |
 | `/taris-test-software` | Auto-select tests based on changed files (also triggered by plain "test software") |
 | `/taris-update-doc` | Sync project documentation (`doc/arch/`, code-map, TODO, README) with current implementation |

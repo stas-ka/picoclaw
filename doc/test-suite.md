@@ -23,7 +23,9 @@ Use it any time a user says "test the software", "run tests", or asks whether so
 | `src/core/store_sqlite.py` / `src/core/bot_db.py` | SQLite integration T22–T23 | Pi |
 | RAG document upload / `bot_web.py` knowledge routes | RAG quality T24 | Pi |
 | `src/core/bot_state.py` (`generate_web_link_code` / `validate_web_link_code`) | Web link code T25 | Pi |
-| `src/tests/telegram/test_telegram_bot.py` or `src/tests/telegram/conftest.py` | Telegram offline regression (Category F — all 31 tests) | Local machine |
+| `src/tests/telegram/test_telegram_bot.py` or `src/tests/telegram/conftest.py` | Telegram offline regression (Category F — all 40 tests) | Local machine |
+| `src/tests/screen_loader/` | Screen DSL loader regression (Category G — all 64 tests) | Local machine |
+| `src/tests/llm/` | LLM provider tests (Category H — all 18 tests) | Local machine |
 
 ---
 
@@ -31,12 +33,14 @@ Use it any time a user says "test the software", "run tests", or asks whether so
 
 | Category | Technology | Runs on | Automated? |
 |---|---|---|---|
-| **A — Voice regression** | Python (`test_voice_regression.py`) | Pi (target) | Yes |
+| **A — Voice regression** | Python (`test_voice_regression.py`) | Pi or local (source inspection) | Yes |
 | **B — Web UI (E2E)** | Playwright + pytest (`test_ui.py`) | Local → Pi2 | Yes |
 | **C — Hardware audio** | Bash shell scripts (`test_*.sh`, `check_*.sh`) | Pi (direct) | Manual/CI |
 | **D — Mic capture** | Python (`test_mic.py`) | Pi (direct) | Manual |
 | **E — Smoke / deployment** | `plink` + `journalctl` | Pi (remote) | Manual |
 | **F — Offline Telegram regression** | pytest (`test_telegram_bot.py`) | Local machine | Yes |
+| **G — Screen DSL loader** | pytest (`src/tests/screen_loader/`) | Local machine | Yes |
+| **H — LLM provider tests** | pytest (`src/tests/llm/`) | Local machine | Yes |
 
 ---
 
@@ -130,6 +134,22 @@ pscp -pw "%HOSTPWD%" src\tests\voice\*.ogg              stas@OpenClawPI:/home/st
 | T25 | `web_link_code:expired` | Code with past expiry returns None | After changing TTL or expiry check |
 | T25 | `web_link_code:revoke_old` | generate() twice same chat_id: first code invalidated | After changing revocation logic |
 | T25 | `web_link_code:cross_process` | Code present in file immediately after generate() | After changing persistence logic |
+| T26 | `system_chat_clean_output` | `_handle_system_message` returns clean text (no raw LLM leak) | After changing system chat output handling |
+| T27 | `faster_whisper_stt` | faster-whisper model loads and runs silent inference (SKIP if not installed) | After adding/upgrading faster-whisper |
+| T28 | `openclaw_llm_connectivity` | LLM provider connectivity check for OpenClaw variant (SKIP if ollama not running) | After changing LLM config on OpenClaw |
+| T29 | `openclaw_stt_routing` | `STT_PROVIDER` defaults correctly for openclaw (`faster_whisper`) vs taris (`vosk`) | After changing `DEVICE_VARIANT` / `STT_PROVIDER` defaults |
+| T30 | `openclaw_ollama_provider` | `_ask_ollama` in `_DISPATCH` + constants present in `bot_llm.py` | After adding/removing LLM providers |
+| T31 | `web_stt_provider_routing` | Web UI voice endpoints use `STT_PROVIDER` routing, not hardcoded Vosk | After changing web voice endpoint in `bot_web.py` |
+| T32 | `pipeline_logger` | `PipelineLogger` class logs all timing stages; total time calculated | After changing timing/logging in voice pipeline |
+| T33 | `dual_stt_providers` | Dual STT dispatch: primary provider called first; fallback activated on failure | After changing `_dual_stt_dispatch()` or `STT_FALLBACK_PROVIDER` |
+| T34 | `voice_debug_mode` | `VOICE_DEBUG=1` env switches to debug logging; LLM named fallback reads `LLM_FALLBACK_PROVIDER` | After changing debug mode or fallback logic |
+| T35 | `stt_language_routing_fw` | faster-whisper language routing for ru/en/de; hallucination guard per language | After changing language-aware STT in `bot_voice.py` |
+| T36 | `stt_fallback_chain` | Primary STT fails → Vosk fallback activated; chain respects `STT_FALLBACK_PROVIDER` | After changing fallback chain in `bot_voice.py` |
+| T37 | `openai_whisper_stt` | OpenAI Whisper API provider (`_stt_openai_whisper_web`) present and callable | After adding/changing remote STT provider |
+| T38 | `tts_multilang` | Piper TTS works for ru/de; EN falls back to Russian model with WARN | After adding language models or changing `_piper_model_path()` |
+| T39 | `voice_llm_routing` | Voice pipeline uses `ask_llm()` (not `TARIS_BIN` subprocess) for LLM calls | After changing how voice pipeline calls LLM |
+| T40 | `voice_system_mode_routing_guard` | Source: `bot_voice.py` routes `mode=system` to `_handle_system_message`; admin check preserved | After changing voice routing or system mode handling |
+| T41 | `voice_lang_stt_lang_priority` | `_voice_lang()` respects `STT_LANG` env override over Telegram UI language | After changing language detection in `_voice_lang()` |
 
 ### 2.6 When specific tests are mandatory
 
@@ -149,6 +169,8 @@ pscp -pw "%HOSTPWD%" src\tests\voice\*.ogg              stas@OpenClawPI:/home/st
 | After changing `_stt_openai_whisper_web` or OpenAI Whisper API config | T37 (`--test openai_whisper_stt`) |
 | After adding/removing Piper models or changing `_piper_model_path()` | T38 (`--test tts_multilang`) |
 | After any change to voice pipeline LLM call (ask_llm / TARIS_BIN) | T39 (`--test voice_llm_routing`) |
+| After changing voice mode routing or system chat access in voice path | T40 (`--test voice_system_mode_routing_guard`) |
+| After changing `_voice_lang()` or `STT_LANG` handling | T41 (`--test voice_lang_stt_lang_priority`) |
 
 ---
 
@@ -354,15 +376,21 @@ Run smoke tests after every deployment. They are the fastest sanity check — if
 
 ### 6b.1 Run commands
 
+```bash
+# Run all 40 offline Telegram tests (Linux/macOS)
+cd /home/stas/projects/sintaris-pl
+DEVICE_VARIANT=openclaw PYTHONPATH=src python3 -m pytest src/tests/telegram/ -v
+
+# Run a single class
+DEVICE_VARIANT=openclaw PYTHONPATH=src python3 -m pytest src/tests/telegram/test_telegram_bot.py::TestCallbackAdmin -v
+
+# Quick run with short output
+DEVICE_VARIANT=openclaw PYTHONPATH=src python3 -m pytest src/tests/telegram/ -q --tb=short
+```
+
 ```bat
-rem Run all 31 offline Telegram tests
+rem Windows
 cd d:\Projects\workspace\taris\src\tests\telegram && py -m pytest test_telegram_bot.py -v
-
-rem Run a single class
-cd d:\Projects\workspace\taris\src\tests\telegram && py -m pytest test_telegram_bot.py::TestCallbackAdmin -v
-
-rem Run with coverage (optional)
-cd d:\Projects\workspace\taris\src\tests\telegram && py -m pytest test_telegram_bot.py -v --tb=short
 ```
 
 ### 6b.2 Test classes and what they cover
@@ -377,6 +405,8 @@ cd d:\Projects\workspace\taris\src\tests\telegram && py -m pytest test_telegram_
 | `TestTextHandlerNotes` | 2 | Note creation multi-step flow: title input, content input |
 | `TestTextHandlerAdmin` | 2 | Admin-mode text routing: pending LLM key, pending add-user |
 | `TestChatMode` | 3 | Free-chat mode: allowed, denied, LLM response forwarded |
+| `TestVoiceSystemModeRouting` | 3 | Voice+system mode: admin routed, non-admin still passed to pipeline, text path blocks non-admin |
+| `TestScreenDSLRoleFiltering` | 2 | Screen DSL: menu callback calls `load_screen`; admin gets `role='admin'` in context |
 
 ### 6b.3 Architecture notes
 
@@ -403,13 +433,81 @@ These tests run in **< 1 second** locally and should be run before every commit 
 
 | Target | Host | Purpose | Tests allowed |
 |---|---|---|---|
-| **Engineering (Pi1)** | `OpenClawPI` / `100.81.143.126` | Primary development Pi — all test types | All categories A–E; F runs locally |
-| **Production (Pi2)** | `OpenClawPI2` | Second Pi, stable deployments, UI test target | Category B (UI), Category E (smoke); F runs locally |
+| **TariStation2 / OpenClawPI2** | `OpenClawPI2` / local `~/.taris/` | Engineering — all test types | All categories A–H |
+| **TariStation1 / OpenClawPI** | `OpenClawPI` / `SintAItion` | Production — stable deployments only | Category B (UI), Category E (smoke) |
+| **Local dev machine** | `localhost` | Quick offline checks | Categories F, G, H; A source-inspection T17–T41 |
 
 **Rules:**
-- Run destructive tests (audio hardware, regression) on engineering Pi1 first.
-- Run Web UI Playwright tests against Pi2 (`https://openclawpi2:8080`) unless told otherwise.
-- Only deploy to Pi2 after Pi1 tests pass.
+- Run destructive tests (audio hardware, regression) on engineering target (TariStation2/OpenClawPI2) first.
+- Run Web UI Playwright tests against TariStation2 (`http://localhost:8080`) unless told otherwise.
+- Only deploy to production (TariStation1/OpenClawPI) after engineering tests pass **and** code is on `master` / `taris-openclaw`.
+
+---
+
+## 6c. Category G — Screen DSL Loader Tests
+
+**File:** `src/tests/screen_loader/test_screen_loader.py`  
+**Config:** `src/tests/telegram/conftest.py` (shared)  
+**Technology:** pytest (no Pi, no Telegram API)  
+**Target:** Runs entirely on the local development machine
+
+### 6c.1 Run commands
+
+```bash
+cd /home/stas/projects/sintaris-pl
+DEVICE_VARIANT=openclaw PYTHONPATH=src python3 -m pytest src/tests/screen_loader/ -q --tb=short
+```
+
+### 6c.2 What it covers
+
+- YAML screen file loading (`screens/*.yaml`) for all variants (taris / openclaw / picoclaw)
+- `UserContext` role filtering: admin-only buttons hidden from `user`/`guest`
+- Button `callback_data` and `label` rendering for each screen
+- Screen not-found → safe error; malformed YAML → clear exception
+
+### 6c.3 When to run
+
+Run after any change to:
+- `src/screens/*.yaml` (screen definitions)
+- `src/ui/screen_loader.py`
+- `src/ui/bot_ui.py` (UserContext, variant field)
+- `src/ui/render_telegram.py`
+
+---
+
+## 6d. Category H — LLM Provider Tests
+
+**File:** `src/tests/llm/test_ask_openclaw.py`  
+**Technology:** pytest + `unittest.mock` (no live API calls)  
+**Target:** Runs entirely on the local development machine
+
+### 6d.1 Run commands
+
+```bash
+cd /home/stas/projects/sintaris-pl
+DEVICE_VARIANT=openclaw PYTHONPATH=src python3 -m pytest src/tests/llm/ -q --tb=short
+```
+
+### 6d.2 What it covers
+
+| Test | What it checks |
+|---|---|
+| `test_all_providers_present` | `_DISPATCH` dict contains `openai`, `ollama`, `openrouter`, `openai_compat` |
+| `test_ask_openai_success` | `_ask_openai()` parses valid API response |
+| `test_ask_openai_auth_error` | 401 → `LLMError` raised |
+| `test_ask_openai_timeout` | `requests.Timeout` → `LLMError` raised |
+| `test_ask_llm_dispatches` | `ask_llm()` routes to correct provider via `_DISPATCH` |
+| `test_ask_llm_unknown_provider` | Unknown provider → `LLMError` |
+| `test_ask_llm_falls_back` | Primary fails → fallback provider tried |
+| `test_ask_llm_falls_back_when_openclaw_not_found` | Primary not found → fallback (with empty `LLM_FALLBACK_PROVIDER`) |
+| + 10 more | Ollama provider, OpenRouter, OpenAI-compat, retry logic, model constants |
+
+### 6d.3 When to run
+
+Run after any change to:
+- `src/core/bot_llm.py`
+- `LLM_PROVIDER`, `OLLAMA_MODEL`, `LLM_FALLBACK_PROVIDER` constants in `bot_config.py`
+- Adding or removing LLM providers in `_DISPATCH`
 
 ---
 

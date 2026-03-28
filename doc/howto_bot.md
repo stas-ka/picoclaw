@@ -6,6 +6,20 @@
 
 ---
 
+## Variants
+
+Taris runs in two flavours depending on the hardware:
+
+| Variant | Hardware | Web UI | STT |
+|---|---|---|---|
+| **taris / PicoClaw** | Raspberry Pi (OpenClawPI / OpenClawPI2) | `https://agents.sintaris.net/picoassist/` | Vosk (offline) |
+| **OpenClaw** | Linux workstation (TariStation2 / TariStation1) | `http://localhost:8080/` (TariStation2) · `http://SintAItion:8080/` (TariStation1) | faster-whisper |
+
+- **PicoClaw** is the default variant. All Pi-specific instructions in this guide apply to PicoClaw.
+- **OpenClaw** runs on a local Linux workstation, uses **faster-whisper** for STT instead of Vosk, and supports remote **Ollama** LLM inference in addition to cloud providers.
+
+---
+
 ## Getting Started
 
 1. Open the bot in Telegram and send `/start`.
@@ -36,7 +50,10 @@ Open-ended conversation with the AI. Ask anything — questions, explanations, t
 ---
 
 ### 🖥️ System Chat
-Ask about the state of the Raspberry Pi in plain language. The bot translates your request into a shell command, shows it to you, and asks for confirmation before running.
+
+> ⚠️ **System Chat has moved to the Admin Panel.** It is no longer in the main menu and is accessible only to **Admin** and **Developer** users.
+
+Ask about the state of the system in plain language. The bot translates your request into a shell command, shows it for confirmation, then executes it.
 
 **Example requests:**
 - `show disk usage`
@@ -46,7 +63,7 @@ Ask about the state of the Raspberry Pi in plain language. The bot translates yo
 - `memory usage`
 - `uptime`
 
-> ⚠️ Only available for **Full** and **Admin** users (not guests).
+See **Admin Panel → System → 🖥️ System Chat** below.
 
 ---
 
@@ -120,7 +137,8 @@ Full system management. Visible only to **Admin** users.
 
 #### System
 - **📜 Changelog** — browse full version history with release notes.
-- **🖥️ System Chat** — available from both admin and full-user menu.
+- **🖥️ System Chat** — ask about the state of the system in plain language. The bot translates the request into a shell command, shows it for confirmation, then runs it. Available to **Admin** and **Developer** users only (moved from main menu).
+- **🔍 RAG / Knowledge Base** — enables/disables FTS5-based RAG for grounding LLM answers in uploaded documents. Upload documents via the Web UI (`POST /admin/rag/upload`); relevant chunks are automatically prepended to LLM prompts during chat.
 
 > To find a user's chat ID, ask them to message [@userinfobot](https://t.me/userinfobot) on Telegram.
 
@@ -167,6 +185,38 @@ The installed app opens in standalone mode (no browser chrome) and supports quic
 
 ---
 
+## 🔍 Knowledge Base (RAG)
+
+> 🧪 **BETA** — Available on both PicoClaw and OpenClaw variants.
+
+Admins can upload documents to the bot's knowledge base. During chat, the most relevant text chunks are automatically prepended to the LLM prompt, grounding answers in your documents.
+
+### Uploading Documents
+- Open the Web UI and navigate to the **Admin** panel.
+- Use the **Upload Document** form or send a `POST` request to `/admin/rag/upload`.
+- Supported formats: plain text, Markdown, PDF (text layer).
+- Documents are split into chunks (~512 characters) and indexed in an **SQLite FTS5** full-text search table.
+
+### How RAG Works
+1. User sends a message in 💬 Chat.
+2. `store_sqlite.search_fts(query, top_k=3)` retrieves the top-K most relevant chunks.
+3. Chunks are prepended to the LLM system prompt as context.
+4. LLM produces a grounded answer.
+
+### Admin Controls (Telegram)
+- Admin panel → **System** → **🔍 RAG / Knowledge Base** — toggle RAG on/off at runtime.
+- The toggle writes/removes `~/.taris/rag_disabled` (flag file; presence = RAG off).
+
+### Configuration
+| Constant | Default | Env var | Description |
+|---|---|---|---|
+| `RAG_ENABLED` | `true` | `RAG_ENABLED` | Master on/off switch |
+| `RAG_TOP_K` | `3` | `RAG_TOP_K` | Max chunks injected per request |
+| `RAG_CHUNK_SIZE` | `512` | `RAG_CHUNK_SIZE` | Characters per chunk when indexing |
+| `RAG_FLAG_FILE` | `~/.taris/rag_disabled` | — | Flag file (presence = RAG off) |
+
+---
+
 ## Commands
 
 | Command | Description |
@@ -174,6 +224,7 @@ The installed app opens in standalone mode (no browser chrome) and supports quic
 | `/start` | Show welcome message and main menu |
 | `/menu` | Open main menu |
 | `/status` | Show current mode and service status |
+| `/help_guide` | Link to this user guide |
 
 ---
 

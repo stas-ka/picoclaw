@@ -1,7 +1,15 @@
 # Taris — Feature Domains
 
-**Version:** `2026.3.28`  
+**Version:** `2026.3.43`  
 → Architecture index: [architecture.md](../architecture.md)
+
+---
+
+## 6. System Chat (Admin Panel)
+
+> **Note:** System Chat was moved from the main menu to the **Admin Panel** in v2026.3.43. It is now accessible only to **Admin** and **Developer** users via Admin Panel → System → 🖥️ System Chat.
+
+`_handle_system_chat(chat_id, text)` in `bot_handlers.py` — translates the user's plain-language request into a shell command via the LLM, shows the command for confirmation, then executes it with `_run_subprocess()` and returns the output.
 
 ---
 
@@ -156,3 +164,56 @@ Admin blocks   → set status "blocked"
 ### 10.2 Profile View
 
 `_handle_profile(chat_id)` shows: full name, Telegram username, chat ID, role, registration date, masked email (if mail creds configured).
+
+---
+
+## 11. FTS5/RAG Knowledge Base (`bot_documents.py`, `store_sqlite.py`)
+
+> 🧪 **BETA** — PicoClaw uses SQLite FTS5; OpenClaw uses PostgreSQL + pgvector.
+
+### 11.1 Upload Flow
+
+```
+Admin opens Web UI → POST /admin/rag/upload (multipart file)
+  → bot_documents.py: read file, split into chunks (RAG_CHUNK_SIZE chars)
+  → store_sqlite.index_document(chunks): INSERT INTO fts_documents VALUES (...)
+  → FTS5 virtual table auto-indexes content
+```
+
+### 11.2 Retrieval Flow (per chat message)
+
+```
+User sends message
+  → bot_llm.py: if RAG_ENABLED and not flag-file present:
+       store_sqlite.search_fts(query=text, top_k=RAG_TOP_K)
+       → SELECT … FROM fts_documents WHERE fts_documents MATCH ?
+       → returns top-K chunks sorted by BM25 rank
+  → chunks prepended to LLM system prompt as "Context:"
+  → LLM answer is grounded in uploaded documents
+```
+
+### 11.3 Runtime Toggle
+
+The admin can enable/disable RAG at runtime without restarting the bot:
+
+- Admin panel → 🔍 RAG / Knowledge Base button
+- Writes or removes `RAG_FLAG_FILE` (`~/.taris/rag_disabled`)
+- `bot_llm.py` checks flag-file presence on every request
+
+### 11.4 Configuration Constants (`bot_config.py`)
+
+| Constant | Default | Env var | Description |
+|---|---|---|---|
+| `RAG_ENABLED` | `true` | `RAG_ENABLED` | Master on/off switch |
+| `RAG_TOP_K` | `3` | `RAG_TOP_K` | Max chunks injected per LLM request |
+| `RAG_CHUNK_SIZE` | `512` | `RAG_CHUNK_SIZE` | Characters per chunk when indexing |
+| `RAG_FLAG_FILE` | `~/.taris/rag_disabled` | — | Flag file; presence = RAG off (runtime toggle) |
+
+### 11.5 Key Functions
+
+| Function | Location | Description |
+|---|---|---|
+| `store_sqlite.index_document(chunks)` | `store_sqlite.py` | Insert chunked text into FTS5 table |
+| `store_sqlite.search_fts(query, top_k)` | `store_sqlite.py` | BM25-ranked FTS5 search, returns top-K chunks |
+| `_rag_context(text)` | `bot_llm.py` | Calls `search_fts`, formats chunks for prompt injection |
+| `POST /admin/rag/upload` | `bot_web.py` | Web UI upload endpoint (admin-only) |

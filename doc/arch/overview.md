@@ -1,6 +1,6 @@
 # Taris — System Overview
 
-**Version:** `2026.3.28` · **Last updated:** March 2026  
+**Version:** `2026.3.43` · **Last updated:** March 2026  
 → Architecture index: [architecture.md](../architecture.md)
 
 ---
@@ -12,7 +12,16 @@ Taris (`sintaris-pl`) is the AI voice assistant component of the **Sintaris ecos
 | Variant | `DEVICE_VARIANT` | Hardware | Doc |
 |---------|-----------------|----------|-----|
 | **PicoClaw** | `picoclaw` (default) | Raspberry Pi 3/4/5 | [picoclaw.md](picoclaw.md) |
-| **OpenClaw** | `openclaw` | Laptop / AI PC (x86_64) | [openclaw-integration.md](openclaw-integration.md) |
+| **OpenClaw** | `openclaw` | Laptop / AI PC (x86_64, faster-whisper STT, Ollama LLM) | [openclaw-integration.md](openclaw-integration.md) |
+
+### Target Hosts
+
+| Host | Variant | Role | Web UI |
+|---|---|---|---|
+| **OpenClawPI2** | PicoClaw | Engineering / dev target (PI2) | `https://agents.sintaris.net/picoassist2/` |
+| **OpenClawPI** | PicoClaw | Production (PI1) | `https://agents.sintaris.net/picoassist/` |
+| **TariStation2** | OpenClaw | Local engineering workstation | `http://localhost:8080/` |
+| **TariStation1** (SintAItion) | OpenClaw | Production workstation | `http://SintAItion:8080/` |
 
 ### Ecosystem Projects
 

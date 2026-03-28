@@ -51,6 +51,15 @@ User (Telegram)
                          (notes, calendar, status queries)
 ```
 
+### OpenClaw Target Hosts
+
+| Host | Role | Deploy method | Web UI |
+|---|---|---|---|
+| **TariStation2** | Local engineering workstation | `cp src/... ~/.taris/...` then `systemctl --user restart taris-web` | `http://localhost:8080/` |
+| **TariStation1** (SintAItion) | Production workstation | `scp src/... stas@SintAItion:~/.taris/...` then SSH restart | `http://SintAItion:8080/` |
+
+> Use the `/taris-deploy-openclaw-target` skill for step-by-step OpenClaw deployment (sync files, restart service, verify journal).
+
 ---
 
 ## 12. File Layout on Pi

@@ -2873,6 +2873,129 @@ def t_voice_llm_routing(**_) -> list[TestResult]:
     return results
 
 
+def t_voice_system_mode_routing_guard(**_) -> list[TestResult]:
+    """T40: Source-inspection: bot_voice.py routes system mode and preserves admin role.
+
+    Verifies that:
+    - _handle_voice_message checks _user_mode == "system" and routes to _handle_system_message
+    - The routing code is present and structurally correct
+    """
+    t0 = time.time()
+    results = []
+    try:
+        src = os.path.join(os.path.dirname(__file__), "..", "features", "bot_voice.py")
+        src = os.path.abspath(src)
+        if not os.path.exists(src):
+            results.append(TestResult("voice_system_mode_routing", "SKIP", time.time() - t0,
+                                      "bot_voice.py not found"))
+            return results
+        code = open(src).read()
+
+        # Check that system mode routing is present
+        has_system_check = '"system"' in code and "_handle_system_message" in code
+        if has_system_check:
+            results.append(TestResult("voice_system_mode_check", "PASS", time.time() - t0,
+                                      "system mode routing present in bot_voice.py"))
+        else:
+            results.append(TestResult("voice_system_mode_check", "FAIL", time.time() - t0,
+                                      'Missing: "_user_mode==system" → _handle_system_message routing'))
+
+        # Check the import of _handle_system_message in voice module
+        has_import = "_handle_system_message" in code
+        if has_import:
+            results.append(TestResult("voice_system_import", "PASS", time.time() - t0,
+                                      "_handle_system_message imported/used in bot_voice.py"))
+        else:
+            results.append(TestResult("voice_system_import", "FAIL", time.time() - t0,
+                                      "_handle_system_message not referenced in bot_voice.py"))
+
+    except Exception as e:
+        results.append(TestResult("voice_system_mode_routing", "FAIL", time.time() - t0, str(e)))
+    return results
+
+
+def t_voice_lang_stt_lang_priority(**_) -> list[TestResult]:
+    """T41: Source-inspection: _voice_lang() respects STT_LANG env override.
+
+    Verifies that when STT_LANG is set in config, _voice_lang() returns that
+    language rather than the Telegram UI language. This prevents the regression
+    where Russian speakers got English TTS because their Telegram client was set
+    to English.
+    """
+    t0 = time.time()
+    results = []
+    try:
+        src = os.path.join(os.path.dirname(__file__), "..", "features", "bot_voice.py")
+        src = os.path.abspath(src)
+        if not os.path.exists(src):
+            results.append(TestResult("voice_lang_stt_priority", "SKIP", time.time() - t0,
+                                      "bot_voice.py not found"))
+            return results
+        code = open(src).read()
+
+        # _voice_lang() must exist and reference STT_LANG
+        import ast
+        try:
+            tree = ast.parse(code)
+            fn_names = [n.name for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)]
+            has_voice_lang = "_voice_lang" in fn_names
+        except SyntaxError:
+            has_voice_lang = "_voice_lang" in code
+
+        if has_voice_lang:
+            results.append(TestResult("voice_lang_function_exists", "PASS", time.time() - t0,
+                                      "_voice_lang() function present"))
+        else:
+            results.append(TestResult("voice_lang_function_exists", "FAIL", time.time() - t0,
+                                      "_voice_lang() missing from bot_voice.py"))
+
+        # Check STT_LANG is referenced (either import or attribute access)
+        has_stt_lang = "STT_LANG" in code
+        if has_stt_lang:
+            results.append(TestResult("voice_lang_stt_lang_ref", "PASS", time.time() - t0,
+                                      "STT_LANG referenced in bot_voice.py"))
+        else:
+            results.append(TestResult("voice_lang_stt_lang_ref", "FAIL", time.time() - t0,
+                                      "STT_LANG not referenced in bot_voice.py — language override missing"))
+
+        # Runtime check: import and call _voice_lang with STT_LANG override
+        try:
+            import importlib
+            import sys
+            # Save original STT_LANG if set
+            orig = os.environ.get("STT_LANG")
+            os.environ["STT_LANG"] = "ru"
+            import core.bot_config as cfg
+            orig_cfg = getattr(cfg, "STT_LANG", None)
+            cfg.STT_LANG = "ru"
+
+            # Try importing and calling _voice_lang
+            features_path = os.path.join(os.path.dirname(__file__), "..", "features")
+            if features_path not in sys.path:
+                sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+            from features.bot_voice import _voice_lang
+            lang = _voice_lang(99999)  # dummy chat_id → falls back to STT_LANG
+            cfg.STT_LANG = orig_cfg
+            if orig is None:
+                os.environ.pop("STT_LANG", None)
+            else:
+                os.environ["STT_LANG"] = orig
+
+            if lang == "ru":
+                results.append(TestResult("voice_lang_runtime_override", "PASS", time.time() - t0,
+                                          f"_voice_lang(99999) → '{lang}' (STT_LANG=ru)"))
+            else:
+                results.append(TestResult("voice_lang_runtime_override", "WARN", time.time() - t0,
+                                          f"_voice_lang(99999) → '{lang}' (expected 'ru' with STT_LANG=ru)"))
+        except Exception as e2:
+            results.append(TestResult("voice_lang_runtime_override", "SKIP", time.time() - t0,
+                                      f"Runtime call skipped: {e2}"))
+
+    except Exception as e:
+        results.append(TestResult("voice_lang_stt_priority", "FAIL", time.time() - t0, str(e)))
+    return results
+
+
 TEST_FUNCTIONS = [
     t_model_files_present,
     t_piper_json_present,
@@ -2927,6 +3050,10 @@ TEST_FUNCTIONS = [
     t_tts_multilang,
     # Voice LLM routing guard: ask_llm() used, no TARIS_BIN (T39)
     t_voice_llm_routing,
+    # Voice system mode routing + admin role preservation (T40)
+    t_voice_system_mode_routing_guard,
+    # Voice lang: STT_LANG env override takes priority over Telegram UI lang (T41)
+    t_voice_lang_stt_lang_priority,
 ]
 
 

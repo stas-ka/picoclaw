@@ -191,18 +191,19 @@ class TestDispatch:
         assert result == "mocked"
 
     def test_ask_llm_falls_back_when_openclaw_not_found(self):
-        """FileNotFoundError → ask_llm() returns '' (no local fallback configured)."""
+        """FileNotFoundError → ask_llm() returns '' (no local or named fallback configured)."""
         llm = _import_llm()
         with patch.object(llm, "LLM_PROVIDER", "openclaw"), \
              patch.object(llm, "_ask_openclaw", side_effect=FileNotFoundError("no binary")), \
              patch.object(llm, "LLM_LOCAL_FALLBACK", False), \
+             patch.object(llm, "LLM_FALLBACK_PROVIDER", ""), \
              patch("os.path.exists", return_value=False):
             result = llm.ask_llm("test", timeout=5)
         assert result == ""
 
     def test_all_providers_present(self):
         llm = _import_llm()
-        expected = {"taris", "openclaw", "openai", "yandexgpt", "gemini", "anthropic", "local"}
+        expected = {"taris", "openclaw", "openai", "yandexgpt", "gemini", "anthropic", "local", "ollama"}
         assert expected == set(llm._DISPATCH.keys())
 
 
