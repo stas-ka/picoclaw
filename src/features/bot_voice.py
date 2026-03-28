@@ -79,6 +79,16 @@ def _clear_pending_tts(chat_id: int) -> None:
         pass
 
 
+def _voice_lang(chat_id: int) -> str:
+    """Return the language to use for TTS/voice output.
+
+    Prioritises STT_LANG (configured voice language) over the Telegram UI language.
+    This ensures TTS speaks the same language the user *speaks*, not their Telegram
+    client language (e.g. user has Telegram set to 'en' but speaks Russian).
+    """
+    return STT_LANG if STT_LANG else _lang(chat_id)
+
+
 def _cleanup_orphaned_tts() -> None:
     """On startup, edit 'Generating audio…' messages left by a previous restart."""
     try:
@@ -619,7 +629,7 @@ def _handle_note_read_aloud(chat_id: int, slug: str) -> None:
             sent       = 0
 
             for i, chunk in enumerate(chunks):
-                ogg = _tts_to_ogg(chunk, _trim=False, lang=_lang(chat_id))
+                ogg = _tts_to_ogg(chunk, _trim=False, lang=_voice_lang(chat_id))
                 if not ogg:
                     log.warning(f"[NotesTTS] chunk {i + 1}/{total} TTS synthesis failed — skipping")
                     continue
@@ -684,7 +694,7 @@ def _handle_digest_tts(chat_id: int) -> None:
             sent    = 0
 
             for i, chunk in enumerate(chunks):
-                ogg = _tts_to_ogg(chunk, _trim=False, lang=_lang(chat_id))
+                ogg = _tts_to_ogg(chunk, _trim=False, lang=_voice_lang(chat_id))
                 if not ogg:
                     log.warning(f"[DigestTTS] chunk {i + 1}/{total} TTS synthesis failed — skipping")
                     continue
@@ -1019,7 +1029,7 @@ def _handle_voice_message(chat_id: int, voice_obj) -> None:
             audio_on = (not opts.get("user_audio_toggle")
                         or _st._user_audio.get(chat_id, True))
             if audio_on:
-                ogg = _tts_to_ogg(reply, lang=_lang(chat_id))
+                ogg = _tts_to_ogg(reply, lang=_voice_lang(chat_id))
                 if ogg:
                     bot.send_voice(chat_id, io.BytesIO(ogg))
             return
@@ -1051,7 +1061,7 @@ def _handle_voice_message(chat_id: int, voice_obj) -> None:
             if audio_on3:
                 tts3 = bot.send_message(chat_id, _t(chat_id, "gen_audio"),
                                         parse_mode="Markdown")
-                ogg3 = _tts_to_ogg(note_plain, lang=_lang(chat_id))
+                ogg3 = _tts_to_ogg(note_plain, lang=_voice_lang(chat_id))
                 if ogg3:
                     bot.send_voice(chat_id, io.BytesIO(ogg3),
                                    caption=_t(chat_id, "audio_caption"))
@@ -1104,7 +1114,7 @@ def _handle_voice_message(chat_id: int, voice_obj) -> None:
         _tts_thread = None
         if audio_on and opts.get("parallel_tts"):
             def _bg_tts():
-                _tts_result[0] = _tts_to_ogg(response, lang=_lang(chat_id))
+                _tts_result[0] = _tts_to_ogg(response, lang=_voice_lang(chat_id))
             _tts_thread = threading.Thread(target=_bg_tts, daemon=True)
             _tts_thread.start()
 
@@ -1134,7 +1144,7 @@ def _handle_voice_message(chat_id: int, voice_obj) -> None:
                     _tts_thread.join(timeout=160)   # piper 120s + ffmpeg 30s + slack
                     ogg = _tts_result[0]
                 else:
-                    ogg = _tts_to_ogg(response, lang=_lang(chat_id))
+                    ogg = _tts_to_ogg(response, lang=_voice_lang(chat_id))
                 _timing["TTS"] = time.time() - _ts
 
                 if ogg:

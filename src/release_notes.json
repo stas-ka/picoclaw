@@ -1,5 +1,16 @@
 [
   {
+    "version": "2026.3.41",
+    "date":    "2026-03-28",
+    "title":   "Fix LLM quality + TTS language mismatch",
+    "changes": [
+      "bot.env: LLM_PROVIDER=openai (gpt-4o-mini) — qwen2:0.5b was too small and hallucinating",
+      "bot.env: LLM_FALLBACK_PROVIDER=ollama (local offline fallback when OpenAI unreachable)",
+      "bot.env: FASTER_WHISPER_MODEL=small (was 'base' — small is 4x larger, much better Russian accuracy)",
+      "bot_voice.py: _voice_lang() helper — TTS now uses STT_LANG (configured speech language) instead of Telegram client UI language, fixing English TTS on Russian voice sessions"
+    ]
+  },
+  {
     "version": "2026.3.40",
     "date":    "2026-03-28",
     "title":   "Fix menu/keyboard silent loss due to Markdown parse failure",
