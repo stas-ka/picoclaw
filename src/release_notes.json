@@ -1,5 +1,14 @@
 [
   {
+    "version": "2026.3.42",
+    "date":    "2026-03-28",
+    "title":   "Fix voice mode ignoring user role in system chat",
+    "changes": [
+      "bot_voice.py: voice pipeline now checks _cur_mode == 'system' and dispatches to _handle_system_message() (admin-only, role-aware), same as the text handler",
+      "Previously voice in system chat fell through to generic ask_llm() with the standard security preamble that refuses system commands — admin was effectively treated as a regular user in voice mode"
+    ]
+  },
+  {
     "version": "2026.3.41",
     "date":    "2026-03-28",
     "title":   "Fix LLM quality + TTS language mismatch",

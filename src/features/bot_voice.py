@@ -1089,6 +1089,12 @@ def _handle_voice_message(chat_id: int, voice_obj) -> None:
         except Exception:
             pass
 
+        # ── System chat mode: route to system handler (admin-only, role-aware) ──
+        if _cur_mode == "system":
+            from telegram.bot_handlers import _handle_system_message
+            _handle_system_message(chat_id, _clean_text)
+            return
+
         # Security L1: reject injection attempts before sending to LLM
         from security.bot_security import _check_injection
         _is_inj, _inj_reason = _check_injection(text)
