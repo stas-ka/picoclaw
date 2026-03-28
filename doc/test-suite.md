@@ -144,6 +144,11 @@ pscp -pw "%HOSTPWD%" src\tests\voice\*.ogg              stas@OpenClawPI:/home/st
 | After changing `store_sqlite.py` or `bot_db.py` | T22, T23 |
 | After uploading new RAG document | T24 (`--test rag_lr`) |
 | After changing `generate_web_link_code()` / `validate_web_link_code()` / `bot_state.py` web link persistence | T25 (`--test web_link_code`) |
+| After changing `_stt_faster_whisper()` language routing or hallucination guard | T35 (`--test stt_language`) |
+| After changing STT fallback chain in `bot_voice.py` or `STT_FALLBACK_PROVIDER` config | T36 (`--test stt_fallback`) |
+| After changing `_stt_openai_whisper_web` or OpenAI Whisper API config | T37 (`--test openai_whisper_stt`) |
+| After adding/removing Piper models or changing `_piper_model_path()` | T38 (`--test tts_multilang`) |
+| After any change to voice pipeline LLM call (ask_llm / TARIS_BIN) | T39 (`--test voice_llm_routing`) |
 
 ---
 
@@ -466,6 +471,37 @@ Test T25 validates the Telegram↔Web account linking pipeline (`generate_web_li
 ```bat
 plink -pw "%HOSTPWD%" -batch stas@OpenClawPI "python3 /home/stas/.taris/tests/test_voice_regression.py --test web_link_code --verbose"
 ```
+
+---
+
+### OpenClaw voice + LLM tests (T35–T39)
+
+Tests T35–T39 cover STT/TTS multi-language correctness, fallback chains, remote STT, and the voice LLM routing fix.
+
+| ID | Function | What it tests |
+|----|----------|---------------|
+| T35 | `t_stt_language_routing_fw` | faster-whisper accepts ru/en/de language codes; hallucination guard rejects false-positives per lang; live silence→None for each lang |
+| T36 | `t_stt_fallback_chain` | Primary STT fails → `vosk_fallback` activated; `STT_FALLBACK_PROVIDER` constant wired; silence triggers fallback |
+| T37 | `t_openai_whisper_stt` | OpenAI Whisper API provider: constants present, `_stt_openai_whisper_web` defined, live call if API key set (SKIP if no key) |
+| T38 | `t_tts_multilang` | Piper `_piper_model_path()` routes ru/de correctly; EN falls back to ru model; ru/de synthesis produces OGG (SKIP if Piper binary missing) |
+| T39 | `t_voice_llm_routing` | `bot_voice.py` imports `ask_llm` (not `_ask_taris`); no `TARIS_BIN` reference; `ask_llm` callable; fallback chain wired |
+
+**Run commands:**
+```bash
+# All five new tests at once (use substring match):
+PYTHONPATH=src python3 src/tests/test_voice_regression.py --test stt_language
+PYTHONPATH=src python3 src/tests/test_voice_regression.py --test stt_fallback
+PYTHONPATH=src python3 src/tests/test_voice_regression.py --test openai_whisper_stt
+PYTHONPATH=src python3 src/tests/test_voice_regression.py --test tts_multilang
+PYTHONPATH=src python3 src/tests/test_voice_regression.py --test voice_llm_routing
+```
+
+**Mandatory when:**
+- After changing `_stt_faster_whisper()` language routing or hallucination guard → T35
+- After changing STT fallback logic in `bot_voice.py` or `STT_FALLBACK_PROVIDER` config → T36
+- After changing `_stt_openai_whisper_web` or OpenAI STT config → T37
+- After adding/removing Piper language models or changing `_piper_model_path()` → T38
+- After any change that touches the voice pipeline's LLM call (was TARIS_BIN, now ask_llm) → T39
 
 ---
 
