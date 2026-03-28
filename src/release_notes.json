@@ -1,5 +1,19 @@
 [
   {
+    "version": "2026.3.29",
+    "date":    "2026-03-28",
+    "title":   "Pipeline analytics logger (OpenClaw)",
+    "changes": [
+      "New core/pipeline_logger.py: JSONL per-stage analytics (decode/STT/LLM/TTS/RAG) with session_id grouping",
+      "bot_web.py: PipelineLog wired into /api/voice/transcribe and /api/voice/chat endpoints",
+      "bot_web.py: new /api/logs endpoint (read pipeline JSONL records)",
+      "bot_web.py: new /api/logs/stats endpoint (per-stage count/avg/p95/min/max)",
+      "bot_web.py: new /api/benchmark endpoint (LLM + TTS + STT silence probe)",
+      "T32: regression test for pipeline logger (import, write, read-back, stats, bot_web integration)",
+      "openclaw.instructions.md: expanded sync rule with full table and verify-before-restart script"
+    ]
+  },
+  {
     "version": "2026.3.28",
     "date":    "2026-04-14",
     "title":   "OpenClaw STT/LLM improvements (taris-openclaw branch)",

@@ -50,14 +50,44 @@ New STT providers:
 
 ## Sync Rule — mandatory after every source change
 
+After implementing AND testing any change, sync the **complete** set of affected files
+before restarting. The table below is the canonical sync map:
+
+| Source path | Deployed path |
+|---|---|
+| `src/core/bot_config.py` | `~/.taris/core/bot_config.py` |
+| `src/core/bot_llm.py` | `~/.taris/core/bot_llm.py` |
+| `src/features/bot_voice.py` | `~/.taris/features/bot_voice.py` |
+| `src/bot_web.py` | `~/.taris/bot_web.py` |
+| `src/web/templates/*.html` | `~/.taris/web/templates/*.html` |
+| `src/web/static/*` | `~/.taris/web/static/*` |
+| `src/voice_assistant.py` | `~/.taris/voice_assistant.py` |
+| Any other `src/<file>.py` | `~/.taris/<file>.py` |
+
+**Sync + restart command (always run after changes):**
+
 ```bash
-cp /home/stas/projects/sintaris-pl/src/core/bot_config.py ~/.taris/core/
-cp /home/stas/projects/sintaris-pl/src/core/bot_llm.py    ~/.taris/core/
+# Sync all commonly-changed files at once:
+cp /home/stas/projects/sintaris-pl/src/core/bot_config.py   ~/.taris/core/
+cp /home/stas/projects/sintaris-pl/src/core/bot_llm.py      ~/.taris/core/
 cp /home/stas/projects/sintaris-pl/src/features/bot_voice.py ~/.taris/features/
+cp /home/stas/projects/sintaris-pl/src/bot_web.py            ~/.taris/
+cp /home/stas/projects/sintaris-pl/src/web/templates/*.html  ~/.taris/web/templates/
 systemctl --user restart taris-web
 ```
 
-Never forget to sync — `~/.taris/` is NOT symlinked to the source tree.
+**Verify sync before restart** (prevents stale deployment bugs):
+
+```bash
+# Quick diff check — should print only "OK" lines:
+for f in src/bot_web.py src/core/bot_config.py src/core/bot_llm.py src/features/bot_voice.py; do
+  diff "$f" ~/.taris/"${f#src/}" > /dev/null 2>&1 && echo "OK $f" || echo "DIFF $f (NOT SYNCED)"
+done
+diff -rq src/web/templates ~/.taris/web/templates && echo "OK templates" || echo "DIFF templates"
+```
+
+> **Rule:** A change is not done until: source edited → tested → synced → service restarted → verified in logs.
+> `~/.taris/` is NOT symlinked to the source tree. Silent drift causes hard-to-debug issues.
 
 ## Test Protocol for OpenClaw Changes
 

@@ -23,6 +23,7 @@ import stat as _stat_mod
 import subprocess
 import tempfile
 import threading
+import time
 import uuid
 
 try:
@@ -57,6 +58,7 @@ from core.bot_config import (
     DEVICE_VARIANT, TARIS_DIR, log,
     STT_PROVIDER, FASTER_WHISPER_MODEL, FASTER_WHISPER_DEVICE, FASTER_WHISPER_COMPUTE,
 )
+from core.pipeline_logger import PipelineLog, read_pipeline_logs, get_pipeline_stats
 from security.bot_auth import (
     find_account_by_username, create_account, verify_password,
     create_token, verify_token, list_accounts, ensure_admin_account,
@@ -1900,6 +1902,7 @@ async def voice_transcribe_endpoint(request: Request, audio: UploadFile = File(.
         raise HTTPException(400, "Empty audio")
 
     tmp_in_path = None
+    pl = PipelineLog(user_id=user.get("sub", "anon"))
     try:
         # Save uploaded audio to temp file
         with tempfile.NamedTemporaryFile(suffix=".webm", delete=False) as tmp_in:
@@ -1907,6 +1910,7 @@ async def voice_transcribe_endpoint(request: Request, audio: UploadFile = File(.
             tmp_in_path = tmp_in.name
 
         # ffmpeg: WebM/OGG → 16 kHz mono S16LE PCM
+        t0_decode = time.monotonic()
         ff = subprocess.run(
             ["ffmpeg", "-y", "-i", tmp_in_path,
              "-ar", "16000", "-ac", "1", "-f", "s16le", "pipe:1"],
@@ -1915,11 +1919,13 @@ async def voice_transcribe_endpoint(request: Request, audio: UploadFile = File(.
         raw_pcm = ff.stdout
         if not raw_pcm:
             raise ValueError(f"ffmpeg decode failed (rc={ff.returncode}): {ff.stderr[:200]}")
+        pl.log_decode(raw_pcm, int((time.monotonic() - t0_decode) * 1000))
 
         duration_s = round(len(raw_pcm) / (16000 * 2), 1)
+        audio_ms = int(duration_s * 1000)
 
         # STT — routes by STT_PROVIDER (faster_whisper for openclaw, vosk otherwise)
-        transcript = _stt_web(raw_pcm, 16000)
+        transcript = pl.timed_stt(lambda: _stt_web(raw_pcm, 16000), audio_ms=audio_ms)
 
         # Save as last transcript
         last_t_file = Path(_TARIS_DIR) / "last_transcript.txt"
@@ -1957,6 +1963,7 @@ async def voice_chat_endpoint(request: Request, audio: UploadFile = File(...)):
     if not audio_data:
         raise HTTPException(400, "Empty audio")
 
+    pl = PipelineLog(user_id=user.get("sub", "anon"))
     tmp_in_path = None
     try:
         # ── Stage 1: decode browser audio → 16 kHz mono PCM ───────────────────
@@ -1964,6 +1971,7 @@ async def voice_chat_endpoint(request: Request, audio: UploadFile = File(...)):
             tmp_in.write(audio_data)
             tmp_in_path = tmp_in.name
 
+        t0_decode = time.monotonic()
         ff = subprocess.run(
             ["ffmpeg", "-y", "-i", tmp_in_path,
              "-ar", "16000", "-ac", "1", "-f", "s16le", "pipe:1"],
@@ -1972,9 +1980,12 @@ async def voice_chat_endpoint(request: Request, audio: UploadFile = File(...)):
         raw_pcm = ff.stdout
         if not raw_pcm:
             raise ValueError(f"ffmpeg decode failed (rc={ff.returncode}): {ff.stderr[:200]}")
+        pl.log_decode(raw_pcm, int((time.monotonic() - t0_decode) * 1000))
+
+        audio_ms = int(len(raw_pcm) / (16000 * 2) * 1000)
 
         # ── Stage 2: STT (faster-whisper for openclaw, Vosk otherwise) ────────
-        user_text = _stt_web(raw_pcm, 16000)
+        user_text = pl.timed_stt(lambda: _stt_web(raw_pcm, 16000), audio_ms=audio_ms)
 
         if not user_text:
             return {"user_text": "", "reply_text": "", "audio_b64": "", "error": "no_speech"}
@@ -1986,7 +1997,7 @@ async def voice_chat_endpoint(request: Request, audio: UploadFile = File(...)):
         )
 
         # ── Stage 3: LLM ───────────────────────────────────────────────────────
-        reply_text = ask_llm(user_text, timeout=90)
+        reply_text = pl.timed_llm(lambda: ask_llm(user_text, timeout=90), input_text=user_text)
         if not reply_text:
             reply_text = "No response from LLM."
 
@@ -2009,20 +2020,25 @@ async def voice_chat_endpoint(request: Request, audio: UploadFile = File(...)):
             )
             if model_path and Path(piper_bin).exists():
                 try:
-                    pr = subprocess.run(
-                        [piper_bin, "--model", model_path, "--output-raw"],
-                        input=tts_text.encode("utf-8"),
-                        capture_output=True, timeout=180,
-                    )
-                    if pr.stdout:
-                        ff2 = subprocess.run(
-                            ["ffmpeg", "-y",
-                             "-f", "s16le", "-ar", "22050", "-ac", "1", "-i", "pipe:0",
-                             "-c:a", "libopus", "-b:a", "24k", "-f", "ogg", "pipe:1"],
-                            input=pr.stdout, capture_output=True, timeout=30,
+                    def _run_tts() -> Optional[bytes]:
+                        pr = subprocess.run(
+                            [piper_bin, "--model", model_path, "--output-raw"],
+                            input=tts_text.encode("utf-8"),
+                            capture_output=True, timeout=180,
                         )
-                        if ff2.stdout:
-                            audio_b64 = base64.b64encode(ff2.stdout).decode()
+                        if pr.stdout:
+                            ff2 = subprocess.run(
+                                ["ffmpeg", "-y",
+                                 "-f", "s16le", "-ar", "22050", "-ac", "1", "-i", "pipe:0",
+                                 "-c:a", "libopus", "-b:a", "24k", "-f", "ogg", "pipe:1"],
+                                input=pr.stdout, capture_output=True, timeout=30,
+                            )
+                            return ff2.stdout if ff2.stdout else None
+                        return None
+
+                    ogg_bytes = pl.timed_tts(_run_tts, input_text=tts_text)
+                    if ogg_bytes:
+                        audio_b64 = base64.b64encode(ogg_bytes).decode()
                 except Exception as tts_err:
                     log.warning(f"[Web/VoiceChat TTS] {tts_err}")
 
@@ -2266,6 +2282,143 @@ async def api_status(request: Request):
     return JSONResponse({"status": "ok", "version": BOT_VERSION, "provider": LLM_PROVIDER})
 
 
+@app.get("/api/logs")
+async def api_logs(request: Request, date: Optional[str] = None,
+                   last_n: int = 100, stage: Optional[str] = None):
+    """Return pipeline JSONL log records for analytics.
+
+    Query params:
+      date   – YYYY-MM-DD (default: today UTC)
+      last_n – max records to return (default: 100)
+      stage  – filter by stage: stt | llm | tts | rag | decode
+    """
+    _verify_api_token(request)
+    records = read_pipeline_logs(date=date, last_n=last_n, stage=stage)
+    return JSONResponse({"records": records, "count": len(records)})
+
+
+@app.get("/api/logs/stats")
+async def api_logs_stats(request: Request, date: Optional[str] = None):
+    """Return per-stage latency statistics for a given date.
+
+    Returns avg_ms, p95_ms, min_ms, max_ms, count, error_count, providers per stage.
+    """
+    _verify_api_token(request)
+    stats = get_pipeline_stats(date=date)
+    return JSONResponse({"date": date or "today", "stats": stats})
+
+
+@app.post("/api/benchmark")
+async def api_benchmark(request: Request):
+    """Run a synthetic STT+LLM+TTS benchmark and return timing breakdown.
+
+    Measures each stage independently on a fixed test prompt.
+    Useful for comparing STT models, LLM providers, and TTS engines.
+
+    Body (JSON): {"prompt": "...", "lang": "ru"}  (optional — defaults provided)
+    """
+    _verify_api_token(request)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    lang = body.get("lang", "ru")
+    test_prompts = {
+        "ru": "Привет, расскажи мне что-нибудь интересное о космосе.",
+        "en": "Hello, tell me something interesting about space.",
+        "de": "Hallo, erzähl mir etwas Interessantes über den Weltraum.",
+    }
+    prompt = body.get("prompt", test_prompts.get(lang, test_prompts["ru"]))
+
+    pl = PipelineLog(session_id="benchmark", user_id="api")
+    result: dict = {"prompt": prompt, "lang": lang, "stages": {}}
+
+    # ── LLM benchmark ──────────────────────────────────────────────────────
+    t0 = time.monotonic()
+    llm_error = None
+    llm_reply = ""
+    try:
+        llm_reply = ask_llm(prompt, timeout=60) or ""
+    except Exception as e:
+        llm_error = str(e)
+    llm_ms = int((time.monotonic() - t0) * 1000)
+    pl.log("llm", provider=_llm_provider_label(), lang=lang,
+           input_chars=len(prompt), output_chars=len(llm_reply),
+           duration_ms=llm_ms, error=llm_error)
+    result["stages"]["llm"] = {
+        "provider": _llm_provider_label(), "duration_ms": llm_ms,
+        "input_chars": len(prompt), "output_chars": len(llm_reply),
+        "error": llm_error,
+    }
+
+    # ── TTS benchmark (if piper available) ────────────────────────────────
+    tts_text = (llm_reply or prompt)[:200]
+    d = Path(_TARIS_DIR)
+    piper_bin = "/usr/local/bin/piper"
+    model_path = next(
+        (str(p) for p in [d / "ru_RU-irina-low.onnx", d / "ru_RU-irina-medium.onnx"]
+         if p.exists()), None
+    )
+    if model_path and Path(piper_bin).exists():
+        t0 = time.monotonic()
+        tts_error = None
+        tts_audio_ms = 0
+        try:
+            pr = subprocess.run(
+                [piper_bin, "--model", model_path, "--output-raw"],
+                input=tts_text.encode("utf-8"), capture_output=True, timeout=60,
+            )
+            if pr.stdout:
+                tts_audio_ms = int(len(pr.stdout) / (22050 * 2) * 1000)
+        except Exception as e:
+            tts_error = str(e)
+        tts_ms = int((time.monotonic() - t0) * 1000)
+        pl.log("tts", provider="piper", lang=lang,
+               input_chars=len(tts_text), audio_ms=tts_audio_ms,
+               duration_ms=tts_ms, error=tts_error)
+        result["stages"]["tts"] = {
+            "provider": "piper", "model": model_path.rsplit("/", 1)[-1],
+            "duration_ms": tts_ms, "audio_ms": tts_audio_ms,
+            "rtf": round(tts_ms / tts_audio_ms, 3) if tts_audio_ms else None,
+            "error": tts_error,
+        }
+
+    # ── STT benchmark (silence probe — real audio requires a test fixture) ─
+    t0 = time.monotonic()
+    stt_error = None
+    stt_result = None
+    try:
+        silence_pcm = b"\x00" * (16000 * 2 * 2)   # 2 s of silence
+        stt_result = _stt_faster_whisper_web(silence_pcm, 16000, lang=lang)
+    except Exception as e:
+        stt_error = str(e)
+    stt_ms = int((time.monotonic() - t0) * 1000)
+    pl.log("stt", provider=_stt_provider_label(), lang=lang,
+           audio_ms=2000, output_chars=len(stt_result or ""),
+           duration_ms=stt_ms, error=stt_error)
+    result["stages"]["stt"] = {
+        "provider": _stt_provider_label(), "duration_ms": stt_ms,
+        "audio_ms": 2000, "rtf": round(stt_ms / 2000, 3),
+        "note": "silence probe only — use benchmark_stt.py for real WER",
+        "error": stt_error,
+    }
+
+    return JSONResponse(result)
+
+
+def _stt_provider_label() -> str:
+    if STT_PROVIDER == "faster_whisper":
+        return f"faster_whisper:{FASTER_WHISPER_MODEL}:{FASTER_WHISPER_DEVICE}"
+    return STT_PROVIDER
+
+
+def _llm_provider_label() -> str:
+    from core.bot_config import OLLAMA_MODEL
+    if LLM_PROVIDER == "ollama":
+        return f"ollama:{OLLAMA_MODEL}"
+    return LLM_PROVIDER
+
+
 @app.post("/api/chat")
 async def api_chat(request: Request):
     """Send a prompt to the active LLM and return the reply.
@@ -2282,7 +2435,8 @@ async def api_chat(request: Request):
     if not message:
         raise HTTPException(400, detail="'message' field is required")
     t = min(int(body.get("timeout", 60)), 120)
-    reply = ask_llm(message, timeout=t)
+    pl = PipelineLog(user_id="api")
+    reply = pl.timed_llm(lambda: ask_llm(message, timeout=t), input_text=message)
     return JSONResponse({"reply": reply})
 
 

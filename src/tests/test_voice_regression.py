@@ -2059,6 +2059,82 @@ def t_web_stt_provider_routing(**_) -> list[TestResult]:
     return results
 
 
+def t_pipeline_logger(**_) -> list[TestResult]:
+    """T32 — Pipeline logger: module exists, writes JSONL, read_pipeline_logs works.
+
+    Regression guard for the pipeline analytics logger (core/pipeline_logger.py).
+    Verifies: module importable, log() writes a JSONL record, log has required fields,
+    read_pipeline_logs() returns the written record, get_pipeline_stats() aggregates.
+    """
+    t0 = time.time()
+    results: list[TestResult] = []
+    import tempfile, json as _json, os as _os
+
+    try:
+        # 1. Module importable without telegram machinery
+        _os.environ.setdefault("TARIS_DIR", str(TARIS_DIR))
+        sys.path.insert(0, str(TARIS_DIR))
+        import importlib
+        if "core.pipeline_logger" in sys.modules:
+            importlib.reload(sys.modules["core.pipeline_logger"])
+        import core.pipeline_logger as _pl
+        results.append(TestResult("pipeline_logger_import", "PASS", time.time() - t0,
+                                  "core.pipeline_logger importable"))
+
+        # 2. Write a test record to a temp log dir
+        orig_log_dir = _pl._LOG_DIR
+        with tempfile.TemporaryDirectory() as tmpdir:
+            _pl._LOG_DIR = Path(tmpdir)
+            pl = _pl.PipelineLog(session_id="test_t32", user_id="test")
+            pl.log("stt", provider="faster_whisper:base:cpu", lang="ru",
+                   input_chars=0, output_chars=12, audio_ms=1500, duration_ms=340)
+            pl.log("llm", provider="ollama:qwen2:0.5b", lang="ru",
+                   input_chars=12, output_chars=80, duration_ms=1200)
+            pl.log("tts", provider="piper", lang="ru",
+                   input_chars=80, audio_ms=2400, duration_ms=600)
+
+            # 3. Read back
+            records = _pl.read_pipeline_logs(last_n=50)
+            results.append(TestResult("pipeline_logger_write_read", "PASS" if len(records) == 3 else "FAIL",
+                                      time.time() - t0,
+                                      f"wrote 3 records, read back {len(records)}"))
+
+            # 4. Required fields present
+            required = {"ts", "session_id", "stage", "provider", "duration_ms", "lang"}
+            missing = required - set(records[0].keys()) if records else required
+            results.append(TestResult("pipeline_logger_fields", "PASS" if not missing else "FAIL",
+                                      time.time() - t0,
+                                      f"all required fields present" if not missing
+                                      else f"missing: {missing}"))
+
+            # 5. stats aggregation
+            stats = _pl.get_pipeline_stats()
+            has_stt = "stt" in stats and stats["stt"]["count"] == 1
+            has_llm = "llm" in stats and stats["llm"]["avg_ms"] == 1200
+            results.append(TestResult("pipeline_logger_stats", "PASS" if (has_stt and has_llm) else "FAIL",
+                                      time.time() - t0,
+                                      f"stats: stt_count={stats.get('stt',{}).get('count')} llm_avg_ms={stats.get('llm',{}).get('avg_ms')}"))
+
+        _pl._LOG_DIR = orig_log_dir  # restore
+
+        # 6. bot_web.py imports pipeline_logger and has /api/logs endpoint
+        bw_path = TARIS_DIR / "bot_web.py"
+        if bw_path.exists():
+            bw_src = bw_path.read_text()
+            has_import = "from core.pipeline_logger import" in bw_src
+            has_logs_ep = '"/api/logs"' in bw_src
+            has_bench_ep = '"/api/benchmark"' in bw_src
+            results.append(TestResult("pipeline_logger_bot_web_integration",
+                                      "PASS" if (has_import and has_logs_ep and has_bench_ep) else "FAIL",
+                                      time.time() - t0,
+                                      f"import={'yes' if has_import else 'NO'} /api/logs={'yes' if has_logs_ep else 'NO'} /api/benchmark={'yes' if has_bench_ep else 'NO'}"))
+
+    except Exception as e:
+        results.append(TestResult("pipeline_logger", "FAIL", time.time() - t0, str(e)))
+
+    return results
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Runner
 # ─────────────────────────────────────────────────────────────────────────────
@@ -2101,6 +2177,8 @@ TEST_FUNCTIONS = [
     t_openclaw_stt_routing,
     t_openclaw_ollama_provider,
     t_web_stt_provider_routing,
+    # Pipeline logger tests (T32)
+    t_pipeline_logger,
 ]
 
 
