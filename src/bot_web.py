@@ -448,7 +448,7 @@ async def login_page(request: Request):
     user = _get_current_user(request)
     if user:
         return RedirectResponse("/", status_code=302)
-    return templates.TemplateResponse("login.html", {
+    return templates.TemplateResponse(request, "login.html", {
         "request": request, "error": None, "hostname": _HOSTNAME, "username": None,
     })
 
@@ -457,19 +457,19 @@ async def login_page(request: Request):
 async def login_submit(request: Request, username: str = Form(...), password: str = Form(...)):
     account = find_account_by_username(username)
     if not account or not verify_password(account, password):
-        return templates.TemplateResponse("login.html", {
+        return templates.TemplateResponse(request, "login.html", {
             "request": request, "error": "Invalid username or password",
             "hostname": _HOSTNAME, "username": username,
         })
     status = account.get("status", "active")
     if status == "pending":
-        return templates.TemplateResponse("login.html", {
+        return templates.TemplateResponse(request, "login.html", {
             "request": request,
             "error": "Account pending admin approval. Please wait.",
             "hostname": _HOSTNAME, "username": username,
         })
     if status == "blocked":
-        return templates.TemplateResponse("login.html", {
+        return templates.TemplateResponse(request, "login.html", {
             "request": request, "error": "Account blocked. Contact admin.",
             "hostname": _HOSTNAME, "username": username,
         })
@@ -484,7 +484,7 @@ async def login_submit(request: Request, username: str = Form(...), password: st
 
 @app.get("/register", response_class=HTMLResponse)
 async def register_page(request: Request):
-    return templates.TemplateResponse("register.html", {
+    return templates.TemplateResponse(request, "register.html", {
         "request": request, "error": None, "hostname": _HOSTNAME,
     })
 
@@ -498,13 +498,13 @@ async def register_submit(
     link_code: str = Form(""),
 ):
     if len(username) < 3 or len(password) < 4:
-        return templates.TemplateResponse("register.html", {
+        return templates.TemplateResponse(request, "register.html", {
             "request": request,
             "error": "Username must be >= 3 chars, password >= 4 chars",
             "hostname": _HOSTNAME,
         })
     if find_account_by_username(username):
-        return templates.TemplateResponse("register.html", {
+        return templates.TemplateResponse(request, "register.html", {
             "request": request, "error": "Username already taken", "hostname": _HOSTNAME,
         })
 
@@ -516,13 +516,13 @@ async def register_submit(
         from core.bot_config import ADMIN_USERS
         validated_cid = _st_web.validate_web_link_code(link_code.strip())
         if not validated_cid:
-            return templates.TemplateResponse("register.html", {
+            return templates.TemplateResponse(request, "register.html", {
                 "request": request,
                 "error": "Link code is invalid or expired. Get a new code from the Telegram bot.",
                 "hostname": _HOSTNAME,
             })
         if find_account_by_chat_id(validated_cid):
-            return templates.TemplateResponse("register.html", {
+            return templates.TemplateResponse(request, "register.html", {
                 "request": request,
                 "error": "This Telegram account is already linked to a web account.",
                 "hostname": _HOSTNAME,
@@ -545,7 +545,7 @@ async def register_submit(
                              telegram_chat_id=telegram_chat_id,
                              status=new_status)
     if new_status == "pending":
-        return templates.TemplateResponse("register.html", {
+        return templates.TemplateResponse(request, "register.html", {
             "request": request,
             "info": "Registration submitted. An admin will review your account.",
             "hostname": _HOSTNAME,
@@ -569,7 +569,7 @@ async def logout():
 
 @app.get("/forgot-password", response_class=HTMLResponse)
 async def forgot_password_page(request: Request, msg: str = "", error: str = ""):
-    return templates.TemplateResponse("forgot_password.html",
+    return templates.TemplateResponse(request, "forgot_password.html",
                                       {"request": request, "msg": msg, "error": error})
 
 
@@ -582,7 +582,7 @@ async def forgot_password_submit(request: Request):
     account = find_account_by_username(username)
     if not account:
         # Avoid username enumeration: always show the same page
-        return templates.TemplateResponse("forgot_password.html", {
+        return templates.TemplateResponse(request, "forgot_password.html", {
             "request": request,
             "msg": ("If an account with that username exists, a reset notification has been sent."),
         })
@@ -628,7 +628,7 @@ async def forgot_password_submit(request: Request):
     if sent_ok:
         return RedirectResponse("/forgot-password?msg=Notification+sent.+Check+your+channel.",
                                 status_code=302)
-    return templates.TemplateResponse("forgot_password.html", {
+    return templates.TemplateResponse(request, "forgot_password.html", {
         "request": request,
         "error": "Could not send notification. Contact the administrator.",
     })
@@ -638,11 +638,11 @@ async def forgot_password_submit(request: Request):
 async def reset_password_page(request: Request, token: str, error: str = ""):
     username = await asyncio.to_thread(lambda: validate_reset_token(token))
     if not username:
-        return templates.TemplateResponse("forgot_password.html", {
+        return templates.TemplateResponse(request, "forgot_password.html", {
             "request": request,
             "error": "Reset link is invalid or has expired. Please request a new one.",
         })
-    return templates.TemplateResponse("reset_password.html",
+    return templates.TemplateResponse(request, "reset_password.html",
                                       {"request": request, "token": token,
                                        "username": username, "error": error})
 
@@ -654,19 +654,19 @@ async def reset_password_submit(request: Request, token: str):
     confirm  = str(form.get("confirm", "")).strip()
 
     if not new_pw or len(new_pw) < 6:
-        return templates.TemplateResponse("reset_password.html", {
+        return templates.TemplateResponse(request, "reset_password.html", {
             "request": request, "token": token,
             "username": "", "error": "Password must be at least 6 characters.",
         })
     if new_pw != confirm:
-        return templates.TemplateResponse("reset_password.html", {
+        return templates.TemplateResponse(request, "reset_password.html", {
             "request": request, "token": token,
             "username": "", "error": "Passwords do not match.",
         })
 
     username = await asyncio.to_thread(lambda: consume_reset_token(token))
     if not username:
-        return templates.TemplateResponse("forgot_password.html", {
+        return templates.TemplateResponse(request, "forgot_password.html", {
             "request": request,
             "error": "Reset link is invalid or has expired. Please request a new one.",
         })
@@ -698,7 +698,7 @@ async def profile_page(request: Request, msg: str = "", error: str = ""):
             tg_reg = _find_registration(int(tg_chat_id))
         except Exception:
             pass
-    return templates.TemplateResponse("profile.html", _ctx(
+    return templates.TemplateResponse(request, "profile.html", _ctx(
         request, user, "profile",
         account=account,
         tg_reg=tg_reg,
@@ -769,7 +769,7 @@ async def settings_page(request: Request, msg: str = "", error: str = ""):
         return RedirectResponse("/login", status_code=302)
     account = find_account_by_id(user["sub"]) or {}
     current_lang = account.get("language", "en")
-    return templates.TemplateResponse("settings.html", _ctx(
+    return templates.TemplateResponse(request, "settings.html", _ctx(
         request, user, "settings",
         current_lang=current_lang,
         supported_langs=_SUPPORTED_LANGS,
@@ -801,7 +801,7 @@ async def settings_change_password(
         return RedirectResponse("/login", status_code=302)
     account = find_account_by_id(user["sub"])
     current_lang = (account or {}).get("language", "en")
-    ctx_error = lambda msg: templates.TemplateResponse("settings.html", _ctx(
+    ctx_error = lambda msg: templates.TemplateResponse(request, "settings.html", _ctx(
         request, user, "settings",
         current_lang=current_lang,
         supported_langs=_SUPPORTED_LANGS,
@@ -857,7 +857,7 @@ async def dashboard(request: Request):
         for n in notes[:3]
     ]
 
-    return templates.TemplateResponse("dashboard.html", _ctx(
+    return templates.TemplateResponse(request, "dashboard.html", _ctx(
         request, user, "dashboard",
         quick_actions=quick_actions,
         todays_events=today_events,
@@ -882,7 +882,7 @@ async def chat_page(request: Request):
     if not models_list:
         models_list = ["default"]
 
-    return templates.TemplateResponse("chat.html", _ctx(
+    return templates.TemplateResponse(request, "chat.html", _ctx(
         request, user, "chat",
         models=models_list,
         messages=messages,
@@ -911,7 +911,7 @@ async def chat_send(request: Request, message: str = Form(...)):
         reply = "No response from LLM."
     history.append({"role": "bot", "text": reply, "time": now_str})
 
-    return templates.TemplateResponse("_chat_messages.html", {
+    return templates.TemplateResponse(request, "_chat_messages.html", {
         "request":    request,
         "user_text":  message,
         "user_time":  now_str,
@@ -951,7 +951,7 @@ async def notes_page(request: Request):
         title = active_note["title"]
         content = active_note["content"]
 
-    return templates.TemplateResponse("notes.html", _ctx(
+    return templates.TemplateResponse(request, "notes.html", _ctx(
         request, user, "notes",
         notes=notes,
         active_note=active_note,
@@ -973,7 +973,7 @@ async def note_detail(request: Request, slug: str):
         raise HTTPException(404)
 
     title = slug.replace("_", " ").title()
-    return templates.TemplateResponse("_note_editor.html", {
+    return templates.TemplateResponse(request, "_note_editor.html", {
         "request": request,
         "slug": slug,
         "title": title,
@@ -1002,7 +1002,7 @@ async def notes_list_partial(request: Request):
     if not user:
         raise HTTPException(401)
     notes = _list_notes(user["sub"])
-    return templates.TemplateResponse("_note_list.html", {
+    return templates.TemplateResponse(request, "_note_list.html", {
         "request": request,
         "notes": notes,
     })
@@ -1032,7 +1032,7 @@ async def note_save(request: Request, slug: str, content: str = Form(...), title
     if slug_changed:
         return Response(headers={"HX-Redirect": "/notes"})
     display_title = title or new_slug.replace("_", " ").title()
-    resp = templates.TemplateResponse("_note_editor.html", {
+    resp = templates.TemplateResponse(request, "_note_editor.html", {
         "request": request,
         "slug": new_slug,
         "title": display_title,
@@ -1107,7 +1107,7 @@ async def calendar_page(request: Request):
     upcoming.sort(key=lambda x: x["dt"])
     upcoming = upcoming[:10]
 
-    return templates.TemplateResponse("calendar.html", _ctx(
+    return templates.TemplateResponse(request, "calendar.html", _ctx(
         request, user, "calendar",
         year=year, month=month, month_name=month_name, today=today,
         weeks=weeks, events_by_day=ebd, event_colors=EVENT_COLORS,
@@ -1424,7 +1424,7 @@ async def contacts_page(request: Request, q: str = "", page: int = 0):
     contacts, total = _contacts_for(chat_id, q=q, offset=offset)
     pages = max(1, (total + PAGE_SIZE - 1) // PAGE_SIZE)
     return templates.TemplateResponse(
-        "contacts.html",
+        request, "contacts.html",
         _ctx(request, user, "contacts",
              contacts=contacts, total=total, q=q,
              page=page, pages=pages, page_size=PAGE_SIZE),
@@ -1437,7 +1437,7 @@ async def contacts_new_form(request: Request):
     if not user:
         return RedirectResponse("/login", status_code=302)
     return templates.TemplateResponse(
-        "contacts.html",
+        request, "contacts.html",
         _ctx(request, user, "contacts",
              contacts=[], total=0, q="", page=0, pages=1, page_size=PAGE_SIZE,
              show_form=True, form_contact=None),
@@ -1480,7 +1480,7 @@ async def contacts_detail(request: Request, cid: str):
     if not contact:
         return RedirectResponse("/contacts", status_code=302)
     return templates.TemplateResponse(
-        "contacts.html",
+        request, "contacts.html",
         _ctx(request, user, "contacts",
              contacts=[], total=0, q="", page=0, pages=1, page_size=PAGE_SIZE,
              show_form=True, form_contact=contact),
@@ -1603,7 +1603,7 @@ async def mail_page(request: Request, show_settings: bool = False, error: str = 
             )["label"],
         }
 
-    return templates.TemplateResponse("mail.html", _ctx(
+    return templates.TemplateResponse(request, "mail.html", _ctx(
         request, user, "mail",
         digest_text=digest_text,
         waveform=_waveform(),
@@ -2127,7 +2127,7 @@ async def voice_page(request: Request):
         except Exception:
             pass
 
-    return templates.TemplateResponse("voice.html", _ctx(
+    return templates.TemplateResponse(request, "voice.html", _ctx(
         request, user, "voice",
         pipeline=_voice_pipeline_status(),
         transcript=transcript,
@@ -2559,7 +2559,7 @@ async def admin_page(request: Request):
     except Exception:
         release_notes = []
 
-    return templates.TemplateResponse("admin.html", _ctx(
+    return templates.TemplateResponse(request, "admin.html", _ctx(
         request, user, "admin",
         stats=system_status,
         users=admin_users,
@@ -2896,7 +2896,7 @@ async def dynamic_screen(request: Request, screen_id: str):
     ctx = UserContext(user_id=user["sub"], chat_id=0, lang=lang, role=role, variant=DEVICE_VARIANT)
     screen = load_screen(f"screens/{screen_id}.yaml", ctx, t_func=_web_t)
     return templates.TemplateResponse(
-        "dynamic.html", _ctx(request, user, screen_id, screen=screen),
+        request, "dynamic.html", _ctx(request, user, screen_id, screen=screen),
     )
 
 
