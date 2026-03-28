@@ -9,6 +9,7 @@ WorkingDirectory=/home/stas/.taris
 ExecStart=/usr/bin/python3 /home/stas/.taris/telegram_menu_bot.py
 Restart=on-failure
 RestartSec=15
+TimeoutStopSec=25
 Environment=PYTHONUNBUFFERED=1
 EnvironmentFile=/home/stas/.taris/bot.env
 Environment=TARIS_BIN=/usr/bin/picoclaw

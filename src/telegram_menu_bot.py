@@ -16,6 +16,7 @@ All business logic lives in the bot_* modules:
 """
 
 import os
+import signal
 import threading
 
 # ─── Core ────────────────────────────────────────────────────────────────────
@@ -1108,6 +1109,16 @@ def main() -> None:
     threading.Thread(target=_cal_morning_briefing_loop, daemon=True).start()
 
     log.info("Polling Telegram…")
+
+    # Graceful shutdown: stop polling before process exits so Telegram drops
+    # the connection cleanly and the next start doesn't get a 409 Conflict.
+    def _on_stop(signum, _frame):
+        log.info(f"[Bot] signal {signum} — stopping polling…")
+        bot.stop_polling()
+
+    signal.signal(signal.SIGTERM, _on_stop)
+    signal.signal(signal.SIGINT,  _on_stop)
+
     bot.infinity_polling(timeout=30, long_polling_timeout=20)
 
 
