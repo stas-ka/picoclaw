@@ -1,5 +1,14 @@
 [
   {
+    "version": "2026.3.39",
+    "date":    "2026-03-28",
+    "title":   "Fix 409 polling conflict on restart; add STT INFO logging",
+    "changes": [
+      "bot_instance.py: 409 ExceptionHandler — sleeps 35 s when Telegram reports Conflict (old long-poll still alive after rapid restart)",
+      "bot_voice.py: promote STT log entries from DEBUG to INFO — provider, language, and transcript are now visible in journal"
+    ]
+  },
+  {
     "version": "2026.3.38",
     "date":    "2026-03-28",
     "title":   "Fix STT language: use STT_LANG config, not Telegram client language",

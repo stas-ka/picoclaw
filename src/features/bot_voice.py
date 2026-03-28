@@ -458,7 +458,7 @@ def _stt_faster_whisper(raw_pcm: bytes, sample_rate: int, lang: str = "ru") -> O
             log.warning(f"[FasterWhisper] hallucination rejected: {text!r}")
             return None
 
-        log.debug(f"[FasterWhisper] transcript ({info.language}, {info.language_probability:.2f}): {text[:80]}")
+        log.info(f"[FasterWhisper] transcript lang={info.language} prob={info.language_probability:.2f}: {text[:120]}")
         return text
 
     except Exception as exc:
@@ -814,11 +814,13 @@ def _handle_voice_message(chat_id: int, voice_obj) -> None:
         whisper_used = opts.get("whisper_stt")
         # STT language: explicit STT_LANG config beats UI language (Telegram client lang ≠ speech lang)
         _stt_lang = STT_LANG if STT_LANG else _lang(chat_id)
+        log.info(f"[STT] provider={'fw' if fw_used else 'whisper' if whisper_used else 'vosk'} "
+                 f"lang={_stt_lang} (STT_LANG={STT_LANG!r} _lang={_lang(chat_id)!r})")
 
         if fw_used:
             text = _stt_faster_whisper(raw_pcm, _srate, _stt_lang) or ""
             if text:
-                log.debug(f"[FasterWhisper] transcript: {text[:80]}")
+                log.info(f"[FasterWhisper] transcript: {text[:120]}")
             else:
                 log.warning("[FasterWhisper] no result — falling back to Vosk")
         elif whisper_used:
