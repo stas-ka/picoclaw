@@ -109,7 +109,6 @@ def _admin_keyboard(chat_id: int = 0) -> InlineKeyboardMarkup:
     kb.add(
         InlineKeyboardButton(_t(chat_id, "admin_btn_pending", pending_badge=pending_badge),
                              callback_data="admin_pending_users"),
-        InlineKeyboardButton(_t(chat_id, "admin_btn_system"),    callback_data="mode_system"),
         InlineKeyboardButton(_t(chat_id, "admin_btn_add_user"),   callback_data="admin_add_user"),
         InlineKeyboardButton(_t(chat_id, "admin_btn_list_users"), callback_data="admin_list_users"),
         InlineKeyboardButton(_t(chat_id, "admin_btn_remove_user"), callback_data="admin_remove_user"),
