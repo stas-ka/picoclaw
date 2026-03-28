@@ -3220,6 +3220,63 @@ def t_openclaw_gateway_telegram_disabled(**_) -> list[TestResult]:
     return results
 
 
+def t_taris_bin_configured(**_) -> list[TestResult]:
+    """T45: TARIS_BIN must point to an existing binary (picoclaw or taris).
+
+    On PicoClaw Pi devices the binary is /usr/bin/picoclaw, NOT /usr/bin/taris.
+    The default TARIS_BIN=/usr/bin/taris in bot_config.py causes silent LLM failures
+    when voice STT→LLM is called. Fix: set TARIS_BIN=/usr/bin/picoclaw in bot.env.
+
+    SKIP: if running in source-inspection mode (no ~/.taris/bot.env deployed).
+    """
+    t0 = time.time()
+    results: list[TestResult] = []
+    try:
+        # Only meaningful in a deployed environment where bot.env is present
+        bot_env = os.path.expanduser("~/.taris/bot.env")
+        if not os.path.exists(bot_env):
+            results.append(TestResult("taris_bin_configured", "SKIP", time.time() - t0,
+                                      "source-inspection mode — no ~/.taris/bot.env"))
+            return results
+
+        import sys as _sys
+        _sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+        from core.bot_config import TARIS_BIN, LLM_PROVIDER
+
+        # T45 only applies when LLM routes through the taris/picoclaw binary
+        if LLM_PROVIDER != "taris":
+            results.append(TestResult("taris_bin_configured", "SKIP", time.time() - t0,
+                                      f"LLM_PROVIDER={LLM_PROVIDER} — TARIS_BIN not used"))
+            return results
+        exists = os.path.isfile(TARIS_BIN)
+        executable = os.access(TARIS_BIN, os.X_OK) if exists else False
+        if exists and executable:
+            results.append(TestResult("taris_bin_exists", "PASS", time.time() - t0,
+                                      f"TARIS_BIN={TARIS_BIN} exists and is executable"))
+        elif not exists:
+            results.append(TestResult("taris_bin_missing", "FAIL", time.time() - t0,
+                                      f"TARIS_BIN={TARIS_BIN} does not exist — "
+                                      f"set TARIS_BIN=/usr/bin/picoclaw in bot.env"))
+        else:
+            results.append(TestResult("taris_bin_not_executable", "FAIL", time.time() - t0,
+                                      f"TARIS_BIN={TARIS_BIN} exists but is not executable"))
+
+        # Also verify picoclaw config is present when binary is picoclaw
+        if "picoclaw" in TARIS_BIN:
+            picoclaw_cfg = os.path.expanduser("~/.picoclaw/config.json")
+            if os.path.exists(picoclaw_cfg):
+                results.append(TestResult("picoclaw_config_present", "PASS", time.time() - t0,
+                                          "~/.picoclaw/config.json present"))
+            else:
+                results.append(TestResult("picoclaw_config_missing", "FAIL", time.time() - t0,
+                                          "~/.picoclaw/config.json missing — picoclaw agent will fail "
+                                          "(copy ~/.taris/config.json and set active_model.txt)"))
+
+    except Exception as e:
+        results.append(TestResult("taris_bin_configured", "FAIL", time.time() - t0, str(e)))
+    return results
+
+
 TEST_FUNCTIONS = [
     t_model_files_present,
     t_piper_json_present,
@@ -3284,6 +3341,8 @@ TEST_FUNCTIONS = [
     t_voice_system_admin_guard,
     # openclaw-gateway Telegram channel disabled to prevent 409 token conflict (T44)
     t_openclaw_gateway_telegram_disabled,
+    # TARIS_BIN must point to existing picoclaw/taris binary + picoclaw config present (T45)
+    t_taris_bin_configured,
 ]
 
 
