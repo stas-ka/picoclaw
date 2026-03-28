@@ -56,18 +56,30 @@ from core.bot_config import (
     BOT_VERSION, BOT_NAME, TARIS_BIN, TARIS_CONFIG, NOTES_DIR,
     ACTIVE_MODEL_FILE, RELEASE_NOTES_FILE, TARIS_API_TOKEN, LLM_PROVIDER,
     DEVICE_VARIANT, TARIS_DIR, log,
-    STT_PROVIDER, FASTER_WHISPER_MODEL, FASTER_WHISPER_DEVICE, FASTER_WHISPER_COMPUTE,
+    STT_PROVIDER, STT_FALLBACK_PROVIDER,
+    FASTER_WHISPER_MODEL, FASTER_WHISPER_DEVICE, FASTER_WHISPER_COMPUTE,
+    STT_OPENAI_MODEL, STT_LANG,
+    OPENAI_API_KEY, OPENAI_BASE_URL,
     OLLAMA_MODEL,
 )
 from core.pipeline_logger import PipelineLog, read_pipeline_logs, get_pipeline_stats
 
 # ── UI labels for software stack (computed once at startup) ───────────────────
 _STT_UI_LABELS = {
-    "faster_whisper": "Faster-Whisper",
-    "vosk":           "Vosk",
-    "whisper":        "Whisper",
+    "faster_whisper":  "Faster-Whisper",
+    "openai_whisper":  "OpenAI Whisper",
+    "vosk":            "Vosk",
+    "whisper":         "Whisper",
 }
-_STT_UI_LABEL = _STT_UI_LABELS.get(STT_PROVIDER, STT_PROVIDER.replace("_", "-").title())
+_primary_stt_label  = _STT_UI_LABELS.get(STT_PROVIDER, STT_PROVIDER.replace("_", "-").title())
+_fallback_stt_label = (
+    _STT_UI_LABELS.get(STT_FALLBACK_PROVIDER, STT_FALLBACK_PROVIDER.replace("_", "-").title())
+    if STT_FALLBACK_PROVIDER else ""
+)
+# Show "Primary → Fallback" when a fallback is configured, otherwise just primary.
+_STT_UI_LABEL = (
+    f"{_primary_stt_label} → {_fallback_stt_label}" if _fallback_stt_label else _primary_stt_label
+)
 
 _LLM_UI_LABELS = {
     "ollama":    f"Ollama · {OLLAMA_MODEL}",
@@ -1694,7 +1706,7 @@ def _stt_faster_whisper_web(raw_pcm: bytes, sample_rate: int = 16000, lang: str 
         from scipy.signal import resample as _resample  # type: ignore[import]
         audio_np = _resample(audio_np, int(len(audio_np) * 16000 / sample_rate)).astype(_np.float32)
 
-    lang_map = {"ru": "ru", "en": "en", "de": "de"}
+    lang_map = {"ru": "ru", "en": "en", "de": "de", "sl": "sl"}
     segments, info = model.transcribe(
         audio_np,
         language=lang_map.get(lang, "ru"),
@@ -1709,24 +1721,47 @@ def _stt_faster_whisper_web(raw_pcm: bytes, sample_rate: int = 16000, lang: str 
     return text or None
 
 
-def _stt_web(raw_pcm: bytes, sample_rate: int = 16000) -> str:
-    """STT dispatch for web voice endpoints — routes by STT_PROVIDER.
+def _stt_openai_whisper_web(raw_pcm: bytes, sample_rate: int = 16000, lang: str = STT_LANG) -> Optional[str]:
+    """STT via OpenAI Whisper API.
 
-    Uses faster-whisper when STT_PROVIDER='faster_whisper' (OpenClaw default),
-    falls back to Vosk otherwise.
-    Returns transcript string (may be empty if no speech detected).
+    Best accuracy for ru/en/de/sl. Requires OPENAI_API_KEY in bot.env.
+    PCM → WAV in memory → POST to /v1/audio/transcriptions.
+    Falls back gracefully if openai package is absent or API key missing.
     """
-    if STT_PROVIDER == "faster_whisper":
-        try:
-            result = _stt_faster_whisper_web(raw_pcm, sample_rate)
-            if result is not None:
-                return result
-        except ImportError:
-            log.warning("[Web/STT] faster_whisper not installed, falling back to Vosk")
-        except Exception as e:
-            log.warning(f"[Web/STT] faster_whisper failed: {e}, falling back to Vosk")
+    if not OPENAI_API_KEY:
+        log.warning("[OpenAI/STT] OPENAI_API_KEY not set — cannot use openai_whisper")
+        return None
+    try:
+        from openai import OpenAI as _OpenAI  # type: ignore[import]
+    except ImportError:
+        log.warning("[OpenAI/STT] openai package not installed — cannot use openai_whisper")
+        return None
 
-    # Vosk STT (default / fallback)
+    import io, wave as _wave
+
+    buf = io.BytesIO()
+    with _wave.open(buf, "wb") as wf:
+        wf.setnchannels(1)
+        wf.setsampwidth(2)          # 16-bit PCM
+        wf.setframerate(sample_rate)
+        wf.writeframes(raw_pcm)
+    buf.seek(0)
+    buf.name = "audio.wav"          # openai SDK reads .name for content-type hint
+
+    client = _OpenAI(api_key=OPENAI_API_KEY, base_url=OPENAI_BASE_URL)
+    resp = client.audio.transcriptions.create(
+        model=STT_OPENAI_MODEL,
+        file=buf,
+        language=lang,
+    )
+    text = (resp.text or "").strip()
+    if text:
+        log.debug(f"[OpenAI/STT] lang={lang}: {text[:80]}")
+    return text or None
+
+
+def _stt_vosk_web(raw_pcm: bytes, sample_rate: int = 16000, **_kw) -> Optional[str]:
+    """STT via local Vosk offline model."""
     import vosk as _vosk_lib
     import json as _vj_local
     model = _get_vosk_model_web()
@@ -1737,7 +1772,65 @@ def _stt_web(raw_pcm: bytes, sample_rate: int = 16000) -> str:
         rec.AcceptWaveform(raw_pcm[i:i + CHUNK])
     result = _vj_local.loads(rec.FinalResult())
     text = result.get("text", "").strip()
-    return re.sub(r"\[\?([^\]]+)\]", r"\1", text)
+    text = re.sub(r"\[\?([^\]]+)\]", r"\1", text)
+    return text or None
+
+
+# ── STT dispatch table — mirrors LLM _DISPATCH pattern ────────────────────────
+# Keyed by STT_PROVIDER / STT_FALLBACK_PROVIDER value.
+# Each callable: (raw_pcm: bytes, sample_rate: int, lang: str) -> Optional[str]
+_STT_DISPATCH: dict = {
+    "faster_whisper":  _stt_faster_whisper_web,
+    "openai_whisper":  _stt_openai_whisper_web,
+    "vosk":            _stt_vosk_web,
+}
+
+
+def _stt_call(provider: str, raw_pcm: bytes, sample_rate: int) -> Optional[str]:
+    """Invoke one STT provider from _STT_DISPATCH; return text or None on failure."""
+    fn = _STT_DISPATCH.get(provider)
+    if fn is None:
+        log.warning(f"[STT] unknown provider '{provider}'")
+        return None
+    return fn(raw_pcm, sample_rate, lang=STT_LANG)
+
+
+def _stt_web(raw_pcm: bytes, sample_rate: int = 16000) -> str:
+    """STT dispatch with configurable primary + fallback provider.
+
+    Mirrors the LLM ask_llm() fallback pattern:
+      1. Try STT_PROVIDER.
+      2. On failure, try STT_FALLBACK_PROVIDER (if set and different).
+      3. Return empty string when all providers fail.
+
+    Supported providers: faster_whisper | openai_whisper | vosk
+    Configure in bot.env:
+      STT_PROVIDER=openai_whisper
+      STT_FALLBACK_PROVIDER=faster_whisper   # or vosk
+      STT_LANG=ru
+    """
+    primary  = STT_PROVIDER
+    fallback = STT_FALLBACK_PROVIDER
+
+    try:
+        result = _stt_call(primary, raw_pcm, sample_rate)
+        if result:
+            return result
+        log.debug(f"[STT] {primary} returned empty (no speech detected)")
+    except ImportError:
+        log.warning(f"[STT] {primary}: package not installed")
+    except Exception as exc:
+        log.warning(f"[STT] {primary} failed: {exc}")
+
+    if fallback and fallback != primary:
+        log.warning(f"[STT] falling back to {fallback}")
+        try:
+            result = _stt_call(fallback, raw_pcm, sample_rate)
+            return result or ""
+        except Exception as exc2:
+            log.error(f"[STT] {fallback} fallback also failed: {exc2}")
+
+    return ""
 
 
 def _voice_pipeline_status() -> list[dict]:
@@ -1751,27 +1844,44 @@ def _voice_pipeline_status() -> list[dict]:
     piper_low = (d / "ru_RU-irina-low.onnx").exists()
     active_model = get_active_model() or "default"
 
-    # STT entry — reflects actual STT_PROVIDER
-    if STT_PROVIDER == "faster_whisper":
-        from pathlib import Path as _P
-        fw_snap = (
-            _P.home() / ".cache" / "huggingface" / "hub"
-            / f"models--Systran--faster-whisper-{FASTER_WHISPER_MODEL}"
-            / "snapshots"
-        )
-        fw_ok = fw_snap.is_dir() and any(fw_snap.iterdir())
-        stt_entry = {
-            "icon": "🎤", "name": f"STT (faster-whisper {FASTER_WHISPER_MODEL})",
-            "status": "ready" if fw_ok else "missing",
-            "detail": f"model={FASTER_WHISPER_MODEL} device={FASTER_WHISPER_DEVICE} compute={FASTER_WHISPER_COMPUTE}"
-                      if fw_ok else f"faster-whisper-{FASTER_WHISPER_MODEL} not in HF cache",
-        }
-    else:
-        stt_entry = {
+    # STT entry — reflects actual STT_PROVIDER + optional STT_FALLBACK_PROVIDER
+    def _stt_status(provider: str) -> dict:
+        if provider == "faster_whisper":
+            from pathlib import Path as _P
+            fw_snap = (
+                _P.home() / ".cache" / "huggingface" / "hub"
+                / f"models--Systran--faster-whisper-{FASTER_WHISPER_MODEL}"
+                / "snapshots"
+            )
+            fw_ok = fw_snap.is_dir() and any(fw_snap.iterdir())
+            return {
+                "icon": "🎤", "name": f"STT (faster-whisper {FASTER_WHISPER_MODEL})",
+                "status": "ready" if fw_ok else "missing",
+                "detail": f"model={FASTER_WHISPER_MODEL} device={FASTER_WHISPER_DEVICE} compute={FASTER_WHISPER_COMPUTE}"
+                          if fw_ok else f"faster-whisper-{FASTER_WHISPER_MODEL} not in HF cache",
+            }
+        if provider == "openai_whisper":
+            api_key_set = bool(OPENAI_API_KEY)
+            return {
+                "icon": "🎤", "name": f"STT (OpenAI Whisper {STT_OPENAI_MODEL})",
+                "status": "ready" if api_key_set else "missing",
+                "detail": f"model={STT_OPENAI_MODEL} lang={STT_LANG}"
+                          if api_key_set else "OPENAI_API_KEY not set in bot.env",
+            }
+        # vosk / default
+        return {
             "icon": "🎤", "name": "STT (Vosk)",
             "status": "ready" if vosk_ok else "missing",
             "detail": "vosk-model-small-ru" if vosk_ok else "Model not found",
         }
+
+    stt_entry = _stt_status(STT_PROVIDER)
+    # Append fallback note to detail when configured
+    if STT_FALLBACK_PROVIDER and STT_FALLBACK_PROVIDER != STT_PROVIDER:
+        fb = _stt_status(STT_FALLBACK_PROVIDER)
+        stt_entry["detail"] += f" | fallback → {fb['name'].replace('STT (', '').rstrip(')')}"
+        if fb["status"] != "ready":
+            stt_entry["detail"] += " ⚠️ fallback not ready"
 
     return [
         {

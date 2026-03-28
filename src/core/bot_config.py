@@ -201,7 +201,7 @@ EMBED_DIMENSION      = int(os.environ.get("EMBED_DIMENSION", "384"))
 # Bot version — bump on every user-visible deployment
 # ─────────────────────────────────────────────────────────────────────────────
 
-BOT_VERSION        = "2026.3.30"
+BOT_VERSION        = "2026.3.31"
 RELEASE_NOTES_FILE = os.environ.get(
     "RELEASE_NOTES_FILE",
     os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "release_notes.json"),
@@ -242,10 +242,20 @@ VOICE_BACKEND      = os.environ.get("VOICE_BACKEND", "cpu").lower()
 # STT provider — selects the speech recognition engine.
 # vosk          — Vosk offline (lightweight, good for Pi 3/4)
 # faster_whisper — faster-whisper (CTranslate2, better WER for laptop/PC)
+# openai_whisper — OpenAI Whisper API (best accuracy for ru/en/de/sl, requires OPENAI_API_KEY)
 # whisper_cpp   — whisper.cpp binary (hardware-accelerated, VOICE_BACKEND=cuda)
 # Auto-default: faster_whisper for openclaw, vosk for picoclaw
 _DEFAULT_STT = "faster_whisper" if os.environ.get("DEVICE_VARIANT", "picoclaw").lower() == "openclaw" else "vosk"
 STT_PROVIDER            = os.environ.get("STT_PROVIDER", _DEFAULT_STT).lower()
+
+# STT fallback — analogous to LLM_LOCAL_FALLBACK.
+# When the primary provider fails (network error, missing key, model not loaded),
+# STT_FALLBACK_PROVIDER is tried before returning empty.
+# Example: STT_PROVIDER=openai_whisper  + STT_FALLBACK_PROVIDER=faster_whisper
+#          STT_PROVIDER=faster_whisper  + STT_FALLBACK_PROVIDER=vosk
+# Leave empty to disable fallback (default: auto-detect sensible default).
+_DEFAULT_STT_FALLBACK = "vosk" if _DEFAULT_STT != "vosk" else ""
+STT_FALLBACK_PROVIDER   = os.environ.get("STT_FALLBACK_PROVIDER", _DEFAULT_STT_FALLBACK).lower()
 
 # faster-whisper model size: tiny, base, small, medium, large-v2, large-v3
 # Recommended for i7/i5 no-GPU: base (good WER, ~0.3s RTF)
@@ -253,6 +263,12 @@ STT_PROVIDER            = os.environ.get("STT_PROVIDER", _DEFAULT_STT).lower()
 FASTER_WHISPER_MODEL    = os.environ.get("FASTER_WHISPER_MODEL", "base")
 FASTER_WHISPER_DEVICE   = os.environ.get("FASTER_WHISPER_DEVICE", "cpu")
 FASTER_WHISPER_COMPUTE  = os.environ.get("FASTER_WHISPER_COMPUTE", "int8")
+
+# Cloud STT via OpenAI Whisper API (STT_PROVIDER=openai_whisper)
+# Reuses OPENAI_API_KEY + OPENAI_BASE_URL from LLM config.
+# Best accuracy for ru/en/de/sl; requires valid OPENAI_API_KEY.
+STT_OPENAI_MODEL        = os.environ.get("STT_OPENAI_MODEL", "whisper-1")
+STT_LANG                = os.environ.get("STT_LANG", "ru")  # primary language hint (ru/en/de/sl)
 
 VOICE_SAMPLE_RATE     = 16000
 VOICE_CHUNK_SIZE      = 4000       # 250 ms at 16 kHz

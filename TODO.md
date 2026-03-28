@@ -391,9 +391,22 @@ Taris runs as an additional deployment variant on OpenClaw (laptop / AI PC) alon
 
 ### 19.4 Pending
 
+- [ ] **Install Ollama** on this machine to restore LLM: `curl https://ollama.ai/install.sh | sh && ollama pull qwen2:0.5b`; Ollama binary not found — all LLM calls fail with `Connection refused` on port 11434.
+- [ ] **Upgrade faster-whisper model**: switch `FASTER_WHISPER_MODEL=medium` in `~/.taris/bot.env` — `base` model achieves only ~25% WER for Russian (1/4 benchmark phrases correct). `medium` (~1.5GB RAM) recommended given 7.6GB available; download: `python3 -c "from faster_whisper import WhisperModel; WhisperModel('medium', device='cpu', compute_type='int8')"`.
+- [ ] **Dual STT UI selector**: expose `STT_PROVIDER` switch in Settings/Voice page so user can toggle between `faster_whisper`, `openai_whisper`, and `vosk` without editing `bot.env`. Add `STT_LANG` selector (ru/en/de/sl).
 - [ ] `src/setup/migrate_sqlite_to_pg.py` — taris.db → PostgreSQL migration script (§25.7)
 - [ ] pgvector HNSW index and full RAG pipeline on PostgreSQL (§25.6 Phase B)
 - [ ] Screen DSL: `visible_variants: [openclaw]` buttons shown only on OpenClaw (§21.6)
+
+### 19.5 Dual STT — Local + Remote ✅ Implemented (v2026.3.31)
+
+- [x] `STT_PROVIDER=openai_whisper` — OpenAI Whisper API provider added to `bot_web.py`
+- [x] `_stt_openai_whisper_web()` — PCM→WAV→POST to `/v1/audio/transcriptions`; reuses `OPENAI_API_KEY` + `OPENAI_BASE_URL`; graceful fallback to Vosk if key missing
+- [x] `STT_OPENAI_MODEL` constant (default `whisper-1`); `STT_LANG` constant (default `ru`); supports ru/en/de/sl
+- [x] `_stt_web()` updated: routes `faster_whisper` → `openai_whisper` → vosk fallback
+- [x] `_voice_pipeline_status()` shows `openai_whisper` API key status
+- [x] Slovenian (`sl`) added to `lang_map` in faster-whisper transcription
+- [x] `_STT_UI_LABELS` updated; `_STT_UI_LABEL` auto-resolves for all providers
 
 ---
 

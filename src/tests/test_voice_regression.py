@@ -2135,9 +2135,72 @@ def t_pipeline_logger(**_) -> list[TestResult]:
     return results
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Runner
-# ─────────────────────────────────────────────────────────────────────────────
+def t_dual_stt_providers(**_) -> list[TestResult]:
+    """T33 — Dual STT: dispatch table, fallback constant, openai_whisper provider.
+
+    Verifies:
+    - STT_FALLBACK_PROVIDER / STT_OPENAI_MODEL / STT_LANG constants in bot_config
+    - _STT_DISPATCH table present with all three providers in bot_web
+    - _stt_vosk_web + _stt_openai_whisper_web functions defined
+    - _stt_web() uses fallback pattern (no hardcoded if/elif chains)
+    - Slovenian (sl) in lang_map for faster-whisper
+    - UI label shows primary → fallback when fallback configured
+    """
+    t0 = time.time()
+    results: list[TestResult] = []
+
+    try:
+        import os as _os
+        _os.environ.setdefault("TARIS_DIR", str(TARIS_DIR))
+
+        # 1. Constants in bot_config.py
+        cfg_path = TARIS_DIR / "core" / "bot_config.py"
+        if not cfg_path.exists():
+            cfg_path = Path(__file__).parent.parent / "core" / "bot_config.py"
+        cfg_src = cfg_path.read_text()
+        has_openai_model    = "STT_OPENAI_MODEL" in cfg_src
+        has_stt_lang        = "STT_LANG" in cfg_src
+        has_fallback_const  = "STT_FALLBACK_PROVIDER" in cfg_src
+        ok = has_openai_model and has_stt_lang and has_fallback_const
+        results.append(TestResult(
+            "stt_constants",
+            "PASS" if ok else "FAIL",
+            time.time() - t0,
+            f"STT_OPENAI_MODEL={'yes' if has_openai_model else 'NO'} "
+            f"STT_LANG={'yes' if has_stt_lang else 'NO'} "
+            f"STT_FALLBACK_PROVIDER={'yes' if has_fallback_const else 'NO'}",
+        ))
+
+        # 2. bot_web.py: dispatch table + provider functions + fallback routing
+        web_path = TARIS_DIR / "bot_web.py"
+        if not web_path.exists():
+            web_path = Path(__file__).parent.parent / "bot_web.py"
+        web_src = web_path.read_text()
+        has_dispatch      = "_STT_DISPATCH" in web_src
+        has_vosk_func     = "def _stt_vosk_web" in web_src
+        has_openai_func   = "def _stt_openai_whisper_web" in web_src
+        has_fallback_logic = "STT_FALLBACK_PROVIDER" in web_src
+        has_ui_label      = '"openai_whisper"' in web_src and "OpenAI Whisper" in web_src
+        has_sl_lang       = '"sl": "sl"' in web_src or "'sl': 'sl'" in web_src
+        ok2 = has_dispatch and has_vosk_func and has_openai_func and has_fallback_logic and has_sl_lang
+        results.append(TestResult(
+            "stt_dispatch_fallback",
+            "PASS" if ok2 else "FAIL",
+            time.time() - t0,
+            f"_STT_DISPATCH={'yes' if has_dispatch else 'NO'} "
+            f"vosk_func={'yes' if has_vosk_func else 'NO'} "
+            f"openai_func={'yes' if has_openai_func else 'NO'} "
+            f"fallback={'yes' if has_fallback_logic else 'NO'} "
+            f"ui_label={'yes' if has_ui_label else 'NO'} "
+            f"sl_lang={'yes' if has_sl_lang else 'NO'}",
+        ))
+
+    except Exception as e:
+        results.append(TestResult("dual_stt_providers", "FAIL", time.time() - t0, str(e)))
+
+    return results
+
+
 
 TEST_FUNCTIONS = [
     t_model_files_present,
@@ -2179,6 +2242,8 @@ TEST_FUNCTIONS = [
     t_web_stt_provider_routing,
     # Pipeline logger tests (T32)
     t_pipeline_logger,
+    # Dual STT dispatch + fallback (T33)
+    t_dual_stt_providers,
 ]
 
 

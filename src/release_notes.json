@@ -1,6 +1,20 @@
 [
   {
-    "version": "2026.3.30",
+    "version": "2026.3.31",
+    "date":    "2026-03-28",
+    "title":   "Dual STT: OpenAI Whisper remote provider + STT/LLM diagnostics",
+    "changes": [
+      "STT_PROVIDER=openai_whisper: new provider using OpenAI Whisper API (best accuracy for ru/en/de/sl)",
+      "_stt_openai_whisper_web(): PCM→WAV in memory → POST /v1/audio/transcriptions; reuses OPENAI_API_KEY + OPENAI_BASE_URL",
+      "STT_OPENAI_MODEL (default whisper-1) and STT_LANG (default ru) constants in bot_config.py",
+      "_stt_web() updated: routes faster_whisper → openai_whisper → vosk fallback",
+      "_voice_pipeline_status(): openai_whisper shows API key status in voice status panel",
+      "Slovenian (sl) added to lang_map for all STT providers",
+      "_STT_UI_LABELS: openai_whisper -> 'OpenAI Whisper' in sidebar display",
+      "TODO.md: Ollama not installed documented; faster-whisper medium upgrade note; §19.5 Dual STT added"
+    ]
+  },
+  {
     "date":    "2026-03-28",
     "title":   "Web UI software stack info in sidebar",
     "changes": [
