@@ -112,10 +112,19 @@ ACTIVE_MODEL_FILE   = os.environ.get("ACTIVE_MODEL_FILE",
 # Set LLM_PROVIDER in TARIS_DIR/bot.env to switch backends.
 # ─────────────────────────────────────────────────────────────────────────────
 
-# Primary provider: taris | openai | yandexgpt | gemini | anthropic | local
+# Primary provider: taris | openai | yandexgpt | gemini | anthropic | local | ollama
 LLM_PROVIDER        = os.environ.get("LLM_PROVIDER", "taris")
 
-# Local llama.cpp fallback — enable with LLM_LOCAL_FALLBACK=1 (Feature 3.2)
+# Named fallback provider — analogous to STT_FALLBACK_PROVIDER.
+# When the primary provider fails, LLM_FALLBACK_PROVIDER is tried before returning "".
+# Example: LLM_PROVIDER=ollama  + LLM_FALLBACK_PROVIDER=openai   (local → cloud)
+#          LLM_PROVIDER=openai  + LLM_FALLBACK_PROVIDER=ollama   (cloud → local)
+# Leave empty to disable named fallback (independent of LLM_LOCAL_FALLBACK below).
+LLM_FALLBACK_PROVIDER = os.environ.get("LLM_FALLBACK_PROVIDER", "")
+
+# Legacy local llama.cpp fallback — enable with LLM_LOCAL_FALLBACK=1 (Feature 3.2)
+# Only works when a llama.cpp / Ollama server is running on LLAMA_CPP_URL.
+# Prefer LLM_FALLBACK_PROVIDER for named-provider fallback.
 LLM_LOCAL_FALLBACK      = os.environ.get("LLM_LOCAL_FALLBACK", "0") == "1"
 LLM_FALLBACK_FLAG_FILE  = _th("llm_fallback_enabled")  # runtime toggle
 LLAMA_CPP_URL           = os.environ.get("LLAMA_CPP_URL",   "http://127.0.0.1:8081")
@@ -201,7 +210,7 @@ EMBED_DIMENSION      = int(os.environ.get("EMBED_DIMENSION", "384"))
 # Bot version — bump on every user-visible deployment
 # ─────────────────────────────────────────────────────────────────────────────
 
-BOT_VERSION        = "2026.3.31"
+BOT_VERSION        = "2026.3.32"
 RELEASE_NOTES_FILE = os.environ.get(
     "RELEASE_NOTES_FILE",
     os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "release_notes.json"),
@@ -277,6 +286,12 @@ VOICE_MAX_DURATION    = 30.0       # hard session cap (seconds)
 TTS_MAX_CHARS         = 600        # ~75 words / ~25 s on Pi 3 — cap for real-time voice chat
 TTS_CHUNK_CHARS       = 1200       # ~150 words / ~55 s on Pi 3 — per-part cap for "Read aloud"
 VOICE_TIMING_DEBUG    = os.environ.get("VOICE_TIMING_DEBUG", "0").lower() in ("1", "true", "yes")
+
+# Voice pipeline debug — saves every stage (audio, PCM, STT, LLM, TTS) to VOICE_DEBUG_DIR.
+# Enable: VOICE_DEBUG_MODE=1 in bot.env.  All recordings land in VOICE_DEBUG_DIR.
+# Use collected fixtures later for regression tests (copy to src/tests/voice/).
+VOICE_DEBUG_MODE = os.environ.get("VOICE_DEBUG_MODE", "0").lower() in ("1", "true", "yes")
+VOICE_DEBUG_DIR  = os.environ.get("VOICE_DEBUG_DIR",  _th("debug/voice"))
 
 # Strings file
 _STRINGS_FILE = os.environ.get(

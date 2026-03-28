@@ -2201,6 +2201,88 @@ def t_dual_stt_providers(**_) -> list[TestResult]:
     return results
 
 
+def t_voice_debug_mode(**_) -> list[TestResult]:
+    """T34 — Voice debug mode: VoiceDebugSession module, constants, LLM named fallback.
+
+    Verifies:
+    - core/voice_debug.py importable; VoiceDebugSession class present
+    - VOICE_DEBUG_MODE / VOICE_DEBUG_DIR constants in bot_config
+    - VoiceDebugSession writes expected files when enabled
+    - LLM_FALLBACK_PROVIDER constant in bot_config
+    - _ask_with_fallback function in bot_llm
+    """
+    t0 = time.time()
+    results: list[TestResult] = []
+
+    try:
+        import os as _os, json as _json, tempfile as _tmp
+        _os.environ.setdefault("TARIS_DIR", str(TARIS_DIR))
+
+        # 1. bot_config constants
+        cfg_path = TARIS_DIR / "core" / "bot_config.py"
+        if not cfg_path.exists():
+            cfg_path = Path(__file__).parent.parent / "core" / "bot_config.py"
+        cfg_src = cfg_path.read_text()
+        has_debug_mode = "VOICE_DEBUG_MODE" in cfg_src
+        has_debug_dir  = "VOICE_DEBUG_DIR" in cfg_src
+        has_llm_fb     = "LLM_FALLBACK_PROVIDER" in cfg_src
+        ok1 = has_debug_mode and has_debug_dir and has_llm_fb
+        results.append(TestResult(
+            "debug_constants",
+            "PASS" if ok1 else "FAIL",
+            time.time() - t0,
+            f"VOICE_DEBUG_MODE={'yes' if has_debug_mode else 'NO'} "
+            f"VOICE_DEBUG_DIR={'yes' if has_debug_dir else 'NO'} "
+            f"LLM_FALLBACK_PROVIDER={'yes' if has_llm_fb else 'NO'}",
+        ))
+
+        # 2. VoiceDebugSession functional test
+        with _tmp.TemporaryDirectory() as td:
+            import sys as _sys
+            _sys.path.insert(0, str(Path(__file__).parent.parent))
+            _os.environ["TARIS_DIR"] = str(TARIS_DIR)
+            from core.voice_debug import VoiceDebugSession as _VDS
+            dbg = _VDS(user_id="test_t34", debug_mode=True, debug_dir=Path(td))
+            assert dbg.enabled, "VoiceDebugSession not enabled"
+            dbg.save_raw_audio(b"\x00\x01\x02", ext="webm")
+            dbg.save_pcm(b"\x00" * 320, sample_rate=16000)
+            dbg.save_stt("тест")
+            dbg.save_llm_answer("ответ")
+            dbg.save_tts_input("ответ")
+            dbg.save_tts_output(b"OGGdata")
+            dbg.finalise({"test": True})
+            files = {p.name for p in Path(td, dbg.session_id).iterdir()}
+            expected = {"input.webm", "decoded.pcm", "decoded.wav",
+                        "stt.txt", "llm_answer.txt", "tts_input.txt",
+                        "tts_output.ogg", "pipeline.json"}
+            missing = expected - files
+            results.append(TestResult(
+                "debug_session_files",
+                "PASS" if not missing else "FAIL",
+                time.time() - t0,
+                f"files={sorted(files)} missing={sorted(missing)}",
+            ))
+
+        # 3. bot_llm has _ask_with_fallback + LLM_FALLBACK_PROVIDER wired
+        llm_path = TARIS_DIR / "core" / "bot_llm.py"
+        if not llm_path.exists():
+            llm_path = Path(__file__).parent.parent / "core" / "bot_llm.py"
+        llm_src = llm_path.read_text()
+        has_fn   = "def _ask_with_fallback" in llm_src
+        has_use  = "LLM_FALLBACK_PROVIDER" in llm_src
+        results.append(TestResult(
+            "llm_named_fallback",
+            "PASS" if (has_fn and has_use) else "FAIL",
+            time.time() - t0,
+            f"_ask_with_fallback={'yes' if has_fn else 'NO'} "
+            f"LLM_FALLBACK_PROVIDER={'yes' if has_use else 'NO'}",
+        ))
+
+    except Exception as e:
+        results.append(TestResult("voice_debug_mode", "FAIL", time.time() - t0, str(e)))
+
+    return results
+
 
 TEST_FUNCTIONS = [
     t_model_files_present,
@@ -2244,6 +2326,8 @@ TEST_FUNCTIONS = [
     t_pipeline_logger,
     # Dual STT dispatch + fallback (T33)
     t_dual_stt_providers,
+    # Voice debug mode + LLM named fallback (T34)
+    t_voice_debug_mode,
 ]
 
 

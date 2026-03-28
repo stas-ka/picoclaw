@@ -276,7 +276,7 @@ async function vcSendChat(blob) {
     }
 
     vcAddBubble('user', j.user_text, vcNow(), null);
-    vcAddBubble('bot',  j.reply_text, vcNow(), j.audio_b64 || null);
+    vcAddBubble('bot',  j.reply_text, vcNow(), j.audio_b64 || null, j.debug_session_id || null);
 
     /* auto-play the reply audio */
     if (j.audio_b64) {
@@ -300,7 +300,7 @@ async function vcSendChat(blob) {
 }
 
 /* ── Helpers ─────────────────────────────────────────────────────────────── */
-function vcAddBubble(role, text, time, audio_b64) {
+function vcAddBubble(role, text, time, audio_b64, debug_session_id) {
   const thread = document.getElementById('vc-thread');
   const div = document.createElement('div');
   div.className = 'chat-bubble ' + (role === 'user' ? 'chat-user' : 'chat-bot');
@@ -309,9 +309,30 @@ function vcAddBubble(role, text, time, audio_b64) {
     try {
       const bin = atob(audio_b64), bytes = new Uint8Array(bin.length);
       for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-      const url = URL.createObjectURL(new Blob([bytes], { type: 'audio/ogg' }));
-      audioHtml = '<div class="mt-sm"><audio controls src="' + url
-        + '" style="width:100%;height:36px;border-radius:8px"></audio></div>';
+      const blob = new Blob([bytes], { type: 'audio/ogg' });
+      const url = URL.createObjectURL(blob);
+      // Download button — uses blob URL for TTS audio
+      const dlTs = new Date().toISOString().replace(/[:.]/g,'').slice(0,15);
+      const dlHref = debug_session_id
+        ? '/voice/debug/' + encodeURIComponent(debug_session_id) + '/tts_output.ogg'
+        : url;
+      const dlAttr = debug_session_id ? '' : ' download="tts_' + dlTs + '.ogg"';
+      audioHtml = '<div class="mt-sm" style="display:flex;align-items:center;gap:8px">'
+        + '<audio controls src="' + url + '" style="flex:1;height:36px;border-radius:8px"></audio>'
+        + '<a href="' + dlHref + '"' + dlAttr + ' title="Download audio" style="font-size:1.2em;text-decoration:none">📥</a>'
+        + '</div>';
+    } catch (_) {}
+  }
+  if (role === 'user' && audio_b64) {
+    // User recording download (audio_b64 is raw user audio b64)
+    try {
+      const bin = atob(audio_b64), bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      const url = URL.createObjectURL(new Blob([bytes]));
+      const dlTs = new Date().toISOString().replace(/[:.]/g,'').slice(0,15);
+      audioHtml = '<div class="mt-sm" style="display:flex;align-items:center;gap:8px">'
+        + '<a href="' + url + '" download="input_' + dlTs + '.webm" title="Download recording" style="font-size:0.85em;opacity:0.7;text-decoration:none">📥 recording</a>'
+        + '</div>';
     } catch (_) {}
   }
   div.innerHTML =
@@ -397,7 +418,7 @@ async function vcSendTextMsg() {
     const data = await r.json();
 
     if (data.audio_b64) vcSetStage('tts');
-    vcAddBubble('bot', data.reply_text || '…', vcNow(), data.audio_b64 || null);
+    vcAddBubble('bot', data.reply_text || '…', vcNow(), data.audio_b64 || null, data.debug_session_id || null);
     vcScrollThread();
   } catch (e) {
     vcAddBubble('bot', '❌ Network error: ' + e.message, vcNow(), null);

@@ -15,6 +15,7 @@ import subprocess
 import urllib.error
 import urllib.request
 from pathlib import Path
+from typing import Optional
 
 from core.bot_config import (
     ACTIVE_MODEL_FILE,
@@ -29,6 +30,7 @@ from core.bot_config import (
     LOCAL_TEMPERATURE,
     LLM_LOCAL_FALLBACK,
     LLM_FALLBACK_FLAG_FILE,
+    LLM_FALLBACK_PROVIDER,
     LLM_PROVIDER,
     OLLAMA_URL,
     OLLAMA_MODEL,
@@ -345,20 +347,20 @@ _DISPATCH = {
 }
 
 
-def ask_llm(prompt: str, timeout: int = 60) -> str:
-    """Call the configured LLM provider and return the response text.
+def _ask_with_fallback(prompt: str, timeout: int, *, raise_on_fail: bool = False) -> str:
+    """Shared try-primary → try-named-fallback → try-local-fallback logic.
 
-    Falls back to local llama.cpp when LLM_LOCAL_FALLBACK=1 and the primary
-    provider fails.  Fallback responses are prefixed with '⚠️ [local fallback]'.
+    Called by both ask_llm() and ask_llm_or_raise().
     """
     provider = LLM_PROVIDER.lower()
     fn = _DISPATCH.get(provider, _ask_taris)
 
+    primary_error: Optional[Exception] = None
     try:
         return fn(prompt, timeout)
     except subprocess.TimeoutExpired:
         log.warning(f"[LLM] {provider} timed out ({timeout}s)")
-        primary_error: Exception = subprocess.TimeoutExpired([], timeout)
+        primary_error = subprocess.TimeoutExpired([], timeout)
     except FileNotFoundError as exc:
         log.error(f"[LLM] binary not found for provider '{provider}': {exc}")
         primary_error = exc
@@ -366,7 +368,20 @@ def ask_llm(prompt: str, timeout: int = 60) -> str:
         log.warning(f"[LLM] {provider} failed: {exc}")
         primary_error = exc
 
-    # ── Local fallback (Feature 3.2) ──────────────────────────────────────
+    # ── Named fallback (LLM_FALLBACK_PROVIDER) — mirrors STT_FALLBACK_PROVIDER ──
+    named_fb = LLM_FALLBACK_PROVIDER.lower() if LLM_FALLBACK_PROVIDER else ""
+    if named_fb and named_fb != provider:
+        log.warning(f"[LLM] falling back to named provider '{named_fb}' after {provider} failure")
+        fb_fn = _DISPATCH.get(named_fb, _ask_taris)
+        try:
+            result = fb_fn(prompt, timeout)
+            if result:
+                log.debug(f"[LLM] named fallback '{named_fb}' succeeded")
+                return result
+        except Exception as exc2:
+            log.error(f"[LLM] named fallback '{named_fb}' also failed: {exc2}")
+
+    # ── Legacy local llama.cpp fallback (LLM_LOCAL_FALLBACK=1) ───────────────
     if (LLM_LOCAL_FALLBACK or os.path.exists(LLM_FALLBACK_FLAG_FILE)) and provider != "local":
         log.warning(
             f"[LLM] Falling back to local llama.cpp after {provider} failure: {primary_error}"
@@ -377,37 +392,31 @@ def ask_llm(prompt: str, timeout: int = 60) -> str:
         except Exception as exc2:
             log.error(f"[LLM] local fallback also failed: {exc2}")
 
+    if raise_on_fail and primary_error is not None:
+        raise primary_error
     return ""
 
 
-def ask_llm_or_raise(prompt: str, timeout: int = 60) -> str:
-    """Call the configured LLM provider and raise on failure.
+def ask_llm(prompt: str, timeout: int = 60) -> str:
+    """Call the configured LLM provider and return the response text.
 
-    Unlike ``ask_llm()``, this propagates provider exceptions so callers can
-    show meaningful diagnostics to the user.  Use for interactive commands
-    (e.g. system chat) where a silent empty return masks the real error.
-
-    If local fallback is configured (Feature 3.2) and the primary provider
-    fails, the local llama.cpp server is tried first.  The original exception
-    is re-raised only when all available options have been exhausted.
+    Fallback chain (first that succeeds wins):
+      1. LLM_PROVIDER (primary)
+      2. LLM_FALLBACK_PROVIDER (named fallback, e.g. openai when primary=ollama)
+      3. Local llama.cpp when LLM_LOCAL_FALLBACK=1
+    Returns "" when all providers fail.
     """
-    provider = LLM_PROVIDER.lower()
-    fn = _DISPATCH.get(provider, _ask_taris)
-    try:
-        return fn(prompt, timeout)
-    except Exception as primary_exc:
-        # Attempt local fallback if configured — same logic as ask_llm()
-        if (LLM_LOCAL_FALLBACK or os.path.exists(LLM_FALLBACK_FLAG_FILE)) and provider != "local":
-            log.warning(
-                f"[LLM] ask_llm_or_raise: trying local fallback after {provider} error: {primary_exc}"
-            )
-            try:
-                result = _ask_local(prompt, timeout)
-                if result:
-                    return f"⚠️ [local fallback]\n{result}"
-            except Exception as exc2:
-                log.error(f"[LLM] local fallback also failed: {exc2}")
-        raise  # Re-raise original exception when no fallback available/succeeded
+    return _ask_with_fallback(prompt, timeout, raise_on_fail=False)
+
+
+def ask_llm_or_raise(prompt: str, timeout: int = 60) -> str:
+    """Call the configured LLM provider; raise on failure.
+
+    Unlike ask_llm(), re-raises the primary exception when all fallbacks are
+    exhausted.  Use for interactive commands where a silent empty string masks
+    the real error.
+    """
+    return _ask_with_fallback(prompt, timeout, raise_on_fail=True)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

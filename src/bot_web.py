@@ -61,8 +61,10 @@ from core.bot_config import (
     STT_OPENAI_MODEL, STT_LANG,
     OPENAI_API_KEY, OPENAI_BASE_URL,
     OLLAMA_MODEL,
+    VOICE_DEBUG_MODE, VOICE_DEBUG_DIR,
 )
 from core.pipeline_logger import PipelineLog, read_pipeline_logs, get_pipeline_stats
+from core.voice_debug import VoiceDebugSession, list_debug_sessions
 
 # ── UI labels for software stack (computed once at startup) ───────────────────
 _STT_UI_LABELS = {
@@ -2039,7 +2041,13 @@ async def voice_transcribe_endpoint(request: Request, audio: UploadFile = File(.
 
     tmp_in_path = None
     pl = PipelineLog(user_id=user.get("sub", "anon"))
+    dbg = VoiceDebugSession(user_id=user.get("sub", "anon"),
+                            debug_mode=VOICE_DEBUG_MODE,
+                            debug_dir=Path(VOICE_DEBUG_DIR))
     try:
+        ext = (audio.filename or "audio.webm").rsplit(".", 1)[-1].lower() or "webm"
+        dbg.save_raw_audio(audio_data, ext=ext)
+
         # Save uploaded audio to temp file
         with tempfile.NamedTemporaryFile(suffix=".webm", delete=False) as tmp_in:
             tmp_in.write(audio_data)
@@ -2056,19 +2064,25 @@ async def voice_transcribe_endpoint(request: Request, audio: UploadFile = File(.
         if not raw_pcm:
             raise ValueError(f"ffmpeg decode failed (rc={ff.returncode}): {ff.stderr[:200]}")
         pl.log_decode(raw_pcm, int((time.monotonic() - t0_decode) * 1000))
+        dbg.save_pcm(raw_pcm)
 
         duration_s = round(len(raw_pcm) / (16000 * 2), 1)
         audio_ms = int(duration_s * 1000)
 
         # STT — routes by STT_PROVIDER (faster_whisper for openclaw, vosk otherwise)
         transcript = pl.timed_stt(lambda: _stt_web(raw_pcm, 16000), audio_ms=audio_ms)
+        dbg.save_stt(transcript)
+        dbg.finalise({"endpoint": "transcribe", "stt_provider": STT_PROVIDER})
 
         # Save as last transcript
         last_t_file = Path(_TARIS_DIR) / "last_transcript.txt"
         ts_now = datetime.now().strftime("%Y-%m-%d %H:%M")
         last_t_file.write_text(f"[web] {ts_now}  {transcript}", encoding="utf-8")
 
-        return {"transcript": transcript, "duration": duration_s, "stt_provider": STT_PROVIDER}
+        resp: dict = {"transcript": transcript, "duration": duration_s, "stt_provider": STT_PROVIDER}
+        if dbg.session_id:
+            resp["debug_session_id"] = dbg.session_id
+        return resp
 
     except HTTPException:
         raise
@@ -2088,7 +2102,7 @@ async def voice_chat_endpoint(request: Request, audio: UploadFile = File(...)):
     """Full voice conversation pipeline: browser audio → STT → LLM → Piper TTS.
 
     STT engine is selected by STT_PROVIDER (faster-whisper for openclaw, Vosk otherwise).
-    Returns JSON: {user_text, reply_text, audio_b64}
+    Returns JSON: {user_text, reply_text, audio_b64[, debug_session_id]}
     Mirrors the Telegram bot's _handle_voice_message() flow.
     """
     user = _get_current_user(request)
@@ -2100,8 +2114,14 @@ async def voice_chat_endpoint(request: Request, audio: UploadFile = File(...)):
         raise HTTPException(400, "Empty audio")
 
     pl = PipelineLog(user_id=user.get("sub", "anon"))
+    dbg = VoiceDebugSession(user_id=user.get("sub", "anon"),
+                            debug_mode=VOICE_DEBUG_MODE,
+                            debug_dir=Path(VOICE_DEBUG_DIR))
     tmp_in_path = None
     try:
+        ext = (audio.filename or "audio.webm").rsplit(".", 1)[-1].lower() or "webm"
+        dbg.save_raw_audio(audio_data, ext=ext)
+
         # ── Stage 1: decode browser audio → 16 kHz mono PCM ───────────────────
         with tempfile.NamedTemporaryFile(suffix=".webm", delete=False) as tmp_in:
             tmp_in.write(audio_data)
@@ -2117,13 +2137,16 @@ async def voice_chat_endpoint(request: Request, audio: UploadFile = File(...)):
         if not raw_pcm:
             raise ValueError(f"ffmpeg decode failed (rc={ff.returncode}): {ff.stderr[:200]}")
         pl.log_decode(raw_pcm, int((time.monotonic() - t0_decode) * 1000))
+        dbg.save_pcm(raw_pcm)
 
         audio_ms = int(len(raw_pcm) / (16000 * 2) * 1000)
 
-        # ── Stage 2: STT (faster-whisper for openclaw, Vosk otherwise) ────────
+        # ── Stage 2: STT ───────────────────────────────────────────────────────
         user_text = pl.timed_stt(lambda: _stt_web(raw_pcm, 16000), audio_ms=audio_ms)
+        dbg.save_stt(user_text)
 
         if not user_text:
+            dbg.finalise({"endpoint": "voice_chat", "error": "no_speech"})
             return {"user_text": "", "reply_text": "", "audio_b64": "", "error": "no_speech"}
 
         # Save for the last-transcript panel
@@ -2136,12 +2159,14 @@ async def voice_chat_endpoint(request: Request, audio: UploadFile = File(...)):
         reply_text = pl.timed_llm(lambda: ask_llm(user_text, timeout=90), input_text=user_text)
         if not reply_text:
             reply_text = "No response from LLM."
+        dbg.save_llm_answer(reply_text)
 
         # ── Stage 4: Piper TTS ─────────────────────────────────────────────────
         audio_b64 = ""
         tts_text = re.sub(r"[*_`#~]", "", reply_text)
         tts_text = re.sub(r"\[([^\]]*?)\]\([^)]*?\)", r"\1", tts_text)
         tts_text = tts_text.strip()[:600]
+        dbg.save_tts_input(tts_text)
 
         if tts_text:
             d = Path(_TARIS_DIR)
@@ -2175,10 +2200,21 @@ async def voice_chat_endpoint(request: Request, audio: UploadFile = File(...)):
                     ogg_bytes = pl.timed_tts(_run_tts, input_text=tts_text)
                     if ogg_bytes:
                         audio_b64 = base64.b64encode(ogg_bytes).decode()
+                        dbg.save_tts_output(ogg_bytes)
                 except Exception as tts_err:
                     log.warning(f"[Web/VoiceChat TTS] {tts_err}")
 
-        return {"user_text": user_text, "reply_text": reply_text, "audio_b64": audio_b64}
+        dbg.finalise({
+            "endpoint": "voice_chat",
+            "stt_provider": STT_PROVIDER,
+            "llm_provider": _LLM_UI_LABEL,
+            "has_tts": bool(audio_b64),
+        })
+
+        resp: dict = {"user_text": user_text, "reply_text": reply_text, "audio_b64": audio_b64}
+        if dbg.session_id:
+            resp["debug_session_id"] = dbg.session_id
+        return resp
 
     except HTTPException:
         raise
@@ -2429,6 +2465,50 @@ async def api_version():
         "stt_raw":  STT_PROVIDER,
         "llm_raw":  LLM_PROVIDER,
     })
+
+
+# ── Voice debug endpoints ─────────────────────────────────────────────────────
+
+@app.get("/voice/debug/sessions")
+async def voice_debug_sessions(request: Request, last_n: int = 30):
+    """List recent voice debug sessions (requires auth). Only works when VOICE_DEBUG_MODE=1."""
+    user = _get_current_user(request)
+    if not user:
+        raise HTTPException(401)
+    if not VOICE_DEBUG_MODE:
+        return JSONResponse({"enabled": False, "sessions": []})
+    sessions = list_debug_sessions(Path(VOICE_DEBUG_DIR), last_n=last_n)
+    return JSONResponse({"enabled": True, "debug_dir": str(VOICE_DEBUG_DIR), "sessions": sessions})
+
+
+@app.get("/voice/debug/{session_id}/{filename}")
+async def voice_debug_download(request: Request, session_id: str, filename: str):
+    """Download a single file from a debug session directory.
+
+    URL: /voice/debug/<session_id>/<filename>
+    Example: /voice/debug/2026-03-28_11-40-00_123__admin/tts_output.ogg
+    """
+    from fastapi.responses import FileResponse
+    user = _get_current_user(request)
+    if not user:
+        raise HTTPException(401)
+    if not VOICE_DEBUG_MODE:
+        raise HTTPException(404, "Debug mode is disabled")
+    # Security: prevent path traversal
+    if ".." in session_id or "/" in session_id or ".." in filename or "/" in filename:
+        raise HTTPException(400, "Invalid path")
+    file_path = Path(VOICE_DEBUG_DIR) / session_id / filename
+    if not file_path.exists() or not file_path.is_file():
+        raise HTTPException(404, f"Not found: {filename}")
+    # Determine MIME type
+    mime = {
+        "ogg": "audio/ogg", "webm": "audio/webm", "wav": "audio/wav",
+        "pcm": "application/octet-stream", "txt": "text/plain; charset=utf-8",
+        "json": "application/json",
+    }.get(filename.rsplit(".", 1)[-1].lower(), "application/octet-stream")
+    return FileResponse(str(file_path), media_type=mime,
+                        filename=f"{session_id}__{filename}")
+
 
 
 @app.get("/api/logs")
