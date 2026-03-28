@@ -9,7 +9,7 @@ This file stores persistent state for AI coding agents. See `.github/copilot-ins
 - **Testing ("test software" / "run tests" / "verify changes"):** always read `doc/test-suite.md` first — it has the complete decision table, all run commands, and the Copilot chat-mode protocol. Never scan test files manually every session.
 - **Context optimization:** Start every session with `#file:doc/quick-ref.md`. Avoid `@workspace`. Use `/skill-name` for deploy/test workflows. Keep sessions ≤ 10 turns to avoid compaction.
 
-## Remote Host
+## Remote Host — Raspberry Pi targets (taris branch)
 
 > ⚠️ **PI1 Branch Rule**: PI1 (`OpenClawPI`) only receives deployments from the **`master` branch**. PI2 (`OpenClawPI2`) may receive any branch for development/testing.
 
@@ -25,6 +25,23 @@ This file stores persistent state for AI coding agents. See `.github/copilot-ins
 | `PROD_TAILSCALE_IP` | `100.81.143.126` |
 | SSH | `plink -pw "PROD_%HOSTPWD%" -batch stas@OpenClawPI "<cmd>"` (LAN) |
 | SSH remote | `plink -pw "%PROD_HOSTPWD%" -batch stas@100.81.143.126 "<cmd>"` (Tailscale) |
+
+## OpenClaw Targets (taris-openclaw branch)
+
+> ⚠️ **TariStation1 Branch Rule**: TariStation1 (`SintAItion`) only receives deployments from the **`taris-openclaw` branch**. TariStation2 (local) may receive any branch for development/testing.
+> ⚠️ **TariStation1 Confirmation Rule**: Deploy to TariStation1 ONLY after explicit user/owner confirmation. Always deploy to TariStation2 first and verify all tests pass.
+
+| Key | Value |
+|---|---|
+| `ENG_TARGETHOST` | `TariStation2` (local machine — no SSH, use `cp` + `systemctl --user`) |
+| `ENG_HOSTUSER` | `stas` (local) |
+| Deploy | `cp src/... ~/.taris/...` + `systemctl --user restart taris-telegram taris-web` |
+| `PROD_OPENCLAW_HOST` | `TariStation1` (alias: `SintAItion`) |
+| `PROD_OPENCLAW_USER` | `stas` |
+| SSH | `sshpass -p "$OPENCLAW1PWD" ssh -o StrictHostKeyChecking=no stas@SintAItion "<cmd>"` |
+| SCP | `sshpass -p "$OPENCLAW1PWD" scp -o StrictHostKeyChecking=no src/... stas@SintAItion:~/.taris/` |
+| `.env` vars | `OPENCLAW1_HOST`, `OPENCLAW1_USER`, `OPENCLAW1PWD` (in project `.env`, gitignored) |
+| Skill | `/taris-deploy-openclaw-target` |
 
 ## Current Bot Version
 
