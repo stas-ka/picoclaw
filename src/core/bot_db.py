@@ -179,7 +179,7 @@ CREATE INDEX IF NOT EXISTS idx_rag_log_chat ON rag_log(chat_id, created_at DESC)
 def get_db() -> sqlite3.Connection:
     """Return a thread-local SQLite connection, creating it if needed."""
     if not getattr(_local, "conn", None):
-        os.makedirs(_TARIS_DIR, exist_ok=True)
+        os.makedirs(TARIS_DIR, exist_ok=True)
         _local.conn = sqlite3.connect(DB_PATH, check_same_thread=False)
         _local.conn.row_factory = sqlite3.Row
     return _local.conn
