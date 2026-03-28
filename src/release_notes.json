@@ -1,5 +1,17 @@
 [
   {
+    "version": "2026.3.33",
+    "date":    "2026-03-28",
+    "title":   "Ollama installed + LLM fallback chain active",
+    "changes": [
+      "Ollama 0.18.3 installed to ~/.local/bin/ollama, runs as systemd user service",
+      "qwen2:0.5b model downloaded to ~/.local/ollama-models",
+      "LLM_FALLBACK_PROVIDER=openai configured: Ollama primary, OpenAI gpt-4o-mini fallback",
+      "OPENAI_BASE_URL switched to api.openai.com (OpenAI direct key)",
+      "Full LLM chain verified: Ollama OK + OpenAI fallback OK"
+    ]
+  },
+  {
     "version": "2026.3.32",
     "date":    "2026-03-28",
     "title":   "Voice debug mode + audio download + LLM named fallback",
