@@ -92,3 +92,15 @@ When adding OpenClaw features, update in the same commit:
 - `TODO.md` — §19 or §25 items
 
 Skill reference: `/taris-openclaw-setup` for setup/troubleshoot workflows.
+
+## Continuous Test Improvement — MANDATORY
+
+For every OpenClaw bug fix or new feature:
+
+1. Add a regression test in `src/tests/test_voice_regression.py` using the next T-number (currently T31+).
+2. The test must directly detect the bug / verify the feature. Include SKIP guard for missing services (ollama, faster-whisper).
+3. Run it immediately: `DEVICE_VARIANT=openclaw PYTHONPATH=src python3 src/tests/test_voice_regression.py --test <func_name>`
+4. Add the new test ID to the table above and to `doc/test-suite.md`.
+5. Commit the fix + the test together — never separately.
+
+> Bug without test = bug not fixed.

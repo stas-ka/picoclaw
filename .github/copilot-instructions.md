@@ -70,6 +70,7 @@ taris/
 - **Docs:** update the relevant `doc/arch/<topic>.md` file and `README.md` in the same commit as the code change.
 - **TODO.md:** keep current; collapse completed items to `✅ Implemented (vX.Y.Z)`.
 - **Deployment pipeline:** ALL changes MUST be deployed and tested on the engineering target **PI2** (`OpenClawPI2`) first. Only after tests pass and the change is committed and pushed to git may it be deployed to the production target **PI1** (`OpenClawPI`). Never deploy directly to PI1 without prior PI2 validation.
+- **Continuous test improvement:** Every bug fix MUST add a regression test that would have caught the bug. Every new feature MUST add tests covering the happy path and the main failure modes. Tests live in `src/tests/test_voice_regression.py` (T-numbered) for voice/config/LLM; add new test IDs sequentially. Update `doc/test-suite.md` with the new test IDs in the same commit. No exceptions.
 
 ## Post-Deploy Rule
 
