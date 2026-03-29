@@ -29,6 +29,7 @@ from core.bot_config import (
     WHISPER_BIN, WHISPER_MODEL, VOICE_BACKEND,
     STT_PROVIDER, FASTER_WHISPER_MODEL, FASTER_WHISPER_DEVICE, FASTER_WHISPER_COMPUTE,
     STT_LANG, DEVICE_VARIANT,
+    LLM_PROVIDER, OLLAMA_MODEL, OPENAI_MODEL,
     TARIS_DIR, _PENDING_TTS_FILE, log,
 )
 from core.bot_instance import bot
@@ -768,11 +769,46 @@ def _handle_voice_message(chat_id: int, voice_obj) -> None:
 
     def _run():
         _timing: dict[str, float] = {}
+        _meta:   dict[str, str]   = {}  # provider/model labels for admin info
 
         def _fmt_timing() -> str:
+            """Timing suffix for non-admin users (only when voice_timing_debug opt is on)."""
             if not (VOICE_TIMING_DEBUG or opts.get("voice_timing_debug")) or not _timing:
                 return ""
             return "\n\n⏱ " + " · ".join(f"{k} {v:.0f}s" for k, v in _timing.items())
+
+        def _llm_label() -> str:
+            if LLM_PROVIDER == "ollama":
+                return f"ollama/{OLLAMA_MODEL}"
+            if LLM_PROVIDER == "openai":
+                return f"openai/{OPENAI_MODEL}"
+            return LLM_PROVIDER
+
+        def _tts_label() -> str:
+            import os as _os
+            return f"piper/{_os.path.basename(PIPER_MODEL)}"
+
+        def _send_admin_info() -> None:
+            """Send detailed pipeline diagnostics to admin users."""
+            if not _is_admin(chat_id) or not _timing:
+                return
+            import os as _os
+            lines = ["⚙️ *Pipeline info*"]
+            if "STT" in _timing:
+                lines.append(f"🎤 STT: {_meta.get('stt', '?')} — {_timing['STT']:.1f}s")
+            if "LLM" in _timing:
+                lines.append(f"🧠 LLM: {_llm_label()} — {_timing['LLM']:.1f}s")
+            if "TTS" in _timing:
+                lines.append(f"🔊 TTS: {_tts_label()} — {_timing['TTS']:.1f}s")
+            other_keys = [k for k in _timing if k not in ("STT", "LLM", "TTS")]
+            if other_keys:
+                lines.append("⏱ " + " · ".join(f"{k} {_timing[k]:.1f}s" for k in other_keys))
+            total = sum(_timing.values())
+            lines.append(f"📊 Total: {total:.1f}s")
+            try:
+                bot.send_message(chat_id, "\n".join(lines), parse_mode="Markdown")
+            except Exception as _e:
+                log.debug(f"[Voice] admin info send failed: {_e}")
 
         opts = _st._voice_opts
 
@@ -891,6 +927,18 @@ def _handle_voice_message(chat_id: int, voice_obj) -> None:
                            reply_markup=_back_keyboard())
                 return
         _timing["STT"] = time.time() - _ts
+        # Track which STT provider was used for admin info
+        if fw_used and text:
+            _meta["stt"] = f"faster-whisper/{FASTER_WHISPER_MODEL} ({FASTER_WHISPER_DEVICE}·{FASTER_WHISPER_COMPUTE})"
+        elif fw_used:
+            _meta["stt"] = f"faster-whisper/{FASTER_WHISPER_MODEL}→vosk/{_stt_lang}"
+        elif whisper_used and text:
+            _meta["stt"] = f"whisper.cpp/{WHISPER_MODEL}"
+        elif whisper_used:
+            _meta["stt"] = f"whisper.cpp→vosk/{_stt_lang}"
+        else:
+            _meta["stt"] = f"vosk/{_stt_lang}"
+
 
         if not text:
             _safe_edit(chat_id, msg.message_id,
@@ -1193,5 +1241,7 @@ def _handle_voice_message(chat_id: int, voice_obj) -> None:
                                    parse_mode="Markdown")
                     except Exception:
                         pass
+
+        _send_admin_info()
 
     threading.Thread(target=_run, daemon=True).start()
