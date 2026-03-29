@@ -581,7 +581,7 @@ def _handle_system_message(chat_id: int, user_text: str) -> None:
 
     def _run():
         try:
-            cmd_text = _ask_llm_strict(prompt, timeout=45)
+            cmd_text = _ask_llm_strict(prompt, timeout=45, use_case="system")
         except subprocess.TimeoutExpired:
             bot.edit_message_text("❌ LLM timed out (>45 s). Try again later.",
                                   chat_id, msg.message_id)
@@ -784,7 +784,7 @@ def _handle_chat_message(chat_id: int, user_text: str) -> None:
         # Record the raw user text (without lang prefix) before calling the LLM
         add_to_history(chat_id, "user", user_text, call_id=call_id)
 
-        response = ask_llm_with_history(messages, timeout=60)
+        response = ask_llm_with_history(messages, timeout=60, use_case="chat")
         reply    = response if response else "❌ No response from LLM."
 
         # Record assistant turn

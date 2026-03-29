@@ -311,7 +311,8 @@
     "openclaw_status_online": "✅ OpenClaw работает (порт {port})",
     "openclaw_status_offline": "❌ OpenClaw недоступен",
     "system_cmd_confirm": "🖥️ Выполню команду:\n\n```\n{cmd}\n```\n\nПодтвердить?",
-    "system_answer": "ℹ️ {answer}"
+    "system_answer": "ℹ️ {answer}",
+    "admin_btn_voice_config": "🎙️ Голосовые настройки"
   },
   "en": {
     "btn_digest": "📧  Mail Digest",
@@ -625,7 +626,8 @@
     "openclaw_status_online": "✅ OpenClaw running (port {port})",
     "openclaw_status_offline": "❌ OpenClaw not reachable",
     "system_cmd_confirm": "🖥️ I will run:\n\n```\n{cmd}\n```\n\nConfirm?",
-    "system_answer": "ℹ️ {answer}"
+    "system_answer": "ℹ️ {answer}",
+    "admin_btn_voice_config": "🎙️ Voice Config"
   },
   "de": {
     "btn_digest": "📧  E-Mail-Zusammenfassung",
@@ -939,6 +941,7 @@
     "openclaw_status_online": "✅ OpenClaw läuft (Port {port})",
     "openclaw_status_offline": "❌ OpenClaw nicht erreichbar",
     "system_cmd_confirm": "🖥️ Führe aus:\n\n```\n{cmd}\n```\n\nBestätigen?",
-    "system_answer": "ℹ️ {answer}"
+    "system_answer": "ℹ️ {answer}",
+    "admin_btn_voice_config": "🎙️ Sprachkonfiguration"
   }
 }

@@ -106,6 +106,7 @@ TARIS_API_TOKEN  = os.environ.get("TARIS_API_TOKEN", "")
 
 ACTIVE_MODEL_FILE   = os.environ.get("ACTIVE_MODEL_FILE",
                           _th("active_model.txt"))
+LLM_PER_FUNC_FILE   = _th("llm_per_func.json")     # per-function LLM overrides (system/chat)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # LLM provider switching  (Feature 3.1 + 3.2)
@@ -228,7 +229,7 @@ RAG_FLAG_FILE  = os.path.expanduser("~/.taris/rag_disabled")
 # Bot version — bump on every user-visible deployment
 # ─────────────────────────────────────────────────────────────────────────────
 
-BOT_VERSION        = "2026.3.29+7"
+BOT_VERSION        = "2026.3.29+8"
 RELEASE_NOTES_FILE = os.environ.get(
     "RELEASE_NOTES_FILE",
     os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "release_notes.json"),

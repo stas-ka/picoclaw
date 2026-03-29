@@ -47,8 +47,43 @@ from core.bot_config import (
     YANDEXGPT_MAX_TOKENS,
     YANDEXGPT_MODEL_URI,
     YANDEXGPT_TEMPERATURE,
+    LLM_PER_FUNC_FILE,
     log,
 )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Per-function LLM override
+# ─────────────────────────────────────────────────────────────────────────────
+# Stored in llm_per_func.json: {"system": "openai", "chat": "ollama", ...}
+# Empty string or missing key → use global LLM_PROVIDER.
+# Supported use_case values: "system" (admin system chat), "chat" (user free chat).
+
+def get_per_func_provider(use_case: str) -> str:
+    """Return admin-set provider for this use_case, or '' for global default."""
+    try:
+        d = json.loads(Path(LLM_PER_FUNC_FILE).read_text(encoding="utf-8"))
+        return d.get(use_case, "")
+    except Exception:
+        return ""
+
+
+def set_per_func_provider(use_case: str, provider: str) -> None:
+    """Set or clear per-function LLM provider override. Empty provider → resets to global."""
+    try:
+        try:
+            d = json.loads(Path(LLM_PER_FUNC_FILE).read_text(encoding="utf-8"))
+        except Exception:
+            d = {}
+        if provider:
+            d[use_case] = provider
+        else:
+            d.pop(use_case, None)
+        Path(LLM_PER_FUNC_FILE).write_text(json.dumps(d, indent=2, ensure_ascii=False),
+                                            encoding="utf-8")
+        log.info(f"[LLM] per-func override: {use_case} = {provider or '(global)'}")
+    except Exception as e:
+        log.warning(f"[LLM] set_per_func_provider failed: {e}")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -347,12 +382,16 @@ _DISPATCH = {
 }
 
 
-def _ask_with_fallback(prompt: str, timeout: int, *, raise_on_fail: bool = False) -> str:
+def _ask_with_fallback(prompt: str, timeout: int, *, raise_on_fail: bool = False,
+                       use_case: str = "chat") -> str:
     """Shared try-primary → try-named-fallback → try-local-fallback logic.
 
     Called by both ask_llm() and ask_llm_or_raise().
+    use_case: "chat" | "system" — checked for per-function override first.
     """
-    provider = LLM_PROVIDER.lower()
+    # Per-function override wins over global LLM_PROVIDER
+    per_func = get_per_func_provider(use_case)
+    provider = per_func if per_func else LLM_PROVIDER.lower()
     fn = _DISPATCH.get(provider, _ask_taris)
 
     primary_error: Optional[Exception] = None
@@ -397,26 +436,28 @@ def _ask_with_fallback(prompt: str, timeout: int, *, raise_on_fail: bool = False
     return ""
 
 
-def ask_llm(prompt: str, timeout: int = 60) -> str:
+def ask_llm(prompt: str, timeout: int = 60, *, use_case: str = "chat") -> str:
     """Call the configured LLM provider and return the response text.
 
     Fallback chain (first that succeeds wins):
-      1. LLM_PROVIDER (primary)
-      2. LLM_FALLBACK_PROVIDER (named fallback, e.g. openai when primary=ollama)
-      3. Local llama.cpp when LLM_LOCAL_FALLBACK=1
+      1. Per-function override (if set via admin menu)
+      2. LLM_PROVIDER (primary global)
+      3. LLM_FALLBACK_PROVIDER (named fallback)
+      4. Local llama.cpp when LLM_LOCAL_FALLBACK=1
     Returns "" when all providers fail.
+    use_case: "chat" (default) | "system" | "voice" — for per-function override.
     """
-    return _ask_with_fallback(prompt, timeout, raise_on_fail=False)
+    return _ask_with_fallback(prompt, timeout, use_case=use_case, raise_on_fail=False)
 
 
-def ask_llm_or_raise(prompt: str, timeout: int = 60) -> str:
+def ask_llm_or_raise(prompt: str, timeout: int = 60, *, use_case: str = "chat") -> str:
     """Call the configured LLM provider; raise on failure.
 
     Unlike ask_llm(), re-raises the primary exception when all fallbacks are
     exhausted.  Use for interactive commands where a silent empty string masks
     the real error.
     """
-    return _ask_with_fallback(prompt, timeout, raise_on_fail=True)
+    return _ask_with_fallback(prompt, timeout, use_case=use_case, raise_on_fail=True)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -432,7 +473,7 @@ def _format_history_as_text(messages: list) -> str:
     return "\n".join(parts)
 
 
-def ask_llm_with_history(messages: list, timeout: int = 60) -> str:
+def ask_llm_with_history(messages: list, timeout: int = 60, *, use_case: str = "chat") -> str:
     """Call the configured LLM with a full conversation history.
 
     ``messages`` is a list of ``{"role": "user"|"assistant", "content": str}``
@@ -444,7 +485,8 @@ def ask_llm_with_history(messages: list, timeout: int = 60) -> str:
       - gemini                      → contents/parts with "user"/"model" roles
       - taris (default)          → formatted as plain-text transcript
     """
-    provider = LLM_PROVIDER.lower()
+    per_func = get_per_func_provider(use_case)
+    provider = per_func if per_func else LLM_PROVIDER.lower()
     primary_error: Exception = RuntimeError("unknown")
 
     try:

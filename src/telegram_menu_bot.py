@@ -69,8 +69,10 @@ from telegram.bot_admin import (
     _handle_admin_changelog,
     _handle_admin_logs_menu, _handle_admin_logs_show,
     _handle_admin_llm_menu, _handle_set_llm,
+    _handle_admin_llm_per_func, _handle_admin_llm_set,
     _handle_openai_llm_menu, _handle_llm_setkey_prompt, _handle_save_llm_key,
     _handle_admin_llm_fallback_menu, _handle_admin_llm_fallback_toggle,
+    _handle_admin_voice_config, _handle_admin_stt_set, _handle_admin_fw_model_set,
     _handle_admin_rag_menu, _handle_admin_rag_toggle, _handle_admin_rag_log,
     _admin_keyboard,
 )
@@ -350,6 +352,8 @@ def callback_handler(call):
         if not _is_allowed(cid): return _deny(cid)
         _handle_profile_my_data(cid)
     # ── Admin panel ────────────────────────────────────────────────────────
+    elif data == "noop":
+        pass  # separator buttons — ignore silently
     elif data == "admin_menu":
         if _is_admin(cid):
             pending_count = len(_get_pending_registrations())
@@ -432,6 +436,39 @@ def callback_handler(call):
     elif data == "admin_llm_fallback_toggle":
         if _is_admin(cid):
             _handle_admin_llm_fallback_toggle(cid)
+        else:
+            bot.send_message(cid, _t(cid, "admin_only"))
+
+    elif data.startswith("admin_llm_for:"):
+        if _is_admin(cid):
+            _handle_admin_llm_per_func(cid, data[len("admin_llm_for:"):])
+        else:
+            bot.send_message(cid, _t(cid, "admin_only"))
+
+    elif data.startswith("admin_llm_set:"):
+        if _is_admin(cid):
+            parts = data[len("admin_llm_set:"):].split(":", 1)
+            use_case = parts[0]
+            provider = parts[1] if len(parts) > 1 else ""
+            _handle_admin_llm_set(cid, use_case, provider)
+        else:
+            bot.send_message(cid, _t(cid, "admin_only"))
+
+    elif data == "admin_voice_config":
+        if _is_admin(cid):
+            _handle_admin_voice_config(cid)
+        else:
+            bot.send_message(cid, _t(cid, "admin_only"))
+
+    elif data.startswith("admin_stt_set:"):
+        if _is_admin(cid):
+            _handle_admin_stt_set(cid, data[len("admin_stt_set:"):])
+        else:
+            bot.send_message(cid, _t(cid, "admin_only"))
+
+    elif data.startswith("admin_fw_model:"):
+        if _is_admin(cid):
+            _handle_admin_fw_model_set(cid, data[len("admin_fw_model:"):])
         else:
             bot.send_message(cid, _t(cid, "admin_only"))
 

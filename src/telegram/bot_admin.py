@@ -22,10 +22,18 @@ from core.bot_config import (
     TARIS_CONFIG, ACTIVE_MODEL_FILE,
     RELEASE_NOTES_FILE, LAST_NOTIFIED_FILE, BOT_VERSION,
     LLM_LOCAL_FALLBACK, LLAMA_CPP_URL, LLAMA_CPP_MODEL, LLM_FALLBACK_FLAG_FILE,
+    LLM_PROVIDER, LLM_FALLBACK_PROVIDER,
+    OPENAI_API_KEY, OPENAI_MODEL, OPENAI_BASE_URL,
+    OLLAMA_URL, OLLAMA_MODEL,
+    GEMINI_API_KEY, GEMINI_MODEL,
+    ANTHROPIC_API_KEY, ANTHROPIC_MODEL,
+    STT_PROVIDER, FASTER_WHISPER_MODEL, FASTER_WHISPER_DEVICE, FASTER_WHISPER_COMPUTE,
+    PIPER_BIN, PIPER_MODEL,
     _VOICE_OPTS_DEFAULTS, DEVICE_VARIANT,
     _LOG_FILE, _ASSISTANT_LOG_FILE, _SECURITY_LOG_FILE, _VOICE_LOG_FILE, _DATASTORE_LOG_FILE,
     log,
 )
+from core.bot_llm import get_per_func_provider, set_per_func_provider
 from core.bot_logger import tail_log
 from core.bot_instance import bot
 from telegram.bot_access import (
@@ -114,6 +122,7 @@ def _admin_keyboard(chat_id: int = 0) -> InlineKeyboardMarkup:
         InlineKeyboardButton(_t(chat_id, "admin_btn_remove_user"), callback_data="admin_remove_user"),
         InlineKeyboardButton(_t(chat_id, "admin_btn_switch_llm"), callback_data="admin_llm_menu"),
         InlineKeyboardButton(_t(chat_id, "admin_btn_voice_opts"), callback_data="voice_opts_menu"),
+        InlineKeyboardButton(_t(chat_id, "admin_btn_voice_config"), callback_data="admin_voice_config"),
         InlineKeyboardButton(_t(chat_id, "admin_btn_release_notes"), callback_data="admin_changelog"),
         InlineKeyboardButton(_t(chat_id, "admin_btn_logs"),       callback_data="admin_logs_menu"),
         InlineKeyboardButton(_t(chat_id, "admin_btn_rag"),         callback_data="admin_rag_menu"),
@@ -455,7 +464,95 @@ def _handle_voice_opt_toggle(chat_id: int, key: str) -> None:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Release Notes
+# Admin Voice Config (STT/TTS model info + STT switching)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _handle_admin_voice_config(chat_id: int) -> None:
+    """Show current STT/TTS configuration and allow switching STT provider + FW model."""
+    opts = _voice_opts()
+    # Determine active STT
+    if opts.get("faster_whisper_stt"):
+        active_stt = "faster_whisper"
+    else:
+        active_stt = STT_PROVIDER  # from env / bot.env
+
+    # FW model from env (runtime override stored in voice_opts stt_model key)
+    fw_model = opts.get("fw_model_override") or FASTER_WHISPER_MODEL
+    fw_device = FASTER_WHISPER_DEVICE
+    fw_compute = FASTER_WHISPER_COMPUTE
+
+    # Piper model (basename)
+    piper_model_name = str(PIPER_MODEL).split("/")[-1] if PIPER_MODEL else "—"
+
+    text = (
+        "🎙️ *Voice Configuration*\n\n"
+        f"*STT Provider:* `{active_stt}`\n"
+        f"*Vosk (hotword):* {'enabled' if DEVICE_VARIANT == 'taris' or not opts.get('faster_whisper_stt') else 'hotword only'}\n"
+        f"*Faster-Whisper model:* `{fw_model}` ({fw_device}/{fw_compute})\n\n"
+        f"*TTS (Piper) model:* `{piper_model_name}`\n\n"
+        "_Switch STT provider (takes effect immediately):_"
+    )
+
+    kb = InlineKeyboardMarkup(row_width=1)
+
+    # STT switch buttons
+    vosk_active   = not opts.get("faster_whisper_stt")
+    fw_active     = bool(opts.get("faster_whisper_stt"))
+    kb.add(InlineKeyboardButton(
+        f"{'✅' if vosk_active else '◻️'} Vosk (default, offline)",
+        callback_data="admin_stt_set:vosk",
+    ))
+    if DEVICE_VARIANT == "openclaw":
+        kb.add(InlineKeyboardButton(
+            f"{'✅' if fw_active else '◻️'} Faster-Whisper",
+            callback_data="admin_stt_set:faster_whisper",
+        ))
+        # FW model selection
+        kb.add(InlineKeyboardButton("─ Faster-Whisper model ─", callback_data="noop"))
+        for model_name in ["tiny", "base", "small", "medium"]:
+            icon = "✅" if fw_model == model_name else "◻️"
+            kb.add(InlineKeyboardButton(f"{icon} {model_name}", callback_data=f"admin_fw_model:{model_name}"))
+
+    kb.add(InlineKeyboardButton("🔙  Admin", callback_data="admin_menu"))
+
+    try:
+        bot.send_message(chat_id, text, parse_mode="Markdown", reply_markup=kb)
+    except Exception as e:
+        log.warning(f"[VoiceCfg] send failed: {e}")
+        bot.send_message(chat_id, _re.sub(r"[*_`]", "", text), reply_markup=kb)
+
+
+def _handle_admin_stt_set(chat_id: int, provider: str) -> None:
+    """Switch STT provider at runtime via voice_opts."""
+    opts = _voice_opts()
+    if provider == "faster_whisper":
+        opts["faster_whisper_stt"] = True
+        msg = "✅ STT switched to *Faster-Whisper*."
+    else:
+        opts["faster_whisper_stt"] = False
+        msg = "✅ STT switched to *Vosk*."
+    _save_voice_opts()
+    log.info(f"[VoiceCfg] admin {chat_id} switched STT → {provider}")
+    try:
+        bot.send_message(chat_id, msg, parse_mode="Markdown", reply_markup=_admin_keyboard(chat_id))
+    except Exception:
+        bot.send_message(chat_id, _re.sub(r"[*_`]", "", msg), reply_markup=_admin_keyboard(chat_id))
+
+
+def _handle_admin_fw_model_set(chat_id: int, model_name: str) -> None:
+    """Store FW model override in voice_opts and confirm."""
+    opts = _voice_opts()
+    opts["fw_model_override"] = model_name
+    _save_voice_opts()
+    log.info(f"[VoiceCfg] admin {chat_id} set FW model → {model_name}")
+    msg = (
+        f"✅ Faster-Whisper model set to *{model_name}*.\n\n"
+        "_Note: restart voice service to apply model change (`systemctl --user restart taris-voice`)._"
+    )
+    try:
+        bot.send_message(chat_id, msg, parse_mode="Markdown", reply_markup=_admin_keyboard(chat_id))
+    except Exception:
+        bot.send_message(chat_id, _re.sub(r"[*_`]", "", msg), reply_markup=_admin_keyboard(chat_id))
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _load_release_notes() -> list[dict]:
@@ -609,59 +706,66 @@ def _get_taris_models() -> list[dict]:
 
 
 def _handle_admin_llm_menu(chat_id: int) -> None:
-    """Show LLM selection keyboard with available models from taris config."""
-    models  = _get_taris_models()
-    current = _get_active_model()
+    """Rich LLM settings panel: current status + global provider switch + per-function overrides."""
+    global_p  = LLM_PROVIDER.lower()
+    fallback_p = LLM_FALLBACK_PROVIDER.lower() if LLM_FALLBACK_PROVIDER else "—"
+    _MODEL_LABELS = {
+        "openai":    f"openai ({OPENAI_MODEL})",
+        "ollama":    f"ollama ({OLLAMA_MODEL})",
+        "gemini":    f"gemini ({GEMINI_MODEL})",
+        "anthropic": f"anthropic ({ANTHROPIC_MODEL})",
+        "taris":     "taris",
+        "openclaw":  "openclaw",
+    }
+    global_label   = _MODEL_LABELS.get(global_p, global_p)
+    fallback_label = _MODEL_LABELS.get(fallback_p, fallback_p)
+    system_p = get_per_func_provider("system")
+    chat_p   = get_per_func_provider("chat")
+    system_label = _MODEL_LABELS.get(system_p, system_p) if system_p else f"(global: {global_p})"
+    chat_label   = _MODEL_LABELS.get(chat_p, chat_p) if chat_p else f"(global: {global_p})"
 
-    kb = InlineKeyboardMarkup(row_width=1)
-    shared_openai_key = _get_shared_openai_key()
-    openai_prefix = "✔️" if shared_openai_key else "⚠️"
-    kb.add(InlineKeyboardButton(f"🔵 {openai_prefix} OpenAI ChatGPT ▶",
-                                callback_data="openai_llm_menu"))
-
-    if not models and DEVICE_VARIANT == "openclaw":
-        # OpenClaw: taris binary / config.json not present; show provider hint only
-        text = (
-            f"🤖 *Switch LLM*\n\nActive: `{current or 'config default'}`\n\n"
-            "OpenClaw variant: set `LLM_PROVIDER` in `~/.taris/bot.env`.\n"
-            "Available: `openai` · `ollama` · `taris` · `anthropic` · `gemini`"
-        )
-        kb.add(InlineKeyboardButton("↩️  Reset to default", callback_data="llm_select:"))
-        kb.add(InlineKeyboardButton("🔁  Local Fallback", callback_data="admin_llm_fallback_menu"))
-        kb.add(InlineKeyboardButton("🔙  Admin", callback_data="admin_menu"))
-        try:
-            bot.send_message(chat_id, text, parse_mode="Markdown", reply_markup=kb)
-        except Exception as e:
-            log.warning(f"[LLM] llm_menu send failed: {e}")
-            bot.send_message(chat_id, _re.sub(r"[*_`]", "", text), reply_markup=kb)
-        return
-
-    if not models:
-        bot.send_message(chat_id, "⚠️ Cannot read taris config.json.",
-                         reply_markup=_admin_keyboard(chat_id))
-        return
-
-    for m in models:
-        name = m.get("model_name", "")
-        if not name:
-            continue
-        if "openai.com" in m.get("api_base", ""):
-            continue
-        has_key    = bool(m.get("api_key", "").strip())
-        is_current = (name == current) or (not current and name == "openrouter-auto")
-        prefix     = "✅" if is_current else ("✔️" if has_key else "⚠️")
-        kb.add(InlineKeyboardButton(f"{prefix}  {name}", callback_data=f"llm_select:{name}"))
-
-    kb.add(InlineKeyboardButton("↩️  Reset to default", callback_data="llm_select:"))
-    kb.add(InlineKeyboardButton("�  Local Fallback", callback_data="admin_llm_fallback_menu"))
-    kb.add(InlineKeyboardButton("�🔙  Admin", callback_data="admin_menu"))
-
-    current_label = current or "(config default: openrouter-auto)"
     text = (
-        f"🤖 *Switch LLM*\n\nActive: `{current_label}`\n\n"
-        f"✅ active   ✔️ key set   ⚠️ needs key\n\n"
-        f"Tap *OpenAI ChatGPT* to select GPT-4.1 / GPT-4o and set your API key."
+        "🤖 *LLM Settings*\n\n"
+        f"*Global provider:* `{global_label}`\n"
+        f"*Fallback:* `{fallback_label}`\n\n"
+        "*Per-function overrides:*\n"
+        f"  💬 System chat: `{system_label}`\n"
+        f"  🗨️ User chat:    `{chat_label}`\n\n"
+        "_Tap a provider to switch globally, or set per-function below._"
     )
+
+    _KEY_OK = {
+        "openai":    bool(OPENAI_API_KEY),
+        "ollama":    True,
+        "gemini":    bool(GEMINI_API_KEY),
+        "anthropic": bool(ANTHROPIC_API_KEY),
+        "taris":     True,
+        "openclaw":  DEVICE_VARIANT == "openclaw",
+    }
+    _PROVIDER_NAMES = ["openai", "ollama", "gemini", "anthropic"]
+    if DEVICE_VARIANT != "openclaw":
+        _PROVIDER_NAMES.append("taris")
+
+    kb = InlineKeyboardMarkup(row_width=2)
+    for p in _PROVIDER_NAMES:
+        icon   = "✅" if p == global_p else "◻️"
+        warn   = "" if _KEY_OK.get(p, False) else " ⚠️"
+        kb.add(InlineKeyboardButton(f"{icon} {p}{warn}", callback_data=f"admin_llm_set:global:{p}"))
+
+    kb.add(InlineKeyboardButton("─ Per-Function ─", callback_data="noop"))
+    kb.add(InlineKeyboardButton(
+        f"💬 System chat: {system_p or global_p} ▶",
+        callback_data="admin_llm_for:system",
+    ))
+    kb.add(InlineKeyboardButton(
+        f"🗨️ User chat: {chat_p or global_p} ▶",
+        callback_data="admin_llm_for:chat",
+    ))
+
+    kb.add(InlineKeyboardButton("🔵 OpenAI ChatGPT (key + models) ▶", callback_data="openai_llm_menu"))
+    kb.add(InlineKeyboardButton("🔁  Fallback config ▶", callback_data="admin_llm_fallback_menu"))
+    kb.add(InlineKeyboardButton("🔙  Admin", callback_data="admin_menu"))
+
     try:
         bot.send_message(chat_id, text, parse_mode="Markdown", reply_markup=kb)
     except Exception as e:
@@ -669,6 +773,68 @@ def _handle_admin_llm_menu(chat_id: int) -> None:
         bot.send_message(chat_id, _re.sub(r"[*_`]", "", text), reply_markup=kb)
 
 
+def _handle_admin_llm_per_func(chat_id: int, use_case: str) -> None:
+    """Show provider picker for a specific function (system/chat)."""
+    global_p  = LLM_PROVIDER.lower()
+    current_p = get_per_func_provider(use_case) or global_p
+    _KEY_OK = {
+        "openai":    bool(OPENAI_API_KEY),
+        "ollama":    True,
+        "gemini":    bool(GEMINI_API_KEY),
+        "anthropic": bool(ANTHROPIC_API_KEY),
+        "taris":     True,
+        "openclaw":  DEVICE_VARIANT == "openclaw",
+    }
+    labels = {"system": "System Chat", "chat": "User Chat"}
+    title = labels.get(use_case, use_case)
+    text = (
+        f"🤖 *LLM for {title}*\n\n"
+        f"Current: `{current_p}`\n"
+        f"Global default: `{global_p}`\n\n"
+        "_Select a provider or reset to use the global default._"
+    )
+    kb = InlineKeyboardMarkup(row_width=1)
+    providers = ["openai", "ollama", "gemini", "anthropic"]
+    if DEVICE_VARIANT != "openclaw":
+        providers.append("taris")
+    for p in providers:
+        icon = "✅" if p == current_p else "◻️"
+        warn = "" if _KEY_OK.get(p, True) else " ⚠️"
+        kb.add(InlineKeyboardButton(f"{icon} {p}{warn}", callback_data=f"admin_llm_set:{use_case}:{p}"))
+    kb.add(InlineKeyboardButton("↩️  Use global default", callback_data=f"admin_llm_set:{use_case}:"))
+    kb.add(InlineKeyboardButton("🔙  LLM Settings", callback_data="admin_llm_menu"))
+    try:
+        bot.send_message(chat_id, text, parse_mode="Markdown", reply_markup=kb)
+    except Exception as e:
+        bot.send_message(chat_id, _re.sub(r"[*_`]", "", text), reply_markup=kb)
+
+
+def _handle_admin_llm_set(chat_id: int, use_case: str, provider: str) -> None:
+    """Apply LLM provider selection (global or per-function) and confirm."""
+    if use_case == "global":
+        set_per_func_provider("system", provider)
+        set_per_func_provider("chat", provider)
+        msg = (
+            f"✅ Global LLM switched to `{provider}`.\n\n"
+            f"System chat and user chat now use `{provider}`.\n"
+            f"_Note: to persist after restart, set `LLM_PROVIDER={provider}` in `~/.taris/bot.env`._"
+        )
+    elif provider:
+        set_per_func_provider(use_case, provider)
+        labels = {"system": "System Chat", "chat": "User Chat"}
+        func_name = labels.get(use_case, use_case)
+        msg = f"✅ {func_name} LLM set to `{provider}`."
+    else:
+        set_per_func_provider(use_case, "")
+        labels = {"system": "System Chat", "chat": "User Chat"}
+        func_name = labels.get(use_case, use_case)
+        msg = f"↩️ {func_name} LLM reset to global default (`{LLM_PROVIDER}`)."
+
+    log.info(f"[LLM] admin {chat_id} set {use_case} → '{provider or 'global'}'")
+    try:
+        bot.send_message(chat_id, msg, parse_mode="Markdown", reply_markup=_admin_keyboard(chat_id))
+    except Exception as e:
+        bot.send_message(chat_id, _re.sub(r"[*_`]", "", msg), reply_markup=_admin_keyboard(chat_id))
 def _handle_set_llm(chat_id: int, model_name: str) -> None:
     """Apply LLM model selection and confirm to user."""
     _set_active_model(model_name)
