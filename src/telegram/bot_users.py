@@ -152,12 +152,21 @@ def _resolve_storage_id(chat_id: int) -> str:
 
 
 def _slug(title: str) -> str:
-    """Convert a note title to a safe filename slug (lowercase, underscores)."""
+    """Convert a note title to a safe filename slug (lowercase, underscores).
+
+    Limits to 48 bytes so that 'note_delete:{slug}' stays under Telegram's
+    64-byte callback_data limit (12 byte prefix + 48 byte slug = 60 bytes).
+    """
     s = title.lower().strip()
     s = _notes_re.sub(r"[^\w\s\u0400-\u04ff-]", "", s)
     s = _notes_re.sub(r"[\s]+", "_", s)
     s = s.strip("_")
-    return s[:60] or "note"
+    # Truncate by bytes — Cyrillic chars are 2 bytes each, pure char limit is wrong
+    encoded = s.encode("utf-8")
+    if len(encoded) > 48:
+        encoded = encoded[:48]
+        s = encoded.decode("utf-8", errors="ignore").rstrip("_")
+    return s or "note"
 
 
 def _notes_user_dir(chat_id: int) -> Path:

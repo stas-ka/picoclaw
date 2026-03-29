@@ -76,16 +76,41 @@ def _notes_menu_keyboard(chat_id: int) -> InlineKeyboardMarkup:
     return kb
 
 
+# ── Note slug ↔ short hash mapping ──────────────────────────────────────────
+# Telegram limits callback_data to 64 bytes. Cyrillic slugs can exceed this
+# (2 bytes/char). We hash each slug to a 12-char ASCII ID and keep a reverse
+# mapping so we can look up the real slug when a callback arrives.
+_note_id_map: dict[str, str] = {}   # hash_id → full_slug
+
+
+def _note_cb_id(slug: str) -> str:
+    """Return a 12-char ASCII callback-safe ID for a note slug (≤ 64 bytes guaranteed)."""
+    h = hashlib.sha1(slug.encode()).hexdigest()[:12]
+    _note_id_map[h] = slug
+    return h
+
+
+def _note_slug_from_cb(chat_id: int, cb_id: str) -> str | None:
+    """Resolve a callback ID → full slug. Rebuilds cache from filesystem on miss."""
+    if cb_id in _note_id_map:
+        return _note_id_map[cb_id]
+    # Cache miss (bot restarted): scan this user's notes to rebuild the mapping
+    for n in _list_notes_for(chat_id):
+        _note_cb_id(n["slug"])          # registers in _note_id_map as side-effect
+    return _note_id_map.get(cb_id)
+
+
 def _notes_list_keyboard(chat_id: int, notes: list[dict]) -> InlineKeyboardMarkup:
-    """Per-note open / edit / delete inline buttons."""
+    """Per-note open / edit / delete inline buttons. Uses hash IDs to stay under 64-byte limit."""
     kb = InlineKeyboardMarkup(row_width=3)
     for note in notes:
         slug  = note["slug"]
+        cid   = _note_cb_id(slug)      # always ≤ 12 ASCII bytes
         title = note["title"][:30]
-        kb.add(InlineKeyboardButton(f"📄 {title}", callback_data=f"note_open:{slug}"))
+        kb.add(InlineKeyboardButton(f"📄 {title}", callback_data=f"note_open:{cid}"))
         kb.row(
-            InlineKeyboardButton(_t(chat_id, "btn_edit"),   callback_data=f"note_edit:{slug}"),
-            InlineKeyboardButton(_t(chat_id, "btn_delete"), callback_data=f"note_delete:{slug}"),
+            InlineKeyboardButton(_t(chat_id, "btn_edit"),   callback_data=f"note_edit:{cid}"),
+            InlineKeyboardButton(_t(chat_id, "btn_delete"), callback_data=f"note_delete:{cid}"),
         )
     kb.add(InlineKeyboardButton(_t(chat_id, "note_btn_create"), callback_data="note_create"))
     kb.add(InlineKeyboardButton(_t(chat_id, "btn_back"), callback_data="menu"))
@@ -126,10 +151,11 @@ def _handle_note_open(chat_id: int, slug: str) -> None:
         bot.send_message(chat_id, _t(chat_id, "note_not_found"),
                          reply_markup=_notes_menu_keyboard(chat_id))
         return
+    slug_id = _note_cb_id(slug)     # short hash safe for callback_data
     _render(chat_id, "screens/note_view.yaml", {
         "note_title": _escape_md(slug.replace('_', ' ')),
         "note_content": _escape_md(text),
-        "slug": slug,
+        "slug": slug_id,
     })
 
 
@@ -140,10 +166,10 @@ def _handle_note_raw(chat_id: int, slug: str) -> None:
         bot.send_message(chat_id, _t(chat_id, "note_not_found"),
                          reply_markup=_notes_menu_keyboard(chat_id))
         return
-    # Send without parse_mode — every character appears exactly as stored
+    slug_id = _note_cb_id(slug)
     _render(chat_id, "screens/note_raw.yaml", {
         "note_content": text or _t(chat_id, "note_empty_body"),
-        "slug": slug,
+        "slug": slug_id,
     })
 
 
@@ -155,9 +181,10 @@ def _start_note_edit(chat_id: int, slug: str) -> None:
         return
     lines = text.splitlines()
     note_title = lines[0].lstrip("# ").strip() if lines else ""
+    slug_id = _note_cb_id(slug)
     _render(chat_id, "screens/note_edit.yaml", {
         "title": _escape_md(note_title),
-        "slug": slug,
+        "slug": slug_id,
     })
 
 

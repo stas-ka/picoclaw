@@ -84,6 +84,7 @@ from telegram.bot_handlers import (
     _handle_note_open, _handle_note_raw, _start_note_edit, _handle_note_delete,
     _start_note_append, _start_note_replace,
     _notes_menu_keyboard,
+    _note_slug_from_cb,
     _handle_profile,
     _handle_web_link,
     _start_profile_edit_name, _finish_profile_edit_name,
@@ -515,43 +516,50 @@ def callback_handler(call):
 
     elif data.startswith("note_open:"):
         if not _is_guest(cid):
-            _handle_note_open(cid, data[len("note_open:"):])
+            slug = _note_slug_from_cb(cid, data[len("note_open:"):]) or data[len("note_open:"):]
+            _handle_note_open(cid, slug)
         else:
             bot.send_message(cid, _t(cid, "admin_only"))
 
     elif data.startswith("note_tts:"):
         if not _is_guest(cid):
-            _handle_note_read_aloud(cid, data[len("note_tts:"):])
+            slug = _note_slug_from_cb(cid, data[len("note_tts:"):]) or data[len("note_tts:"):]
+            _handle_note_read_aloud(cid, slug)
         else:
             bot.send_message(cid, _t(cid, "admin_only"))
 
     elif data.startswith("note_raw:"):
         if not _is_guest(cid):
-            _handle_note_raw(cid, data[len("note_raw:"):])
+            slug = _note_slug_from_cb(cid, data[len("note_raw:"):]) or data[len("note_raw:"):]
+            _handle_note_raw(cid, slug)
         else:
             bot.send_message(cid, _t(cid, "admin_only"))
 
     elif data.startswith("note_edit:"):
         if not _is_guest(cid):
-            _start_note_edit(cid, data[len("note_edit:"):])
+            slug = _note_slug_from_cb(cid, data[len("note_edit:"):]) or data[len("note_edit:"):]
+            _start_note_edit(cid, slug)
         else:
             bot.send_message(cid, _t(cid, "admin_only"))
 
     elif data.startswith("note_append:"):
         if not _is_guest(cid):
-            _start_note_append(cid, data[len("note_append:"):])
+            slug = _note_slug_from_cb(cid, data[len("note_append:"):]) or data[len("note_append:"):]
+            _start_note_append(cid, slug)
         else:
             bot.send_message(cid, _t(cid, "admin_only"))
 
     elif data.startswith("note_replace:"):
         if not _is_guest(cid):
-            _start_note_replace(cid, data[len("note_replace:"):])
+            slug = _note_slug_from_cb(cid, data[len("note_replace:"):]) or data[len("note_replace:"):]
+            _start_note_replace(cid, slug)
         else:
             bot.send_message(cid, _t(cid, "admin_only"))
 
     elif data.startswith("note_delete:"):
         if not _is_guest(cid):
-            _handle_note_delete(cid, data[len("note_delete:"):])
+            slug = _note_slug_from_cb(cid, data[len("note_delete:"):]) or data[len("note_delete:"):]
+            _handle_note_delete(cid, slug)
         else:
             bot.send_message(cid, _t(cid, "admin_only"))
     # ── Send as email ───────────────────────────────────────────────────────

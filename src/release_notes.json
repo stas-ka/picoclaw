@@ -1,5 +1,11 @@
 [
   {
+    "version": "2026.3.29+7",
+    "date":    "2026-03-29",
+    "title":   "Fix All Notes hang — BUTTON_DATA_INVALID",
+    "notes":   "- Replace raw Cyrillic slugs in note callback_data with 12-char SHA1 hash IDs\n- Cyrillic slugs can be 2 bytes/char and exceeded Telegram 64-byte callback_data limit\n- Hash→slug cache with filesystem fallback on bot restart\n- Fix _slug() byte-based truncation (was char-based, 60 chars = 120 bytes for Cyrillic)\n- Affected: All Notes list, note open/edit/delete/raw/append/replace actions"
+  },
+  {
     "version": "2026.3.29+6",
     "date": "2026-03-29",
     "title": "System chat: echo answers, localized confirm, echo allowlist",
