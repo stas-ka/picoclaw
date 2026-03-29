@@ -3277,6 +3277,215 @@ def t_taris_bin_configured(**_) -> list[TestResult]:
     return results
 
 
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# T46 — vosk_fallback default disabled on OpenClaw platform
+# ─────────────────────────────────────────────────────────────────────────────
+
+def t_vosk_fallback_openclaw_default(**_) -> list[TestResult]:
+    """T46: vosk_fallback must default to False when DEVICE_VARIANT=openclaw.
+
+    Root cause: Vosk model is not installed on OpenClaw (x86_64) hosts. When
+    faster-whisper returned empty (VAD over-filtering), the fallback to Vosk
+    caused a C++ model-load error and the user received "Ошибка Vosk".
+
+    Fix: _VOICE_OPTS_DEFAULTS['vosk_fallback'] = DEVICE_VARIANT != 'openclaw'
+
+    Source-inspection — no deployed services required.
+    """
+    t0 = time.time()
+    results: list[TestResult] = []
+    try:
+        import importlib, sys as _sys
+
+        # ── 1. With DEVICE_VARIANT=openclaw vosk_fallback must be False ────────
+        old = os.environ.get("DEVICE_VARIANT")
+        os.environ["DEVICE_VARIANT"] = "openclaw"
+        # Force re-import so the constant is evaluated with new env
+        for mod in list(_sys.modules.keys()):
+            if "bot_config" in mod:
+                del _sys.modules[mod]
+        from core.bot_config import _VOICE_OPTS_DEFAULTS as oc_defaults
+        oc_val = oc_defaults.get("vosk_fallback", True)
+        if not oc_val:
+            results.append(TestResult(
+                "vosk_fallback_openclaw_false", "PASS", time.time() - t0,
+                "vosk_fallback=False when DEVICE_VARIANT=openclaw"))
+        else:
+            results.append(TestResult(
+                "vosk_fallback_openclaw_false", "FAIL", time.time() - t0,
+                "vosk_fallback is True on openclaw — Vosk not installed, will crash"))
+
+        # ── 2. With DEVICE_VARIANT=picoclaw vosk_fallback must be True ─────────
+        os.environ["DEVICE_VARIANT"] = "picoclaw"
+        for mod in list(_sys.modules.keys()):
+            if "bot_config" in mod:
+                del _sys.modules[mod]
+        from core.bot_config import _VOICE_OPTS_DEFAULTS as pi_defaults
+        pi_val = pi_defaults.get("vosk_fallback", False)
+        if pi_val:
+            results.append(TestResult(
+                "vosk_fallback_picoclaw_true", "PASS", time.time() - t0,
+                "vosk_fallback=True when DEVICE_VARIANT=picoclaw (Vosk installed on Pi)"))
+        else:
+            results.append(TestResult(
+                "vosk_fallback_picoclaw_true", "FAIL", time.time() - t0,
+                "vosk_fallback is False on picoclaw — Pi devices need Vosk fallback"))
+
+        # Restore env + module cache
+        if old is None:
+            os.environ.pop("DEVICE_VARIANT", None)
+        else:
+            os.environ["DEVICE_VARIANT"] = old
+        for mod in list(_sys.modules.keys()):
+            if "bot_config" in mod:
+                del _sys.modules[mod]
+
+    except Exception as e:
+        results.append(TestResult("vosk_fallback_openclaw_default", "FAIL", time.time() - t0, str(e)))
+    return results
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# T47 — faster-whisper: VAD retry on empty result
+# ─────────────────────────────────────────────────────────────────────────────
+
+def t_faster_whisper_vad_retry(**_) -> list[TestResult]:
+    """T47: _stt_faster_whisper must retry without VAD when first pass returns empty.
+
+    Root cause: Telegram voice messages can be very short (1-3 s, e.g. "да",
+    "нет"). The built-in faster-whisper VAD filter suppresses these as 'noise',
+    returning empty. Without a retry, the pipeline fell back to Vosk (not
+    installed on OpenClaw) and the user got "Ошибка Vosk".
+
+    Fix: after a VAD pass returning empty, retry transcribe() with vad_filter=False.
+
+    Source-inspection — checks that dual-pass logic exists in bot_voice.py.
+    """
+    t0 = time.time()
+    results: list[TestResult] = []
+    try:
+        voice_py = os.path.join(os.path.dirname(__file__), "..", "features", "bot_voice.py")
+        voice_py = os.path.normpath(voice_py)
+        if not os.path.exists(voice_py):
+            results.append(TestResult("fw_vad_retry_source", "SKIP", time.time() - t0,
+                                      f"features/bot_voice.py not found at {voice_py}"))
+            return results
+
+        src = open(voice_py, encoding="utf-8").read()
+
+        # Must contain a second transcribe() call that has vad_filter=False
+        import re as _re
+        # Find all transcribe() calls and check at least one has vad_filter=False
+        calls_no_vad = _re.findall(r'model\.transcribe\([^)]*vad_filter\s*=\s*False', src, _re.DOTALL)
+        if calls_no_vad:
+            results.append(TestResult(
+                "fw_vad_retry_no_vad_call", "PASS", time.time() - t0,
+                f"Found {len(calls_no_vad)} transcribe() call(s) with vad_filter=False (retry path)"))
+        else:
+            results.append(TestResult(
+                "fw_vad_retry_no_vad_call", "FAIL", time.time() - t0,
+                "No transcribe(vad_filter=False) found — short voice messages will be silently dropped"))
+
+        # Must contain the retry comment / log message indicating intent
+        has_retry_log = ("retry" in src.lower() or "retrying" in src.lower()) and "vad" in src.lower()
+        if has_retry_log:
+            results.append(TestResult(
+                "fw_vad_retry_log_present", "PASS", time.time() - t0,
+                "VAD retry log message present in _stt_faster_whisper"))
+        else:
+            results.append(TestResult(
+                "fw_vad_retry_log_present", "WARN", time.time() - t0,
+                "No VAD retry log found — add debug log for observability"))
+
+    except Exception as e:
+        results.append(TestResult("faster_whisper_vad_retry", "FAIL", time.time() - t0, str(e)))
+    return results
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# T48 — System Chat accessible only via Admin menu
+# ─────────────────────────────────────────────────────────────────────────────
+
+def t_system_chat_admin_menu_only(**_) -> list[TestResult]:
+    """T48: System Chat (mode_system) must appear in admin_menu only, not main_menu.
+
+    Root cause: mode_system button was in main_menu.yaml (admin-role filtered).
+    Requirement: it must be exclusively in Admin Panel to keep main menu clean
+    and reduce attack surface exposure.
+
+    Source-inspection — checks YAML screens and Python keyboard builder.
+    """
+    t0 = time.time()
+    results: list[TestResult] = []
+    try:
+        screens_dir = os.path.normpath(
+            os.path.join(os.path.dirname(__file__), "..", "screens"))
+        bot_access_py = os.path.normpath(
+            os.path.join(os.path.dirname(__file__), "..", "telegram", "bot_access.py"))
+
+        # ── 1. main_menu.yaml must NOT contain mode_system ────────────────────
+        main_yaml = os.path.join(screens_dir, "main_menu.yaml")
+        if os.path.exists(main_yaml):
+            main_src = open(main_yaml, encoding="utf-8").read()
+            if "mode_system" not in main_src:
+                results.append(TestResult(
+                    "mode_system_absent_main_menu", "PASS", time.time() - t0,
+                    "main_menu.yaml does not contain mode_system ✓"))
+            else:
+                results.append(TestResult(
+                    "mode_system_absent_main_menu", "FAIL", time.time() - t0,
+                    "main_menu.yaml still contains mode_system — move to admin_menu.yaml"))
+        else:
+            results.append(TestResult("mode_system_absent_main_menu", "SKIP", time.time() - t0,
+                                      f"main_menu.yaml not found at {main_yaml}"))
+
+        # ── 2. admin_menu.yaml must contain mode_system ───────────────────────
+        admin_yaml = os.path.join(screens_dir, "admin_menu.yaml")
+        if os.path.exists(admin_yaml):
+            admin_src = open(admin_yaml, encoding="utf-8").read()
+            if "mode_system" in admin_src:
+                results.append(TestResult(
+                    "mode_system_present_admin_menu", "PASS", time.time() - t0,
+                    "admin_menu.yaml contains mode_system ✓"))
+            else:
+                results.append(TestResult(
+                    "mode_system_present_admin_menu", "FAIL", time.time() - t0,
+                    "admin_menu.yaml missing mode_system — System Chat button lost"))
+        else:
+            results.append(TestResult("mode_system_present_admin_menu", "SKIP", time.time() - t0,
+                                      f"admin_menu.yaml not found at {admin_yaml}"))
+
+        # ── 3. _menu_keyboard() in bot_access.py must NOT add mode_system ─────
+        if os.path.exists(bot_access_py):
+            import re as _re
+            access_src = open(bot_access_py, encoding="utf-8").read()
+            # Find _menu_keyboard function body (up to the next top-level def)
+            menu_kb_match = _re.search(
+                r'def _menu_keyboard\b.*?(?=\ndef |\Z)', access_src, _re.DOTALL)
+            if menu_kb_match:
+                menu_kb_body = menu_kb_match.group(0)
+                if "mode_system" not in menu_kb_body:
+                    results.append(TestResult(
+                        "mode_system_absent_menu_keyboard", "PASS", time.time() - t0,
+                        "_menu_keyboard() does not include mode_system ✓"))
+                else:
+                    results.append(TestResult(
+                        "mode_system_absent_menu_keyboard", "FAIL", time.time() - t0,
+                        "_menu_keyboard() still adds mode_system — remove the btn_system line"))
+            else:
+                results.append(TestResult("mode_system_absent_menu_keyboard", "WARN", time.time() - t0,
+                                          "_menu_keyboard not found in bot_access.py"))
+        else:
+            results.append(TestResult("mode_system_absent_menu_keyboard", "SKIP", time.time() - t0,
+                                      "bot_access.py not found"))
+
+    except Exception as e:
+        results.append(TestResult("system_chat_admin_menu_only", "FAIL", time.time() - t0, str(e)))
+    return results
+
+
 TEST_FUNCTIONS = [
     t_model_files_present,
     t_piper_json_present,
@@ -3343,6 +3552,12 @@ TEST_FUNCTIONS = [
     t_openclaw_gateway_telegram_disabled,
     # TARIS_BIN must point to existing picoclaw/taris binary + picoclaw config present (T45)
     t_taris_bin_configured,
+    # vosk_fallback disabled by default on OpenClaw platform (T46)
+    t_vosk_fallback_openclaw_default,
+    # faster-whisper: retry without VAD filter when first pass returns empty (T47)
+    t_faster_whisper_vad_retry,
+    # System Chat accessible only via Admin menu, not main menu (T48)
+    t_system_chat_admin_menu_only,
 ]
 
 
