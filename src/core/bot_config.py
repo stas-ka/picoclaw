@@ -288,11 +288,14 @@ _DEFAULT_STT_FALLBACK = "vosk" if _DEFAULT_STT != "vosk" else ""
 STT_FALLBACK_PROVIDER   = os.environ.get("STT_FALLBACK_PROVIDER", _DEFAULT_STT_FALLBACK).lower()
 
 # faster-whisper model size: tiny, base, small, medium, large-v2, large-v3
-# Recommended for i7/i5 no-GPU: base (good WER, ~0.3s RTF)
-# Recommended for Pi 5 / modern laptop: small
+# Recommended for i7/i5 no-GPU: base (acceptable WER, ~0.3s RTF)
+# Recommended for modern laptop/desktop (12+ CPU cores): small (much better WER, ~0.7s RTF)
+# Recommended for AMD/Intel iGPU or x86_64 with 6+ CPU cores: small with cpu_threads=8
 FASTER_WHISPER_MODEL    = os.environ.get("FASTER_WHISPER_MODEL", "base")
 FASTER_WHISPER_DEVICE   = os.environ.get("FASTER_WHISPER_DEVICE", "cpu")
 FASTER_WHISPER_COMPUTE  = os.environ.get("FASTER_WHISPER_COMPUTE", "int8")
+# CPU threads for CTranslate2 — 0 = auto (uses all available). Set to 4-8 on multi-core systems.
+FASTER_WHISPER_THREADS  = int(os.environ.get("FASTER_WHISPER_THREADS", "0"))
 
 # Cloud STT via OpenAI Whisper API (STT_PROVIDER=openai_whisper)
 # Reuses OPENAI_API_KEY + OPENAI_BASE_URL from LLM config.

@@ -28,7 +28,7 @@ from core.bot_config import (
     TTS_MAX_CHARS, TTS_CHUNK_CHARS, VOICE_TIMING_DEBUG,
     WHISPER_BIN, WHISPER_MODEL, VOICE_BACKEND,
     STT_PROVIDER, FASTER_WHISPER_MODEL, FASTER_WHISPER_DEVICE, FASTER_WHISPER_COMPUTE,
-    STT_LANG, DEVICE_VARIANT,
+    FASTER_WHISPER_THREADS, STT_LANG, DEVICE_VARIANT,
     LLM_PROVIDER, OLLAMA_MODEL, OPENAI_MODEL,
     TARIS_DIR, _PENDING_TTS_FILE, log,
 )
@@ -426,11 +426,16 @@ def _stt_faster_whisper(raw_pcm: bytes, sample_rate: int, lang: str = "ru") -> O
         import wave as _wave_mod
         import numpy as _np
 
-        cache_key = (FASTER_WHISPER_MODEL, FASTER_WHISPER_DEVICE, FASTER_WHISPER_COMPUTE)
+        cache_key = (FASTER_WHISPER_MODEL, FASTER_WHISPER_DEVICE, FASTER_WHISPER_COMPUTE, FASTER_WHISPER_THREADS)
         if cache_key not in _fw_model_cache:
+            import os as _os
+            _cpu_threads = FASTER_WHISPER_THREADS or _os.cpu_count() or 4
+            # Cap at 8 — beyond that CTranslate2 has diminishing returns + memory overhead
+            _cpu_threads = min(_cpu_threads, 8)
             log.info(
                 f"[FasterWhisper] Loading model={FASTER_WHISPER_MODEL} "
-                f"device={FASTER_WHISPER_DEVICE} compute={FASTER_WHISPER_COMPUTE}"
+                f"device={FASTER_WHISPER_DEVICE} compute={FASTER_WHISPER_COMPUTE} "
+                f"threads={_cpu_threads}"
             )
             # Prefer local HuggingFace cache path to avoid any network/auth requests.
             # faster-whisper caches as models--Systran--faster-whisper-<size>
@@ -445,13 +450,13 @@ def _stt_faster_whisper(raw_pcm: bytes, sample_rate: int, lang: str = "ru") -> O
                     log.info(f"[FasterWhisper] using local cache: {model_arg}")
             # If we resolved a local snapshot, set HF_HUB_OFFLINE to prevent
             # network version check on every load (saves ~0.5-1s per process start).
-            import os as _os
             if model_arg != FASTER_WHISPER_MODEL:
                 _os.environ.setdefault("HF_HUB_OFFLINE", "1")
             _fw_model_cache[cache_key] = WhisperModel(
                 model_arg,
                 device=FASTER_WHISPER_DEVICE,
                 compute_type=FASTER_WHISPER_COMPUTE,
+                cpu_threads=_cpu_threads,
             )
         model = _fw_model_cache[cache_key]
 
