@@ -158,6 +158,7 @@ pscp -pw "%HOSTPWD%" src\tests\voice\*.ogg              stas@OpenClawPI:/home/st
 | T47 | `faster_whisper_vad_retry` | Source-inspects `_stt_faster_whisper()` for dual-pass transcription: first pass with VAD filter, retry with `vad_filter=False` when empty. Catches silent drop of short voice messages ("да", "нет"). | After any change to `_stt_faster_whisper()` |
 | T48 | `system_chat_admin_menu_only` | `mode_system` absent from `main_menu.yaml` and `_menu_keyboard()`; present in `admin_menu.yaml`. Prevents System Chat leaking into the main menu. | After editing any menu YAML or `_menu_keyboard()` |
 | T49 | `stt_fast_speech_accuracy` | FW small/medium model must correctly transcribe Russian at fast speaking speeds. Root cause: `base` model (74M params) mangled phonemes in clips <1.5s — "Сколько у тебя памяти" → "Куча панча". Generates Piper TTS audio at 4 speeds (0.65x/1.0x/1.5x/1.85x) via ffmpeg atempo, runs STT on each, asserts WER ≤ 35%. Also guards `FASTER_WHISPER_MODEL != "base"`. SKIP if Piper or faster-whisper not installed. | After changing `FASTER_WHISPER_MODEL`, upgrading model, or any STT accuracy fix |
+| T50 | `voice_chat_config_disclosure` | `_bot_config_block()` injects [BOT CONFIG] (LLM/STT/version) into every normal+voice chat LLM prompt. Security preamble rule 5 allows model/version self-disclosure. Fixes: bot refused "which model are you using?" with "I cannot provide infrastructure details". | After editing `bot_access.py` prompt builders or `prompts.json` security preamble |
 
 ### 2.6 When specific tests are mandatory
 
@@ -451,7 +452,7 @@ These tests run in **< 1 second** locally and should be run before every commit 
 |---|---|---|---|
 | **TariStation2 / OpenClawPI2** | `OpenClawPI2` / local `~/.taris/` | Engineering — all test types | All categories A–H |
 | **TariStation1 / OpenClawPI** | `OpenClawPI` / `SintAItion` | Production — stable deployments only | Category B (UI), Category E (smoke) |
-| **Local dev machine** | `localhost` | Quick offline checks | Categories F, G, H; A source-inspection T17–T49 |
+| **Local dev machine** | `localhost` | Quick offline checks | Categories F, G, H; A source-inspection T17–T50 |
 
 **Rules:**
 - Run destructive tests (audio hardware, regression) on engineering target (TariStation2/OpenClawPI2) first.

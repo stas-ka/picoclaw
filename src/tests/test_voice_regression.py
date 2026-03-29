@@ -3696,6 +3696,67 @@ def t_stt_fast_speech_accuracy(**_) -> list[TestResult]:
     return results
 
 
+def t_voice_chat_config_disclosure(**_):
+    """T50: _bot_config_block() injects LLM/STT/version; rule 5 allows model disclosure."""
+    results = []
+
+    # 1. Config block contains required fields
+    ts = time.time()
+    try:
+        import sys as _sys
+        _sys.path.insert(0, str(Path(__file__).parent.parent))
+        from telegram.bot_access import _bot_config_block
+        block = _bot_config_block()
+        required = ["[BOT CONFIG]", "LLM:", "STT:", "Version:", "[END BOT CONFIG]"]
+        missing = [k for k in required if k not in block]
+        if missing:
+            results.append(TestResult("config_block_fields", "FAIL", time.time() - ts,
+                                      f"Missing fields: {missing}"))
+        else:
+            results.append(TestResult("config_block_fields", "PASS", time.time() - ts,
+                                      f"Block OK: {block.strip()[:80]}"))
+    except Exception as e:
+        results.append(TestResult("config_block_fields", "FAIL", time.time() - ts, str(e)))
+
+    # 2. Security preamble rule 5 allows model disclosure (no longer blocks infra questions blanket)
+    ts = time.time()
+    try:
+        import json as _json
+        prompts_path = Path(__file__).parent.parent / "prompts.json"
+        prompts = _json.loads(prompts_path.read_text())
+        preamble = prompts.get("security_preamble", "")
+        rule5_start = preamble.find("5.")
+        rule5 = preamble[rule5_start:rule5_start + 300] if rule5_start >= 0 else ""
+        # Must allow model disclosure
+        if "MAY" not in rule5 and "SHOULD" not in rule5:
+            results.append(TestResult("preamble_rule5_allows_disclosure", "FAIL",
+                                      time.time() - ts,
+                                      "Rule 5 does not allow model disclosure — bot will refuse self-info"))
+        else:
+            results.append(TestResult("preamble_rule5_allows_disclosure", "PASS",
+                                      time.time() - ts, "Rule 5 allows model/version disclosure"))
+    except Exception as e:
+        results.append(TestResult("preamble_rule5_allows_disclosure", "FAIL",
+                                  time.time() - ts, str(e)))
+
+    # 3. _with_lang_voice includes the config block in the prompt
+    ts = time.time()
+    try:
+        from telegram.bot_access import _with_lang_voice
+        import inspect
+        src = inspect.getsource(_with_lang_voice)
+        if "_bot_config_block()" not in src:
+            results.append(TestResult("with_lang_voice_has_config", "FAIL", time.time() - ts,
+                                      "_with_lang_voice() does not call _bot_config_block()"))
+        else:
+            results.append(TestResult("with_lang_voice_has_config", "PASS", time.time() - ts,
+                                      "_with_lang_voice() injects config block"))
+    except Exception as e:
+        results.append(TestResult("with_lang_voice_has_config", "FAIL", time.time() - ts, str(e)))
+
+    return results
+
+
 TEST_FUNCTIONS = [
     t_model_files_present,
     t_piper_json_present,
@@ -3770,6 +3831,8 @@ TEST_FUNCTIONS = [
     t_system_chat_admin_menu_only,
     # STT fast-speech accuracy: 'Сколько у тебя памяти' at 4 speeds (T49)
     t_stt_fast_speech_accuracy,
+    # Bot config block injection in normal chat prompts (T50)
+    t_voice_chat_config_disclosure,
 ]
 
 
