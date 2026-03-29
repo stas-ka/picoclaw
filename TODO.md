@@ -38,6 +38,11 @@
 | 0.13 TTS speaks wrong language (Telegram UI lang vs voice lang) | `_voice_lang(chat_id)` helper added to `bot_voice.py`; TTS now uses `STT_LANG` (configured speech language) instead of Telegram client locale | v2026.3.41 |
 | 0.14 Voice mode ignores user role in system chat | Voice pipeline checks `_cur_mode=="system"` and dispatches to `_handle_system_message()`, applying admin role guards and confirm gate | v2026.3.42 |
 | 0.15 Bot 409 Conflict on restart | `_409Handler` exception handler in `bot_instance.py`; `TimeoutStopSec=25` in `taris-telegram.service`; SIGTERM/SIGINT handlers call `bot.stop_polling()` | v2026.3.39/v2026.3.40 |
+| 0.16 System chat echo/wrong LLM | System Chat moved to Admin menu; `_handle_system_message()` uses `use_case="system"` for dedicated LLM; echo-proof confirm flow added | v2026.3.29+1 |
+| 0.17 Welcome message leaks internals | Removed "using Vosk and Piper" from user welcome; voice diagnostics (STT/TTS/LLM model, timings) sent to admin only | v2026.3.29+3 |
+| 0.18 STT shows "Vosk" in Web UI on OpenClaw | STT provider label in web UI now reads from `STT_PROVIDER` env var, not hardcoded | v2026.3.29+4 |
+| 0.19 Notes "All Notes" button hangs / 400 BUTTON_DATA_INVALID | Cyrillic slugs exceeded 64-byte Telegram callback_data limit; fixed with SHA1 hash IDs (`_note_cb_id`) + reverse lookup; `_slug()` truncates at 48 bytes | v2026.3.29+7 |
+| 0.20 Web TTS hardcoded Piper path | Fixed web TTS to use `PIPER_BIN` config constant instead of hardcoded path | v2026.3.29+4 |
 ---
 
 ## 1. Open Issues &amp; Roadmap
@@ -113,6 +118,18 @@ Emergency fallback via `llama.cpp`. Pi 3: Qwen2-0.5B (~1 tok/s); Pi 4/5: Phi-3-m
 - [x] Fallback responses prefixed with `⚠️ [local fallback]` label
 - [x] Service staged on Pi2; starts automatically once `llama-server` binary is installed
 - [x] Configurable, switchable via Admin Panel
+
+### 3.2 Per-Function LLM Provider ✅ Implemented (v2026.3.29+8)
+Different LLM providers for system chat vs. user chat, switchable at runtime from Admin panel.
+
+- [x] `LLM_PER_FUNC_FILE = ~/.taris/llm_per_func.json` — runtime per-function provider overrides
+- [x] `get_per_func_provider(use_case)` / `set_per_func_provider(use_case, provider)` in `bot_llm.py`
+- [x] `_ask_with_fallback()` checks per-func overrides first, then global `LLM_PROVIDER`, then fallback chain
+- [x] `ask_llm()` / `ask_llm_or_raise()` / `ask_llm_with_history()` all accept `use_case` parameter
+- [x] `_handle_system_message()` uses `use_case="system"`; user chat uses `use_case="chat"`
+- [x] Admin LLM menu redesigned: shows global + per-function status; provider switch buttons with ✅/⚠️ key availability; sub-menus for per-function picker
+- [x] New Voice Config admin menu: STT provider switch (Vosk/Faster-Whisper), FW model selector (tiny/base/small/medium for OpenClaw), Piper model display
+
 ---
 
 ## 4. Content & Knowledge
@@ -397,7 +414,7 @@ Taris runs as an additional deployment variant on OpenClaw (laptop / AI PC) alon
 
 - [ ] **Install Ollama** on this machine to restore LLM: `curl https://ollama.ai/install.sh | sh && ollama pull qwen2:0.5b`; Ollama binary not found — all LLM calls fail with `Connection refused` on port 11434.
 - [ ] **Upgrade faster-whisper model**: switch `FASTER_WHISPER_MODEL=medium` in `~/.taris/bot.env` — `base` model achieves only ~25% WER for Russian (1/4 benchmark phrases correct). `medium` (~1.5GB RAM) recommended given 7.6GB available; download: `python3 -c "from faster_whisper import WhisperModel; WhisperModel('medium', device='cpu', compute_type='int8')"`.
-- [ ] **Dual STT UI selector**: expose `STT_PROVIDER` switch in Settings/Voice page so user can toggle between `faster_whisper`, `openai_whisper`, and `vosk` without editing `bot.env`. Add `STT_LANG` selector (ru/en/de/sl).
+- [x] **STT/LLM switch in admin menu** — `STT_PROVIDER` toggle (Vosk/FW) and FW model selection in Admin → Voice Config; LLM per-function provider switch in Admin → LLM Settings (v2026.3.29+8)
 - [ ] `src/setup/migrate_sqlite_to_pg.py` — taris.db → PostgreSQL migration script (§25.7)
 - [ ] pgvector HNSW index and full RAG pipeline on PostgreSQL (§25.6 Phase B)
 - [ ] Screen DSL: `visible_variants: [openclaw]` buttons shown only on OpenClaw (§21.6)
