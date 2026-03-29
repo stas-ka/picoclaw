@@ -1197,8 +1197,10 @@ def _handle_voice_message(chat_id: int, voice_obj) -> None:
             return
 
         _ts = time.time()
+        log.info(f"[Voice] LLM call start: provider={LLM_PROVIDER} text_len={len(text)}")
         response = ask_llm(_with_lang_voice(chat_id, text), timeout=90)
         _timing["LLM"] = time.time() - _ts
+        log.info(f"[Voice] LLM done: {_timing['LLM']:.1f}s resp_len={len(response or '')}")
 
         if not response:
             response = _t(chat_id, "no_answer")
@@ -1236,12 +1238,15 @@ def _handle_voice_message(chat_id: int, voice_obj) -> None:
                                            parse_mode="Markdown")
                 _save_pending_tts(chat_id, tts_msg.message_id)
                 _ts = time.time()
+                resp_chars = len(response or "")
+                log.info(f"[Voice] TTS start: resp_chars={resp_chars}")
                 if _tts_thread is not None:
                     _tts_thread.join(timeout=160)   # piper 120s + ffmpeg 30s + slack
                     ogg = _tts_result[0]
                 else:
                     ogg = _tts_to_ogg(response, lang=_voice_lang(chat_id))
                 _timing["TTS"] = time.time() - _ts
+                log.info(f"[Voice] TTS done: {_timing['TTS']:.1f}s ogg_kb={len(ogg or b'')//1024}")
 
                 if ogg:
                     caption = _t(chat_id, "audio_caption") + _fmt_timing()
@@ -1265,5 +1270,8 @@ def _handle_voice_message(chat_id: int, voice_obj) -> None:
                         pass
 
         _send_admin_info()
+        total = sum(_timing.values())
+        log.info(f"[Voice] pipeline done: total={total:.1f}s " +
+                 " ".join(f"{k}={v:.1f}s" for k, v in _timing.items()))
 
     threading.Thread(target=_run, daemon=True).start()
