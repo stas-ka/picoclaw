@@ -599,6 +599,23 @@ def _handle_system_message(chat_id: int, user_text: str) -> None:
             log.warning(f"[SystemChat] empty cmd after extraction. raw={cmd_text[:200]}")
             return
 
+        # Knowledge answer pattern — LLM returns echo "answer text" for informational questions.
+        # Show the answer directly without a Run/Cancel confirmation dialog.
+        _echo_m = re.match(r'^echo\s+["\']?(.*?)["\']?\s*$', cmd_clean, re.DOTALL)
+        if _echo_m:
+            answer = _echo_m.group(1).strip().strip("\"'")
+            log.info(f"[SystemChat] knowledge answer (echo): {answer[:80]}")
+            try:
+                bot.edit_message_text(
+                    _t(chat_id, "system_answer", answer=answer),
+                    chat_id, msg.message_id,
+                    reply_markup=_back_keyboard(chat_id),
+                )
+            except Exception:
+                bot.send_message(chat_id, _t(chat_id, "system_answer", answer=answer),
+                                 reply_markup=_back_keyboard(chat_id))
+            return
+
         # Role-based allowlist check
         cmd_class = _classify_cmd_class(cmd_clean)
         if cmd_class == "blocked":
@@ -624,11 +641,7 @@ def _handle_system_message(chat_id: int, user_text: str) -> None:
         _st._pending_cmd[chat_id] = cmd_clean
 
         from telegram.bot_access import _confirm_keyboard
-        reply = (
-            "🖥️  I'll run the following command:\n\n"
-            f"```\n{cmd_clean}\n```\n\n"
-            "Confirm?"
-        )
+        reply = _t(chat_id, "system_cmd_confirm", cmd=cmd_clean)
         try:
             bot.edit_message_text(reply, chat_id, msg.message_id,
                                   parse_mode="Markdown",

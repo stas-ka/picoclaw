@@ -1,5 +1,11 @@
 [
   {
+    "version": "2026.3.29+6",
+    "date": "2026-03-29",
+    "title": "System chat: echo answers, localized confirm, echo allowlist",
+    "notes": "- Knowledge questions answered directly (echo pattern) without Run/Cancel dialog\n- Localize confirm message: system_cmd_confirm key in ru/en/de\n- Add echo to security allowlist so knowledge answers are not blocked\n- system_prompt: POSIX rules + language + knowledge vs shell distinction"
+  },
+  {
     "version": "2026.3.29+5",
     "date": "2026-03-29",
     "title": "Voice opts menu fix + system chat prompt fix",
