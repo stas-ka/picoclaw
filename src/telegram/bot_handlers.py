@@ -21,7 +21,10 @@ import core.bot_state as _st
 from core.bot_config import (
     LAST_DIGEST_FILE, DIGEST_SCRIPT, MAIL_CREDS_DIR,
     RAG_ENABLED, RAG_TOP_K, RAG_FLAG_FILE,
-    DEVICE_VARIANT,
+    DEVICE_VARIANT, BOT_VERSION,
+    LLM_PROVIDER, OPENAI_MODEL, OLLAMA_MODEL,
+    STT_PROVIDER, STT_FALLBACK_PROVIDER, FASTER_WHISPER_MODEL, FASTER_WHISPER_DEVICE,
+    PIPER_BIN, PIPER_MODEL, STT_LANG,
     log,
 )
 from core.bot_instance import bot
@@ -576,7 +579,24 @@ def _handle_system_message(chat_id: int, user_text: str) -> None:
         return
 
     bot.send_chat_action(chat_id, "typing")
-    prompt = f"{_SYSTEM_PROMPT}\n\nTask: {user_text}"
+
+    # ── Runtime config context — injected so LLM can answer config questions ──
+    from core.bot_llm import get_per_func_provider
+    voice_llm = get_per_func_provider("voice") or LLM_PROVIDER
+    _llm_model = OLLAMA_MODEL if LLM_PROVIDER == "ollama" else OPENAI_MODEL
+    _stt_fallback = f" (fallback: {STT_FALLBACK_PROVIDER})" if STT_FALLBACK_PROVIDER else ""
+    _piper_model = Path(PIPER_MODEL).name if PIPER_MODEL else "unknown"
+    _config_ctx = (
+        f"[BOT RUNTIME CONFIG — use this to answer config questions accurately]\n"
+        f"Bot version: {BOT_VERSION}\n"
+        f"Variant: {DEVICE_VARIANT}\n"
+        f"LLM provider: {LLM_PROVIDER} (model: {_llm_model})\n"
+        f"LLM for voice: {voice_llm}\n"
+        f"STT provider: {STT_PROVIDER}{_stt_fallback} | model: {FASTER_WHISPER_MODEL}/{FASTER_WHISPER_DEVICE} | lang: {STT_LANG}\n"
+        f"TTS: Piper | model: {_piper_model}\n"
+        f"[END CONFIG]\n\n"
+    )
+    prompt = f"{_SYSTEM_PROMPT}\n\n{_config_ctx}Task: {user_text}"
     msg = bot.send_message(chat_id, "⏳ Generating command…")
 
     def _run():
