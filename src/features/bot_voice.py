@@ -28,7 +28,7 @@ from core.bot_config import (
     TTS_MAX_CHARS, TTS_CHUNK_CHARS, VOICE_TIMING_DEBUG,
     WHISPER_BIN, WHISPER_MODEL, VOICE_BACKEND,
     STT_PROVIDER, FASTER_WHISPER_MODEL, FASTER_WHISPER_DEVICE, FASTER_WHISPER_COMPUTE,
-    STT_LANG,
+    STT_LANG, DEVICE_VARIANT,
     TARIS_DIR, _PENDING_TTS_FILE, log,
 )
 from core.bot_instance import bot
@@ -456,6 +456,18 @@ def _stt_faster_whisper(raw_pcm: bytes, sample_rate: int, lang: str = "ru") -> O
 
         text = " ".join(seg.text.strip() for seg in segments).strip()
         if not text:
+            # Retry without VAD filter — short utterances ("да", "нет") can be
+            # incorrectly suppressed by the VAD on short Telegram voice messages
+            log.debug("[FasterWhisper] VAD pass returned empty — retrying without VAD")
+            segments, info = model.transcribe(
+                audio_np,
+                language=fw_lang,
+                beam_size=5,
+                vad_filter=False,
+                condition_on_previous_text=False,
+            )
+            text = " ".join(seg.text.strip() for seg in segments).strip()
+        if not text:
             log.debug("[FasterWhisper] no speech detected")
             return None
 
@@ -840,9 +852,9 @@ def _handle_voice_message(chat_id: int, voice_obj) -> None:
             else:
                 log.warning("[WhisperSTT] no result — falling back to Vosk")
 
-        # Vosk fallback — skip only when primary STT succeeded or vosk_fallback=False
+        # Vosk fallback — skip when primary STT succeeded, vosk_fallback=False, or on OpenClaw
         primary_stt_used = fw_used or whisper_used
-        vosk_fallback_enabled = not primary_stt_used or opts.get("vosk_fallback", True)
+        vosk_fallback_enabled = not primary_stt_used or opts.get("vosk_fallback", DEVICE_VARIANT != "openclaw")
         if not text and vosk_fallback_enabled:
             STT_CONF_THRESHOLD = 0.65
             try:

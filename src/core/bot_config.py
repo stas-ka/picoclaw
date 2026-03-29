@@ -228,7 +228,7 @@ RAG_FLAG_FILE  = os.path.expanduser("~/.taris/rag_disabled")
 # Bot version — bump on every user-visible deployment
 # ─────────────────────────────────────────────────────────────────────────────
 
-BOT_VERSION        = "2026.3.29"
+BOT_VERSION        = "2026.3.29+1"
 RELEASE_NOTES_FILE = os.environ.get(
     "RELEASE_NOTES_FILE",
     os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "release_notes.json"),
@@ -336,7 +336,7 @@ _VOICE_OPTS_DEFAULTS: dict = {
     "vad_prefilter":      False,   # §5.3: webrtcvad noise gate before STT
     "faster_whisper_stt": STT_PROVIDER == "faster_whisper",  # faster-whisper (Python, CTranslate2) — OpenClaw default
     "whisper_stt":        False,   # §5.3: use whisper.cpp binary instead of Vosk (Pi/whisper-cpp)
-    "vosk_fallback":      True,    # §5.3: fall back to Vosk when primary STT returns nothing
+    "vosk_fallback":      DEVICE_VARIANT != "openclaw",  # §5.3: fall back to Vosk when primary STT returns nothing (disabled on OpenClaw — Vosk not installed)
     "piper_low_model":    False,   # §5.3: use ru_RU-irina-low.onnx (faster TTS)
     "persistent_piper":   False,   # §5.3: keep warm Piper process alive (ONNX hot)
     "voice_timing_debug": False,   # show per-stage ⏱ timings in voice replies

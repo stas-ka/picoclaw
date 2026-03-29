@@ -1,5 +1,11 @@
 [
   {
+    "version": "2026.3.29+1",
+    "date":    "2026-03-29",
+    "title":   "Fix STT Vosk error on OpenClaw platform",
+    "notes":   "- Disable Vosk fallback by default on OpenClaw (DEVICE_VARIANT=openclaw) — Vosk not installed\n- faster-whisper: retry without VAD filter when first pass returns empty (fixes short voice messages)\n- Import DEVICE_VARIANT in bot_voice.py for platform-aware fallback logic"
+  },
+  {
     "version": "2026.3.29",
     "date":    "2026-03-29",
     "title":   "Mobile Web UI optimization",
