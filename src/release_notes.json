@@ -1,5 +1,11 @@
 [
   {
+    "version": "2026.3.29+5",
+    "date": "2026-03-29",
+    "title": "Voice opts menu fix + system chat prompt fix",
+    "notes": "- Add faster_whisper_stt toggle to voice opts menu (OpenClaw)\n- Hide Pi-only opts (whisper.cpp, vosk_fallback, tmpfs) on OpenClaw\n- Fix LLM menu: no crash on missing config.json (OpenClaw)\n- Fix system chat prompt: respond in user language, POSIX syntax, knowledge vs shell"
+  },
+  {
     "version": "2026.3.29+4",
     "date": "2026-03-29",
     "title": "Fix web TTS hardcoded Piper path",

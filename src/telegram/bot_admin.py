@@ -22,7 +22,7 @@ from core.bot_config import (
     TARIS_CONFIG, ACTIVE_MODEL_FILE,
     RELEASE_NOTES_FILE, LAST_NOTIFIED_FILE, BOT_VERSION,
     LLM_LOCAL_FALLBACK, LLAMA_CPP_URL, LLAMA_CPP_MODEL, LLM_FALLBACK_FLAG_FILE,
-    _VOICE_OPTS_DEFAULTS,
+    _VOICE_OPTS_DEFAULTS, DEVICE_VARIANT,
     _LOG_FILE, _ASSISTANT_LOG_FILE, _SECURITY_LOG_FILE, _VOICE_LOG_FILE, _DATASTORE_LOG_FILE,
     log,
 )
@@ -371,25 +371,44 @@ def _notify_admins_new_registration(chat_id: int, username: str, name: str,
 def _handle_voice_opts_menu(chat_id: int) -> None:
     """Show voice optimization toggle panel for admins."""
     opts = _voice_opts()
+    is_openclaw = DEVICE_VARIANT == "openclaw"
 
     def _flag(key: str) -> str:
         return "✅" if opts.get(key) else "◻️"
 
     kb = InlineKeyboardMarkup(row_width=1)
-    opts_rows = [
+
+    # Common opts — available on all variants
+    common_rows = [
         ("silence_strip",     f"{_flag('silence_strip')}  Silence strip  ·  −6s STT"),
         ("low_sample_rate",   f"{_flag('low_sample_rate')}  8 kHz sample rate  ·  −7s STT"),
         ("warm_piper",        f"{_flag('warm_piper')}  Warm Piper cache  ·  −15s TTS"),
         ("parallel_tts",      f"{_flag('parallel_tts')}  Parallel TTS thread  ·  text-first UX"),
         ("user_audio_toggle", f"{_flag('user_audio_toggle')}  Per-user audio 🔊/🔇 toggle"),
-        ("tmpfs_model",       f"{_flag('tmpfs_model')}  Piper model in RAM (/dev/shm)  ·  −10s TTS load"),
         ("vad_prefilter",     f"{_flag('vad_prefilter')}  VAD pre-filter (webrtcvad)  ·  −3s STT"),
+        ("voice_timing_debug",f"{_flag('voice_timing_debug')}  Timing debug  ·  show ⏱ per stage in replies"),
+    ]
+
+    # OpenClaw-specific opts
+    openclaw_rows = [
+        ("faster_whisper_stt", f"{_flag('faster_whisper_stt')}  faster-whisper STT  ·  CTranslate2 (recommended)"),
+    ]
+
+    # PicoClaw/Pi-only opts — hidden on OpenClaw (packages not installed)
+    picoclaw_rows = [
+        ("tmpfs_model",       f"{_flag('tmpfs_model')}  Piper model in RAM (/dev/shm)  ·  −10s TTS load"),
         ("whisper_stt",       f"{_flag('whisper_stt')}  Whisper STT (whisper.cpp)  ·  +accuracy"),
         ("vosk_fallback",     f"{_flag('vosk_fallback')}  Vosk Fallback  ·  OFF = −180 MB RAM (Whisper-only)"),
         ("piper_low_model",   f"{_flag('piper_low_model')}  Piper low model  ·  −13s TTS"),
         ("persistent_piper",  f"{_flag('persistent_piper')}  Persistent Piper process  ·  ONNX hot"),
-        ("voice_timing_debug",f"{_flag('voice_timing_debug')}  Timing debug  ·  show ⏱ per stage in replies"),
     ]
+
+    opts_rows = common_rows[:]
+    if is_openclaw:
+        opts_rows += openclaw_rows
+    else:
+        opts_rows += picoclaw_rows
+
     for key, label in opts_rows:
         kb.add(InlineKeyboardButton(label, callback_data=f"voice_opt_toggle:{key}"))
     kb.add(InlineKeyboardButton("🔙  Admin", callback_data="admin_menu"))
@@ -594,16 +613,33 @@ def _handle_admin_llm_menu(chat_id: int) -> None:
     models  = _get_taris_models()
     current = _get_active_model()
 
-    if not models:
-        bot.send_message(chat_id, "⚠️ Cannot read taris config.json.",
-                         reply_markup=_admin_keyboard(chat_id))
-        return
-
     kb = InlineKeyboardMarkup(row_width=1)
     shared_openai_key = _get_shared_openai_key()
     openai_prefix = "✔️" if shared_openai_key else "⚠️"
     kb.add(InlineKeyboardButton(f"🔵 {openai_prefix} OpenAI ChatGPT ▶",
                                 callback_data="openai_llm_menu"))
+
+    if not models and DEVICE_VARIANT == "openclaw":
+        # OpenClaw: taris binary / config.json not present; show provider hint only
+        text = (
+            f"🤖 *Switch LLM*\n\nActive: `{current or 'config default'}`\n\n"
+            "OpenClaw variant: set `LLM_PROVIDER` in `~/.taris/bot.env`.\n"
+            "Available: `openai` · `ollama` · `taris` · `anthropic` · `gemini`"
+        )
+        kb.add(InlineKeyboardButton("↩️  Reset to default", callback_data="llm_select:"))
+        kb.add(InlineKeyboardButton("🔁  Local Fallback", callback_data="admin_llm_fallback_menu"))
+        kb.add(InlineKeyboardButton("🔙  Admin", callback_data="admin_menu"))
+        try:
+            bot.send_message(chat_id, text, parse_mode="Markdown", reply_markup=kb)
+        except Exception as e:
+            log.warning(f"[LLM] llm_menu send failed: {e}")
+            bot.send_message(chat_id, _re.sub(r"[*_`]", "", text), reply_markup=kb)
+        return
+
+    if not models:
+        bot.send_message(chat_id, "⚠️ Cannot read taris config.json.",
+                         reply_markup=_admin_keyboard(chat_id))
+        return
 
     for m in models:
         name = m.get("model_name", "")
