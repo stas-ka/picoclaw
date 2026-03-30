@@ -17,6 +17,7 @@
 4. [Daily Development Workflow](#4-daily-development-workflow)
 5. [Writing Features — Step-by-Step](#5-writing-features--step-by-step)
 6. [Debugging](#6-debugging)
+   - [6.8 IDE Debugger Attach (VS Code / PyCharm / Eclipse)](#68-ide-debugger-attach-vs-code--pycharm--eclipse)
 7. [Testing](#7-testing)
 8. [Deployment](#8-deployment)
 9. [Platform-Specific Behaviour](#9-platform-specific-behaviour)
@@ -428,6 +429,223 @@ PYTHONPATH=src python3 src/tests/test_voice_regression.py --verbose --test t_voi
 ```
 
 This prints which assertions pass/fail with full detail.
+
+---
+
+### 6.8 IDE Debugger Attach (VS Code / PyCharm / Eclipse)
+
+Taris runs as a standard Python process, so any IDE that supports Python remote debugging
+can attach to it. The two recommended approaches are:
+
+1. **Launch mode** — stop the systemd service, launch the bot directly from your IDE.
+   Full breakpoints, step-through, variable inspection. Best for local OpenClaw development.
+2. **Attach mode** — connect your IDE to the running service process via `debugpy`.
+   The service keeps running; you attach on demand. Best for investigating live issues.
+
+> **PicoClaw note:** Connect your IDE via VS Code Remote-SSH to the Pi first, then
+> open the repository and use the same launch configs below, substituting paths with
+> `/home/stas/.taris/` and the Pi host.
+
+---
+
+#### Prerequisite — install debugpy
+
+```bash
+# On TariStation2 (OpenClaw — local):
+pip install debugpy
+
+# On PicoClaw via SSH:
+ssh stas@OpenClawPI2 "pip3 install debugpy"
+```
+
+---
+
+#### Option A — Launch from VS Code (stop service, full debug)
+
+Create `.vscode/launch.json` in the project root:
+
+```json
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Taris — OpenClaw (launch)",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/src/telegram_menu_bot.py",
+      "python": "/usr/bin/python3",
+      "cwd": "${workspaceFolder}/src",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}/src",
+        "DEVICE_VARIANT": "openclaw",
+        "PYTHONUNBUFFERED": "1"
+      },
+      "envFile": "/home/stas/.taris/bot.env",
+      "console": "integratedTerminal",
+      "justMyCode": false
+    },
+    {
+      "name": "Taris — OpenClaw (attach by port)",
+      "type": "debugpy",
+      "request": "attach",
+      "connect": { "host": "127.0.0.1", "port": 5678 },
+      "pathMappings": [
+        {
+          "localRoot": "${workspaceFolder}/src",
+          "remoteRoot": "/home/stas/.taris"
+        }
+      ],
+      "justMyCode": false
+    },
+    {
+      "name": "Taris — PicoClaw (remote SSH attach)",
+      "type": "debugpy",
+      "request": "attach",
+      "connect": { "host": "OpenClawPI2", "port": 5678 },
+      "pathMappings": [
+        {
+          "localRoot": "${workspaceFolder}/src",
+          "remoteRoot": "/home/stas/.taris"
+        }
+      ],
+      "justMyCode": false
+    }
+  ]
+}
+```
+
+> **`envFile`**: VS Code reads the file as `KEY=VALUE` lines (same format as `bot.env`).
+> This loads `BOT_TOKEN` and `ALLOWED_USERS` into the launched process exactly as systemd does.
+
+**Steps for launch mode:**
+
+```bash
+# 1. Stop the service so only one bot process polls Telegram (otherwise 409 conflict)
+systemctl --user stop taris-telegram taris-web
+
+# 2. Open VS Code, open Run and Debug (Ctrl+Shift+D)
+# 3. Select "Taris — OpenClaw (launch)" and press F5
+# 4. Set breakpoints in any src/ file — they work immediately
+```
+
+---
+
+#### Option B — Attach to running service (debugpy listen)
+
+This keeps the service running normally; you inject breakpoints on demand.
+
+**Step 1** — add a debug listener to the bot startup (temporary, remove before commit):
+
+```python
+# At the very top of src/telegram_menu_bot.py (below the imports)
+import debugpy
+debugpy.listen(("127.0.0.1", 5678))
+# debugpy.wait_for_client()  # uncomment to pause startup until IDE connects
+```
+
+**Step 2** — sync and restart:
+
+```bash
+cp src/telegram_menu_bot.py ~/.taris/
+systemctl --user restart taris-telegram
+```
+
+**Step 3** — in VS Code, select **"Taris — OpenClaw (attach by port)"** and press F5.
+The debugger connects. You can now set breakpoints in any `src/` file.
+
+**Step 4** — remove `debugpy.listen()` before committing.
+
+> **Port forwarding for PicoClaw:** If attaching to a Pi, open an SSH tunnel first:
+> ```bash
+> ssh -L 5678:127.0.0.1:5678 stas@OpenClawPI2
+> ```
+> Then use the **"attach by port"** config on `127.0.0.1:5678`.
+
+---
+
+#### Option C — PyCharm / IntelliJ remote debug
+
+PyCharm uses `pydevd` (included in the PyCharm helpers) instead of `debugpy`.
+
+**Step 1** — in PyCharm, create a **Python Debug Server** run configuration:
+- `Settings > Run > Edit Configurations > + > Python Debug Server`
+- IDE host: `localhost`, Port: `12345`
+- Note the code snippet PyCharm shows you — it looks like:
+  ```python
+  import pydevd_pycharm
+  pydevd_pycharm.settrace('localhost', port=12345, stdoutToServer=True, stderrToServer=True)
+  ```
+
+**Step 2** — paste the snippet into `src/telegram_menu_bot.py` (temporarily, after imports).
+
+**Step 3** — start the Debug Server in PyCharm first, then restart the service:
+
+```bash
+cp src/telegram_menu_bot.py ~/.taris/
+systemctl --user restart taris-telegram
+```
+
+PyCharm connects automatically as the bot starts.
+
+**For PicoClaw** — install `pydevd-pycharm` on the Pi (`pip3 install pydevd-pycharm`) and
+use your workstation IP instead of `localhost` in `settrace()`.
+
+---
+
+#### Option D — Eclipse / PyDev
+
+Eclipse with the PyDev plugin uses the same `pydevd` protocol as PyCharm.
+
+**Step 1** — in Eclipse, open `PyDev > Start Debug Server` (port 5678 by default).
+
+**Step 2** — add to `src/telegram_menu_bot.py` (temporarily):
+
+```python
+import pydevd
+pydevd.settrace('localhost', port=5678, stdoutToServer=True, stderrToServer=True)
+```
+
+**Step 3** — sync and restart the service. Eclipse connects when the bot starts.
+
+Install PyDev helper on the target if needed:
+```bash
+pip3 install pydevd
+```
+
+---
+
+#### Breakpoint tips
+
+| Scenario | Recommendation |
+|---|---|
+| Debugging a Telegram callback | Set breakpoint in `handle_callback()` in `telegram_menu_bot.py` |
+| Debugging LLM call / context | Breakpoint in `bot_handlers.py:_run()` or `bot_voice.py` LLM block |
+| Debugging RAG retrieval | Breakpoint in `bot_access.py:_docs_rag_context()` |
+| Debugging voice pipeline | Breakpoint in `bot_voice.py:_process_voice_message()` |
+| Inspecting history at call time | Breakpoint after `get_history_with_ids(chat_id)` in handlers |
+
+**Inspecting LLM call context at runtime:**
+
+```python
+# Paste in debug console (VS Code / PyCharm Evaluate Expression):
+import json
+print(json.dumps([{"role": m["role"], "content": m["content"][:80]} for m in messages], ensure_ascii=False, indent=2))
+```
+
+This shows exactly what history + system message was sent to the LLM — the same data now
+logged automatically to `llm_calls.context_snapshot` in the DB.
+
+---
+
+#### Common pitfalls
+
+| Problem | Fix |
+|---|---|
+| `409 Conflict` on Telegram after launch | Service still running — `systemctl --user stop taris-telegram` first |
+| `BOT_TOKEN not set` when launching from IDE | Add `"envFile": "/home/stas/.taris/bot.env"` to launch config |
+| Breakpoints not hit (grayed out) | Set `"justMyCode": false`; ensure `pathMappings` match deployed paths |
+| `debugpy` port busy | `lsof -i:5678` to find PID, `kill <PID>` |
+| Import errors in IDE | Add `"PYTHONPATH": "src"` env var in launch config |
 
 ---
 
