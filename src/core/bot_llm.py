@@ -581,6 +581,24 @@ def ask_llm_with_history(messages: list, timeout: int = 60, *, use_case: str = "
             result = _http_post_json(url, headers, {"contents": contents}, timeout)
             return result["candidates"][0]["content"]["parts"][0]["text"].strip()
 
+        elif provider == "ollama":
+            # Ollama supports native OpenAI-format multi-turn messages — send as-is.
+            effective_timeout = max(timeout, OLLAMA_MIN_TIMEOUT)
+            _url = f"{OLLAMA_URL.rstrip('/')}/api/chat"
+            _headers = {"Content-Type": "application/json"}
+            _body: dict = {
+                "model": OLLAMA_MODEL,
+                "messages": messages,
+                "stream": False,
+                "think": OLLAMA_THINK,
+                "options": {
+                    "num_predict": LOCAL_MAX_TOKENS,
+                    "temperature": LOCAL_TEMPERATURE,
+                },
+            }
+            result = _http_post_json(_url, _headers, _body, effective_timeout)
+            return result["message"]["content"].strip()
+
         else:  # taris, openclaw, or unknown — format history as plain text
             prompt = _format_history_as_text(messages)
             fn = _DISPATCH.get(provider, _ask_taris)
