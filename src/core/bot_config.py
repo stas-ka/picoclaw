@@ -181,6 +181,8 @@ CONVERSATION_HISTORY_FILE = os.environ.get(
     "CONVERSATION_HISTORY_FILE",
     _th("conversation_history.json"),
 )
+CONV_SUMMARY_THRESHOLD    = int(os.environ.get("CONV_SUMMARY_THRESHOLD", "15"))
+CONV_MID_MAX              = int(os.environ.get("CONV_MID_MAX", "5"))
 
 DIGEST_SCRIPT       = os.environ.get("DIGEST_SCRIPT",
                           _th("gmail_digest.py"))
@@ -196,14 +198,6 @@ ERROR_PROTOCOL_DIR  = os.environ.get("ERROR_PROTOCOL_DIR",
                           _th("error_protocols"))
 DOCS_DIR            = os.environ.get("DOCS_DIR",
                           _th("docs"))
-
-# ─────────────────────────────────────────────────────────────────────────────
-# RAG (Retrieval-Augmented Generation) — FTS5 local knowledge base
-# ─────────────────────────────────────────────────────────────────────────────
-RAG_ENABLED    = os.environ.get("RAG_ENABLED",    "1") == "1"
-RAG_TOP_K      = int(os.environ.get("RAG_TOP_K",      "3"))
-RAG_CHUNK_SIZE = int(os.environ.get("RAG_CHUNK_SIZE", "512"))
-RAG_FLAG_FILE  = _th("rag_disabled")
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Embedding Service — vector embeddings for semantic document search
@@ -226,12 +220,13 @@ RAG_ENABLED    = os.environ.get("RAG_ENABLED",    "1") == "1"
 RAG_TOP_K      = int(os.environ.get("RAG_TOP_K",      "3"))
 RAG_CHUNK_SIZE = int(os.environ.get("RAG_CHUNK_SIZE", "512"))
 RAG_FLAG_FILE  = os.path.expanduser("~/.taris/rag_disabled")
-
+RAG_SETTINGS_FILE = os.path.expanduser("~/.taris/rag_settings.json")
+# LLM / RAG call timeouts (seconds) — overridable at runtime via Admin Panel
+LLM_TIMEOUT    = int(os.environ.get("LLM_TIMEOUT",  "60"))
+RAG_TIMEOUT    = int(os.environ.get("RAG_TIMEOUT",  "30"))
 # ─────────────────────────────────────────────────────────────────────────────
-# Bot version — bump on every user-visible deployment
-# ─────────────────────────────────────────────────────────────────────────────
 
-BOT_VERSION        = "2026.3.30+1"
+BOT_VERSION        = "2026.3.30+2"
 RELEASE_NOTES_FILE = os.environ.get(
     "RELEASE_NOTES_FILE",
     os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "release_notes.json"),

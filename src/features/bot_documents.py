@@ -5,8 +5,11 @@ Supports: .txt, .md, .pdf, .docx
 Pipeline: download → extract text → chunk → store via SQLite FTS5 (zero extra RAM, built-in)
          + optional vector embeddings when EmbeddingService + sqlite-vec are available.
 """
+import hashlib
+import json
 import os
 import threading
+import time
 import uuid
 from pathlib import Path
 
@@ -17,10 +20,14 @@ from core.bot_instance import bot
 from core.store import store
 from telegram.bot_access import _is_guest, _t
 from core.bot_config import RAG_CHUNK_SIZE
+import core.bot_state as _st
 
 _SUPPORTED_EXTS = {".txt", ".md", ".pdf", ".docx"}
 _CHUNK_SIZE = RAG_CHUNK_SIZE
 _CHUNK_OVERLAP = 50
+
+# pending rename state: {chat_id: doc_id}
+_pending_rename: dict[int, str] = {}
 
 
 def _docs_user_dir(chat_id: int) -> Path:
@@ -82,7 +89,7 @@ def _store_text_chunks(doc_id: str, chat_id: int, chunks: list) -> int:
 
 
 def _handle_docs_menu(chat_id: int) -> None:
-    """Show user's uploaded documents with delete buttons."""
+    """Show user's uploaded documents with detail buttons."""
     if not store.has_document_search():
         bot.send_message(chat_id, _t(chat_id, "docs_no_vector_search"))
         return
@@ -94,13 +101,96 @@ def _handle_docs_menu(chat_id: int) -> None:
     kb = InlineKeyboardMarkup(row_width=1)
     if docs:
         for d in docs:
+            shared = " 🔗" if d.get("is_shared") else ""
             kb.add(InlineKeyboardButton(
-                f"🗑 {d['title']}", callback_data=f"doc_del:{d['doc_id']}"))
-        text = _t(chat_id, "docs_menu_title")
+                f"📄 {d['title']}{shared}", callback_data=f"doc_detail:{d['doc_id']}"))
+        text = _t(chat_id, "docs_menu_title") + "\n\n" + _t(chat_id, "docs_restrictions_info")
     else:
-        text = _t(chat_id, "docs_empty")
+        text = _t(chat_id, "docs_empty") + "\n\n" + _t(chat_id, "docs_restrictions_info")
     kb.add(InlineKeyboardButton(_t(chat_id, "btn_back"), callback_data="menu"))
     bot.send_message(chat_id, text, reply_markup=kb, parse_mode="Markdown")
+
+
+def _handle_doc_detail(chat_id: int, doc_id: str) -> None:
+    """Show document detail card with action buttons."""
+    try:
+        docs = store.list_documents(chat_id)
+        d = next((x for x in docs if x["doc_id"] == doc_id), None)
+    except Exception:
+        d = None
+    if not d:
+        bot.send_message(chat_id, _t(chat_id, "docs_not_found"))
+        return
+    meta = d.get("metadata") or {}
+    if isinstance(meta, str):
+        try:
+            meta = json.loads(meta)
+        except Exception:
+            meta = {}
+    shared = "✅" if d.get("is_shared") else "❌"
+    lines = [
+        _t(chat_id, "docs_doc_detail"),
+        f"*{d['title']}*",
+        _t(chat_id, "docs_doc_type").format(doc_type=d.get("doc_type", "?")),
+        _t(chat_id, "docs_doc_chunks").format(chunks=meta.get("n_chunks", "?")),
+        _t(chat_id, "docs_doc_size").format(size=meta.get("file_size_bytes", "?")),
+        _t(chat_id, "docs_doc_shared").format(shared=shared),
+        _t(chat_id, "docs_doc_created").format(created=d.get("created_at", "")[:16]),
+    ]
+    text = "\n".join(lines)
+    kb = InlineKeyboardMarkup(row_width=2)
+    share_label = _t(chat_id, "docs_btn_unshare") if d.get("is_shared") else _t(chat_id, "docs_btn_share")
+    kb.add(
+        InlineKeyboardButton(_t(chat_id, "docs_btn_rename"), callback_data=f"doc_rename:{doc_id}"),
+        InlineKeyboardButton(share_label, callback_data=f"doc_share:{doc_id}"),
+    )
+    kb.add(InlineKeyboardButton("🗑 " + _t(chat_id, "docs_btn_delete"), callback_data=f"doc_del:{doc_id}"))
+    kb.add(InlineKeyboardButton(_t(chat_id, "btn_back"), callback_data="menu_docs"))
+    try:
+        bot.send_message(chat_id, text, reply_markup=kb, parse_mode="Markdown")
+    except Exception:
+        bot.send_message(chat_id, text.replace("*", ""), reply_markup=kb)
+
+
+def _handle_doc_rename_start(chat_id: int, doc_id: str) -> None:
+    """Ask user for a new document title."""
+    _pending_rename[chat_id] = doc_id
+    _st._user_mode[chat_id] = "doc_rename"
+    kb = InlineKeyboardMarkup()
+    kb.add(InlineKeyboardButton(_t(chat_id, "btn_cancel"), callback_data=f"doc_detail:{doc_id}"))
+    bot.send_message(chat_id, _t(chat_id, "docs_rename_prompt"), reply_markup=kb)
+
+
+def _handle_doc_rename_done(chat_id: int, new_title: str) -> None:
+    """Save the new title entered by the user."""
+    doc_id = _pending_rename.pop(chat_id, None)
+    _st._user_mode.pop(chat_id, None)
+    if not doc_id or not new_title.strip():
+        _handle_docs_menu(chat_id)
+        return
+    try:
+        store.update_document_field(doc_id, title=new_title.strip())
+        bot.send_message(chat_id, _t(chat_id, "docs_renamed"))
+    except Exception as e:
+        log.error("[Docs] rename failed: %s", e)
+        bot.send_message(chat_id, _t(chat_id, "docs_rename_failed"))
+    _handle_doc_detail(chat_id, doc_id)
+
+
+def _handle_doc_share_toggle(chat_id: int, doc_id: str) -> None:
+    """Toggle is_shared flag on a document."""
+    try:
+        docs = store.list_documents(chat_id)
+        d = next((x for x in docs if x["doc_id"] == doc_id), None)
+        if not d:
+            return
+        new_val = 0 if d.get("is_shared") else 1
+        store.update_document_field(doc_id, is_shared=new_val)
+        msg = _t(chat_id, "docs_shared_on") if new_val else _t(chat_id, "docs_shared_off")
+        bot.send_message(chat_id, msg)
+    except Exception as e:
+        log.error("[Docs] share toggle failed: %s", e)
+    _handle_doc_detail(chat_id, doc_id)
 
 
 def _handle_doc_upload(message) -> None:
@@ -121,10 +211,22 @@ def _handle_doc_upload(message) -> None:
 
     def _process():
         try:
-            doc_id = str(uuid.uuid4())
-            dest = _docs_user_dir(chat_id) / f"{doc_id}{ext}"
+            t0 = time.monotonic()
             file_info = bot.get_file(doc.file_id)
             data = bot.download_file(file_info.file_path)
+            file_size = len(data)
+
+            # SHA256 duplicate detection
+            doc_hash = hashlib.sha256(data).hexdigest()
+            existing = store.get_document_by_hash(chat_id, doc_hash)
+            if existing:
+                bot.edit_message_text(
+                    _t(chat_id, "docs_duplicate_hash", title=existing["title"]),
+                    chat_id, status_msg.message_id, parse_mode="Markdown")
+                return
+
+            doc_id = str(uuid.uuid4())
+            dest = _docs_user_dir(chat_id) / f"{doc_id}{ext}"
             dest.write_bytes(data)
             text = _extract_text(dest, ext)
             if not text.strip():
@@ -134,7 +236,15 @@ def _handle_doc_upload(message) -> None:
                 return
             chunks = _chunk_text(text)
             n = _store_text_chunks(doc_id, chat_id, chunks)
-            store.save_document_meta(doc_id, chat_id, fname, str(dest), ext.lstrip("."))
+            parse_ms = int((time.monotonic() - t0) * 1000)
+            meta = {
+                "char_count": len(text),
+                "n_chunks": n,
+                "file_size_bytes": file_size,
+                "parse_time_ms": parse_ms,
+            }
+            store.save_document_meta(doc_id, chat_id, fname, str(dest), ext.lstrip("."), meta)
+            store.update_document_field(doc_id, doc_hash=doc_hash)
             bot.edit_message_text(
                 _t(chat_id, "docs_uploaded", title=fname, chunks=n),
                 chat_id, status_msg.message_id, parse_mode="Markdown")
@@ -161,7 +271,7 @@ def _handle_doc_delete(chat_id: int, doc_id: str) -> None:
         InlineKeyboardButton("✅ " + _t(chat_id, "yes"),
                              callback_data=f"doc_del_confirm:{doc_id}"),
         InlineKeyboardButton("❌ " + _t(chat_id, "no"),
-                             callback_data="menu_docs"),
+                             callback_data=f"doc_detail:{doc_id}"),
     )
     bot.send_message(chat_id,
                      _t(chat_id, "docs_delete_confirm", title=title),

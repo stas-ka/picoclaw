@@ -146,6 +146,7 @@ CREATE TABLE IF NOT EXISTS documents (
     file_path   TEXT,
     doc_type    TEXT,
     is_shared   INTEGER DEFAULT 0,
+    doc_hash    TEXT,
     metadata    TEXT,
     created_at  TEXT    DEFAULT (datetime('now')),
     updated_at  TEXT    DEFAULT (datetime('now'))
@@ -171,6 +172,17 @@ CREATE TABLE IF NOT EXISTS rag_log (
     created_at     TEXT    DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))
 );
 CREATE INDEX IF NOT EXISTS idx_rag_log_chat ON rag_log(chat_id, created_at DESC);
+
+-- Conversation summaries — tiered short/mid/long-term memory
+CREATE TABLE IF NOT EXISTS conversation_summaries (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    chat_id     INTEGER NOT NULL,
+    summary     TEXT    NOT NULL,
+    tier        TEXT    NOT NULL DEFAULT 'mid',  -- 'mid' or 'long'
+    msg_count   INTEGER DEFAULT 0,
+    created_at  TEXT    DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_summ_chat ON conversation_summaries(chat_id, tier, created_at DESC);
 """
 
 
@@ -193,6 +205,7 @@ def init_db() -> None:
     # Migrations: add columns to existing tables (idempotent — ignore if already present)
     for _migration in [
         "ALTER TABLE chat_history ADD COLUMN call_id TEXT",
+        "ALTER TABLE documents ADD COLUMN doc_hash TEXT",
     ]:
         try:
             conn.execute(_migration)

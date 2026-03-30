@@ -486,6 +486,35 @@ class SQLiteStore:
         db.execute("DELETE FROM documents WHERE doc_id = ?", (doc_id,))
         db.commit()
 
+    def update_document_field(self, doc_id: str, **fields) -> None:
+        """Update arbitrary scalar fields on a document record."""
+        if not fields:
+            return
+        db = self._db()
+        set_clause = ", ".join(f"{k} = ?" for k in fields)
+        values = list(fields.values()) + [doc_id]
+        db.execute(
+            f"UPDATE documents SET {set_clause}, updated_at = datetime('now') WHERE doc_id = ?",
+            values,
+        )
+        db.commit()
+
+    def get_document_by_hash(self, chat_id: int, doc_hash: str) -> dict | None:
+        """Return document record matching hash for given user, or None."""
+        row = self._db().execute(
+            "SELECT * FROM documents WHERE chat_id = ? AND doc_hash = ?",
+            (chat_id, doc_hash),
+        ).fetchone()
+        if row is None:
+            return None
+        d = dict(row)
+        if d.get("metadata"):
+            try:
+                d["metadata"] = json.loads(d["metadata"])
+            except (ValueError, TypeError):
+                pass
+        return d
+
     # ── Vector / RAG ──────────────────────────────────────────────────────────
 
     def has_vector_search(self) -> bool:

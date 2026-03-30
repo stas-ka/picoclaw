@@ -74,6 +74,7 @@ from telegram.bot_admin import (
     _handle_admin_llm_fallback_menu, _handle_admin_llm_fallback_toggle,
     _handle_admin_voice_config, _handle_admin_stt_set, _handle_admin_fw_model_set,
     _handle_admin_rag_menu, _handle_admin_rag_toggle, _handle_admin_rag_log,
+    _handle_admin_rag_settings, _start_admin_rag_set, _finish_admin_rag_set,
     _admin_keyboard,
 )
 
@@ -94,6 +95,7 @@ from telegram.bot_handlers import (
     _start_profile_edit_name, _finish_profile_edit_name,
     _start_profile_change_pw, _finish_profile_change_pw,
     _handle_profile_lang, _set_profile_lang, _handle_profile_my_data,
+    _handle_profile_clear_memory, _handle_profile_clear_memory_confirmed,
     _pending_profile,
 )
 
@@ -147,6 +149,11 @@ from features.bot_documents import (
     _handle_doc_upload,
     _handle_doc_delete,
     _handle_doc_delete_confirmed,
+    _handle_doc_detail,
+    _handle_doc_rename_start,
+    _handle_doc_rename_done,
+    _handle_doc_share_toggle,
+    _pending_rename as _docs_pending_rename,
 )
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -353,6 +360,12 @@ def callback_handler(call):
     elif data == "profile_my_data":
         if not _is_allowed(cid): return _deny(cid)
         _handle_profile_my_data(cid)
+    elif data == "profile_clear_memory":
+        if not _is_allowed(cid): return _deny(cid)
+        _handle_profile_clear_memory(cid)
+    elif data == "profile_clear_memory_confirm":
+        if not _is_allowed(cid): return _deny(cid)
+        _handle_profile_clear_memory_confirmed(cid)
     # ── Admin panel ────────────────────────────────────────────────────────
     elif data == "noop":
         pass  # separator buttons — ignore silently
@@ -490,6 +503,18 @@ def callback_handler(call):
     elif data == "admin_rag_log":
         if _is_admin(cid):
             _handle_admin_rag_log(cid)
+        else:
+            bot.send_message(cid, _t(cid, "admin_only"))
+
+    elif data == "admin_rag_settings":
+        if _is_admin(cid):
+            _handle_admin_rag_settings(cid)
+        else:
+            bot.send_message(cid, _t(cid, "admin_only"))
+
+    elif data in ("admin_rag_set_topk", "admin_rag_set_chunk", "admin_rag_set_timeout"):
+        if _is_admin(cid):
+            _start_admin_rag_set(cid, data[len("admin_rag_set_"):])
         else:
             bot.send_message(cid, _t(cid, "admin_only"))
 
@@ -829,6 +854,15 @@ def callback_handler(call):
     elif data == "menu_docs":
         if not _is_guest(cid):
             _handle_docs_menu(cid)
+    elif data.startswith("doc_detail:"):
+        if not _is_guest(cid):
+            _handle_doc_detail(cid, data[len("doc_detail:"):])
+    elif data.startswith("doc_rename:"):
+        if not _is_guest(cid):
+            _handle_doc_rename_start(cid, data[len("doc_rename:"):])
+    elif data.startswith("doc_share:"):
+        if not _is_guest(cid):
+            _handle_doc_share_toggle(cid, data[len("doc_share:"):])
     elif data.startswith("doc_del:"):
         if not _is_guest(cid):
             _handle_doc_delete(cid, data[len("doc_del:"):])
@@ -906,6 +940,14 @@ def text_handler(message):
     if mode == "admin_remove_user":
         if _is_admin(cid):
             _finish_admin_remove_user(cid, message.text)
+        else:
+            _st._user_mode.pop(cid, None)
+            bot.send_message(cid, _t(cid, "admin_only"))
+        return
+
+    if mode in ("admin_rag_set_topk", "admin_rag_set_chunk", "admin_rag_set_timeout"):
+        if _is_admin(cid):
+            _finish_admin_rag_set(cid, message.text)
         else:
             _st._user_mode.pop(cid, None)
             bot.send_message(cid, _t(cid, "admin_only"))
@@ -1093,6 +1135,14 @@ def text_handler(message):
             _finish_contact_search(cid, message.text)
         else:
             _st._user_mode.pop(cid, None)
+        return
+
+    if mode == "doc_rename":
+        if not _is_guest(cid):
+            _handle_doc_rename_done(cid, message.text)
+        else:
+            _st._user_mode.pop(cid, None)
+            _docs_pending_rename.pop(cid, None)
         return
 
     # ── Chat modes ─────────────────────────────────────────────────────────

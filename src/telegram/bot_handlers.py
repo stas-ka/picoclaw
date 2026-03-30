@@ -520,6 +520,34 @@ def _handle_profile_my_data(chat_id: int) -> None:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Profile — clear conversation memory
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _handle_profile_clear_memory(chat_id: int) -> None:
+    """Show confirmation dialog before clearing conversation history."""
+    from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
+    kb = InlineKeyboardMarkup(row_width=2)
+    kb.add(
+        InlineKeyboardButton("✅ " + _t(chat_id, "yes"),
+                             callback_data="profile_clear_memory_confirm"),
+        InlineKeyboardButton("❌ " + _t(chat_id, "no"),
+                             callback_data="profile"),
+    )
+    bot.send_message(chat_id, _t(chat_id, "profile_clear_memory_confirm"),
+                     reply_markup=kb, parse_mode="Markdown")
+
+
+def _handle_profile_clear_memory_confirmed(chat_id: int) -> None:
+    """Clear all conversation history for this user (short-term + DB)."""
+    _st.clear_history(chat_id)
+    from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
+    kb = InlineKeyboardMarkup()
+    kb.add(InlineKeyboardButton(_t(chat_id, "btn_back"), callback_data="profile"))
+    bot.send_message(chat_id, _t(chat_id, "profile_memory_cleared"),
+                     reply_markup=kb, parse_mode="Markdown")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Mail digest
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -854,6 +882,14 @@ def _handle_chat_message(chat_id: int, user_text: str) -> None:
 
         # Build message list: past history + current user turn (with lang hint)
         current_content = _with_lang(chat_id, user_text)
+        # ── Memory context injection (tiered long/mid-term summaries) ─────
+        try:
+            from core.bot_state import get_memory_context
+            _mem_ctx = get_memory_context(chat_id)
+            if _mem_ctx:
+                current_content = _mem_ctx + current_content
+        except Exception as _mem_e:
+            log.debug("[Memory] context injection failed: %s", _mem_e)
         # ── RAG context injection ──────────────────────────────────────────
         import os as _os
         if RAG_ENABLED and not _os.path.exists(RAG_FLAG_FILE):

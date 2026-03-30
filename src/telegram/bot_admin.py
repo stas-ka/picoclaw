@@ -1046,19 +1046,26 @@ def _handle_admin_llm_fallback_toggle(chat_id: int) -> None:
 # ── RAG Administration ─────────────────────────────────────────────────────
 
 def _handle_admin_rag_menu(chat_id: int) -> None:
-    """Show RAG status, top-K, and action buttons."""
+    """Show RAG status, top-K, chunk size, timeout and action buttons."""
     import os
-    from core.bot_config import RAG_FLAG_FILE, RAG_TOP_K
+    from core.bot_config import RAG_FLAG_FILE
+    from core.rag_settings import get as _rget
     enabled = not os.path.exists(RAG_FLAG_FILE)
     status  = _t(chat_id, "admin_rag_status_on" if enabled else "admin_rag_status_off")
-    text = (
-        _t(chat_id, "admin_rag_menu_title") + "\n" +
-        status + "\n" +
-        _t(chat_id, "admin_rag_topk").format(topk=RAG_TOP_K)
-    )
+    topk    = _rget("rag_top_k")
+    chunk   = _rget("rag_chunk_size")
+    timeout = _rget("rag_timeout")
+    text = "\n".join([
+        _t(chat_id, "admin_rag_menu_title"),
+        status,
+        _t(chat_id, "admin_rag_topk").format(topk=topk),
+        _t(chat_id, "admin_rag_chunk_size").format(chunk=chunk),
+        _t(chat_id, "admin_rag_timeout").format(timeout=timeout),
+    ])
     kb = InlineKeyboardMarkup()
     kb.add(InlineKeyboardButton(_t(chat_id, "admin_rag_view_log"),   callback_data="admin_rag_log"))
     kb.add(InlineKeyboardButton(_t(chat_id, "admin_btn_toggle_rag"), callback_data="admin_rag_toggle"))
+    kb.add(InlineKeyboardButton(_t(chat_id, "admin_rag_settings"),   callback_data="admin_rag_settings"))
     kb.add(InlineKeyboardButton(_t(chat_id, "btn_back"),             callback_data="admin"))
     try:
         bot.send_message(chat_id, text, reply_markup=kb, parse_mode="Markdown")
@@ -1082,6 +1089,58 @@ def _handle_admin_rag_toggle(chat_id: int) -> None:
     except Exception:
         bot.send_message(chat_id, _re.sub(r"[*_`]", "", msg))
     _handle_admin_rag_menu(chat_id)
+
+
+def _handle_admin_rag_settings(chat_id: int) -> None:
+    """Show RAG parameter editor buttons."""
+    from core.rag_settings import get as _rget
+    topk    = _rget("rag_top_k")
+    chunk   = _rget("rag_chunk_size")
+    timeout = _rget("rag_timeout")
+    kb = InlineKeyboardMarkup()
+    kb.add(InlineKeyboardButton(
+        _t(chat_id, "admin_rag_set_topk").format(topk=topk),
+        callback_data="admin_rag_set_topk"))
+    kb.add(InlineKeyboardButton(
+        _t(chat_id, "admin_rag_set_chunk").format(chunk=chunk),
+        callback_data="admin_rag_set_chunk"))
+    kb.add(InlineKeyboardButton(
+        _t(chat_id, "admin_rag_set_timeout").format(timeout=timeout),
+        callback_data="admin_rag_set_timeout"))
+    kb.add(InlineKeyboardButton(_t(chat_id, "btn_back"), callback_data="admin_rag_menu"))
+    bot.send_message(chat_id, _t(chat_id, "admin_rag_settings"), reply_markup=kb)
+
+
+def _start_admin_rag_set(chat_id: int, param: str) -> None:
+    """Prompt admin to enter a new value for param (topk/chunk/timeout)."""
+    key_map = {
+        "topk":    "admin_rag_enter_topk",
+        "chunk":   "admin_rag_enter_chunk",
+        "timeout": "admin_rag_enter_timeout",
+    }
+    _st._user_mode[chat_id] = f"admin_rag_set_{param}"
+    bot.send_message(chat_id, _t(chat_id, key_map[param]),
+                     reply_markup=_back_keyboard(chat_id, "admin_rag_settings"))
+
+
+def _finish_admin_rag_set(chat_id: int, text: str) -> None:
+    """Validate and save the RAG parameter the admin was entering."""
+    mode = _st._user_mode.pop(chat_id, "")
+    from core.rag_settings import set_value as _rset
+    param = mode.replace("admin_rag_set_", "")
+    limits = {"topk": (1, 20), "chunk": (128, 2048), "timeout": (5, 120)}
+    key_map = {"topk": "rag_top_k", "chunk": "rag_chunk_size", "timeout": "rag_timeout"}
+    lo, hi = limits.get(param, (1, 9999))
+    try:
+        val = int(text.strip())
+        assert lo <= val <= hi
+    except (ValueError, AssertionError):
+        bot.send_message(chat_id, _t(chat_id, "admin_rag_setting_invalid"))
+        _handle_admin_rag_settings(chat_id)
+        return
+    _rset(key_map[param], val)
+    bot.send_message(chat_id, _t(chat_id, "admin_rag_setting_saved"))
+    _handle_admin_rag_settings(chat_id)
 
 
 def _handle_admin_rag_log(chat_id: int) -> None:

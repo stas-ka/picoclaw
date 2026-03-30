@@ -174,6 +174,14 @@ class DataStore(Protocol):
         """Remove document metadata record (does NOT delete the file on disk)."""
         ...
 
+    def update_document_field(self, doc_id: str, **fields) -> None:
+        """Update arbitrary scalar fields on a document record."""
+        ...
+
+    def get_document_by_hash(self, chat_id: int, doc_hash: str) -> dict | None:
+        """Return document matching sha256 hash for given user, or None."""
+        ...
+
     # ── Vector / RAG ──────────────────────────────────────────────────────────
 
     def has_vector_search(self) -> bool:

@@ -15,6 +15,8 @@ from core.bot_config import (
     CONVERSATION_HISTORY_FILE,
     CONVERSATION_HISTORY_MAX,
     CONVERSATION_PERSIST,
+    CONV_SUMMARY_THRESHOLD,
+    CONV_MID_MAX,
     USERS_FILE,
     _VOICE_OPTS_FILE,
     _VOICE_OPTS_DEFAULTS,
@@ -220,6 +222,7 @@ def add_to_history(chat_id: int, role: str, content: str,
                    call_id: str | None = None) -> int:
     """Append a message to the user's history.
     Writes to SQLite (primary storage) and the in-memory cache.
+    When the session reaches CONV_SUMMARY_THRESHOLD messages, triggers async summarization.
     Returns the DB row id for call-tracking purposes.
     """
     from core.bot_db import db_add_history
@@ -231,6 +234,9 @@ def add_to_history(chat_id: int, role: str, content: str,
         log.debug("[State] store.append_history failed: %s", _e)
     hist = _conversation_history.setdefault(chat_id, [])
     hist.append({"role": role, "content": content, "_db_id": db_id})
+    if len(hist) >= CONV_SUMMARY_THRESHOLD and role == "assistant":
+        # Summarize what we have before trimming
+        _summarize_session_async(chat_id, list(hist))
     if len(hist) > CONVERSATION_HISTORY_MAX:
         _conversation_history[chat_id] = hist[-CONVERSATION_HISTORY_MAX:]
     return db_id
@@ -250,10 +256,95 @@ def get_history_with_ids(chat_id: int) -> list[dict]:
 
 
 def clear_history(chat_id: int) -> None:
-    """Clear the conversation history for a user (in-memory + DB)."""
-    from core.bot_db import db_clear_history
+    """Clear the conversation history for a user (in-memory + DB + all summary tiers)."""
+    from core.bot_db import db_clear_history, get_db
     _conversation_history.pop(chat_id, None)
     db_clear_history(chat_id)
+    try:
+        db = get_db()
+        db.execute("DELETE FROM conversation_summaries WHERE chat_id = ?", (chat_id,))
+        db.commit()
+    except Exception as exc:
+        log.warning("[Memory] clear summaries failed: %s", exc)
+
+
+def _summarize_session_async(chat_id: int, messages: list) -> None:
+    """Summarize the given messages and store as mid-term memory. Runs in background thread."""
+    import threading
+
+    def _do():
+        try:
+            from core.bot_llm import ask_llm
+            from core.bot_db import get_db
+            sample = "\n".join(
+                f"{m['role'].upper()}: {m['content'][:200]}" for m in messages[-20:]
+            )
+            prompt = (
+                "Summarize the following conversation fragment in 2-4 sentences. "
+                "Focus on facts, topics discussed, and user preferences. "
+                "Write in the same language as the conversation.\n\n"
+                f"{sample}"
+            )
+            summary = ask_llm(prompt, timeout=30)
+            if not summary or len(summary.strip()) < 10:
+                return
+            db = get_db()
+            # Count mid-tier summaries
+            count = db.execute(
+                "SELECT COUNT(*) FROM conversation_summaries WHERE chat_id=? AND tier='mid'",
+                (chat_id,),
+            ).fetchone()[0]
+            if count >= CONV_MID_MAX:
+                # Compact mid-term → long-term
+                rows = db.execute(
+                    "SELECT summary FROM conversation_summaries "
+                    "WHERE chat_id=? AND tier='mid' ORDER BY created_at ASC",
+                    (chat_id,),
+                ).fetchall()
+                all_text = "\n".join(r[0] for r in rows)
+                long_prompt = (
+                    "Compress these conversation summaries into one concise paragraph "
+                    "preserving key facts, preferences and topics:\n\n" + all_text
+                )
+                long_summary = ask_llm(long_prompt, timeout=30)
+                if long_summary and len(long_summary.strip()) >= 10:
+                    db.execute("DELETE FROM conversation_summaries WHERE chat_id=? AND tier='mid'", (chat_id,))
+                    db.execute(
+                        "INSERT INTO conversation_summaries(chat_id, summary, tier, msg_count) VALUES(?,?,?,?)",
+                        (chat_id, long_summary.strip(), "long", len(messages)),
+                    )
+                    db.commit()
+            db.execute(
+                "INSERT INTO conversation_summaries(chat_id, summary, tier, msg_count) VALUES(?,?,?,?)",
+                (chat_id, summary.strip(), "mid", len(messages)),
+            )
+            db.commit()
+            log.info("[Memory] stored mid-term summary for user %s", chat_id)
+        except Exception as exc:
+            log.warning("[Memory] summarize failed: %s", exc)
+
+    threading.Thread(target=_do, daemon=True).start()
+
+
+def get_memory_context(chat_id: int) -> str:
+    """Return formatted long+mid-term memory summaries as a context prefix (may be empty)."""
+    try:
+        from core.bot_db import get_db
+        db = get_db()
+        rows = db.execute(
+            "SELECT tier, summary FROM conversation_summaries "
+            "WHERE chat_id=? ORDER BY tier DESC, created_at ASC",
+            (chat_id,),
+        ).fetchall()
+        if not rows:
+            return ""
+        parts = ["[Memory context from previous sessions:]"]
+        for r in rows:
+            parts.append(f"[{r[0].upper()}] {r[1]}")
+        return "\n".join(parts) + "\n"
+    except Exception as exc:
+        log.debug("[Memory] get_memory_context failed: %s", exc)
+        return ""
 
 
 def load_conversation_history() -> None:
