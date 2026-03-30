@@ -178,7 +178,7 @@ Config-driven switch: `STORE_BACKEND=sqlite|postgres` in `bot.env`. Binary files
 | Phase 2c | Dual-write wrappers: existing JSON writers also call adapter | ✅ Done (v2026.3.32) |
 | Phase 2d | `documents` + `vec_embeddings` tables; `upsert_embedding` / `search_similar` | 🔲 |
 | Phase 3 | `migrate_to_db.py` — JSON → adapter (idempotent) | ✅ |
-| Phase 4 | Switch all reads to adapter; remove JSON writes | 🔲 |
+| Phase 4 | Switch all reads to adapter; remove JSON writes | 🔄 In progress (notes + calendar done in v2026.3.31) |
 | Phase 5 | `store_postgres.py` PostgreSQL adapter; test on OpenClaw | ✅ Done (v2026.4.13) |
 | Phase 6 | RAG (§4.1) via `search_similar()`; conversation memory (§2.1) via `append_history()` | 🔲 |
 
@@ -194,33 +194,32 @@ Config-driven switch: `STORE_BACKEND=sqlite|postgres` in `bot.env`. Binary files
 - [ ] Tests T22 `sqlite_schema`, T23 `migration_idempotent`, T24 `vector_search_basic`, T25 `store_adapter_contract`, T26 `credential_encryption`
 ### 9.1 Storing of user data in the local database not in files
 - [x] Notes reads from DB (`store.list_notes()`); file fallback preserved; double-write bug fixed (v2026.3.30)
-- [] all existed user data shall be migrated to database. create scripts for migration and migrate data.
-- [] Notes shall be stored in Database not in files (Attention: restriction of size of notes shall be transparent for user)
-- [] Calendar data shall be stored in database
-- [] profile user data and user settings shall be stored in database
-- [] all kinds of memory (conversations context) shall be stored in the database
-- [] all user contacts shall be stored in the database
-- [] last interactions, opened ui and status of ui shall be stored in the database
-- [] all new implemented functions with focus of using of data shall use database and files to save data
+- [x] Notes content stored in DB (`notes_index.content` column); `_load_note_text` reads DB first, file fallback; `_save_note_file` writes content to DB (v2026.3.31) 🔲 _being deployed_
+- [x] Calendar data stored in database — DB-primary via `store.save_event/load_events/delete_event`; JSON file write removed (v2026.3.31) 🔲 _being deployed_
+- [x] All kinds of memory (conversation context) stored in database — `chat_history` + `conversation_summaries` tables; cleared via Profile (v2026.3.30+5)
+- [x] All user contacts stored in database — `store.save_contact / list_contacts / delete_contact / search_contacts` in `store_sqlite.py`
+- [x] Migration scripts exist — `src/setup/migrate_to_db.py` idempotent JSON → DB (v2026.3.30)
+- [x] Per-user preferences stored in DB — `user_prefs` table; `db_get_user_pref / db_set_user_pref` (v2026.3.31) 🔲 _being deployed_
+- [ ] Last interactions, opened UI and status of UI stored in database — not yet implemented
+- [ ] `src/setup/install_sqlite_vec.sh` — install sqlite-vec wheel on Pi target
+- [ ] `src/setup/migrate_sqlite_to_pg.py` — taris.db → PostgreSQL migration script
 
-## 10. Upload and using documents as Knowlegdes
+## 10. Upload and using documents as Knowledges
 - [x] FTS5 RAG context injection: `_docs_rag_context()` in `bot_access.py`; called from `_with_lang()` and `_with_lang_voice()`; caps at 2000 chars; guard on `RAG_ENABLED` and user docs present (v2026.3.30)
-- [] Function to upload and administration documents (upload, view,  delete , share to all , set title, set hash/label, share to other users in system)
-- [] Using documents as knowledgebase in chat in multimodal RAG way
-- [] documents can be contain text, images, tables
-- [] documents used as knowledegs shall assigned to user or can be shared to use from all users as knowledges
-- [] documents can be replaced through other document if documents are identical by hash, name, size parameters and after confirmation from user to replace already stored document with new. User shall see name and descrition already existed document
-- [] criteria of compAring of documnts shall be configurable in Admin panel
-- [] quality consistency check created chunks after uploading of document
+- [x] Upload and administration of documents (upload, view, delete, share to all, set title, share to other users) — `bot_documents.py` fully implemented with FTS5 chunking + optional vector embeddings (v2026.3.30)
+- [x] Documents assigned to user or shared with all users — `is_shared` flag, `store.update_document_field()` (v2026.3.30)
+- [x] Document deduplication on upload — hash check detects identical content; "Replace / Keep Both" confirmation shown (v2026.3.31) 🔲 _being deployed_
+- [ ] Documents used as knowledgebase in multimodal RAG way (images, tables) — FTS5 text-only currently; no image/table extraction
+- [ ] Criteria for comparing documents configurable in Admin panel
+- [ ] Quality consistency check of created chunks after uploading
 
-### 10.1 Short-, middle and Long-term memories 
-Before implementaion of memories shall be analyse how can be implemented . here is first draft, proposal for implelemnation:
-- [] implement short-term, middle-term, long-term memories 
-- [] conversations after reaching maximal short memory size of conversation shall be set as middle-term memory 
-- [] middle-term memory after reaching a size shall be cleaned and summariazed/compacted and meregd together with long-term memory
-- [] cleaning all kind of memories if user its wishes in profile 
-- [] setting all memories parameters in Admin panel
-- [] all kind of memories can be used as context in conversations with user per default or user can switch off using memories in conversations
+### 10.1 Short-, middle and Long-term memories
+- [x] Short-term memory implemented — sliding window in `_conversation_history` (in-memory + `chat_history` DB); size: `CONVERSATION_HISTORY_MAX` (default 15) (v2026.3.30)
+- [x] Conversations reaching max short memory trigger mid-term summarization — `_summarize_session_async()` triggered at `CONV_SUMMARY_THRESHOLD` (v2026.3.30+5)
+- [x] Mid-term memory compacted to long-term when `CONV_MID_MAX` summaries reached — stored in `conversation_summaries` table (v2026.3.30+5)
+- [x] Clearing all kinds of memories in profile — `clear_history()` clears all tiers; `profile_btn_clear_all_memory` button (v2026.3.30+5)
+- [x] Memory parameters configurable in Admin panel — `system_settings` table; Admin → Memory Settings page (v2026.3.31) 🔲 _being deployed_
+- [x] Memory context injection togglable per user — `memory_enabled` pref in `user_prefs` table; Profile toggle button (v2026.3.31) 🔲 _being deployed_
 
 ## 11. Central control dashboard (primary per voice)
 - [] IMplementing central dashboard to control and run all activities of the asstsiant
