@@ -9,6 +9,7 @@ Do NOT read this file beyond the table below — load only the specific topic fi
 
 | Topic | File | When to read |
 |---|---|---|
+| **🛠 Developer Guide** — setup, workflow, debugging, testing, deployment | **[dev-guide.md](dev-guide.md)** | **Start here** for daily development across OpenClaw and PicoClaw |
 | System overview, channels, ecosystem map | [overview.md](architecture/overview.md) | Understanding overall structure; variant comparison |
 | **PicoClaw variant** (Raspberry Pi) | [picoclaw.md](architecture/picoclaw.md) | Pi hardware, Vosk STT, Piper TTS, deploy workflow |
 | **OpenClaw variant** (Laptop/PC) | [openclaw-integration.md](architecture/openclaw-integration.md) | faster-whisper, Ollama, REST API, sintaris-openclaw integration |
