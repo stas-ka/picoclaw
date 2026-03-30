@@ -20,3 +20,5 @@ Do NOT read this file beyond the table below — load only the specific topic fi
 | Multilanguage support (ru/de/en), i18n, `_t()` | [multilanguage.md](arch/multilanguage.md) | Adding i18n strings or a new language |
 | Web UI (FastAPI, routes, auth, Screen DSL) | [web-ui.md](arch/web-ui.md) | Modifying `bot_web.py` or templates |
 | LLM provider abstraction, multi-provider dispatch, offline fallback | [llm-providers.md](arch/llm-providers.md) | Modifying `bot_llm.py` or adding LLM providers |
+| **Conversation architecture** — message structure, routing, tiered memory, RAG | [conversation.md](arch/conversation.md) | Modifying LLM message structure, history, memory, RAG injection |
+| **Data layer** — SQLite/Postgres backends, schema, store API, file paths | [data-layer.md](arch/data-layer.md) | Adding DB columns, switching backends, data paths |

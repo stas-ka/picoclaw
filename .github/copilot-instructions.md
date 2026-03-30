@@ -28,15 +28,48 @@ taris is a Raspberry Pi–based Telegram bot + offline voice assistant (Russian/
 
 ## Reference Docs — Read on Demand
 
+**Architecture docs are Copilot navigation maps — not textbooks. Use them to locate the right file and function, then go there. Never read an arch doc in full when you only need one section.**
+
 | Document | When to use |
 |---|---|
 | [`doc/quick-ref.md`](../doc/quick-ref.md) | **Always-read first** — module map, key functions, test triggers, deploy pipeline (~3 KB) |
-| [`doc/bot-code-map.md`](../doc/bot-code-map.md) | **Search, don't read whole** — grep/search for function names, callback keys, or file names; read only the matching section (~2 KB). Do NOT load the full 39 KB file. |
-| [`doc/dev-patterns.md`](../doc/dev-patterns.md) | **Before adding any feature** — exact copy-paste patterns for: voice opts, callbacks, multi-step input flows, i18n strings, access guards, versioning, subprocess calls, session state, deployment, service files. |
-| [`doc/architecture.md`](../doc/architecture.md) | **Search, don't read whole** — index of eight topic files in `doc/arch/`. Read only the relevant topic: [overview](../doc/arch/overview.md) · [voice-pipeline](../doc/arch/voice-pipeline.md) · [telegram-bot](../doc/arch/telegram-bot.md) · [security](../doc/arch/security.md) · [features](../doc/arch/features.md) · [deployment](../doc/arch/deployment.md) · [multilanguage](../doc/arch/multilanguage.md) · [web-ui](../doc/arch/web-ui.md) |
+| [`doc/bot-code-map.md`](../doc/bot-code-map.md) | **Search, don't read whole** — grep for function name, callback key, or file name; read only the matching section. Do NOT load the full file. |
+| [`doc/dev-patterns.md`](../doc/dev-patterns.md) | **Before adding any feature** — copy-paste patterns for callbacks, voice opts, multi-step flows, i18n, access guards, subprocess, session state. |
+| [`doc/architecture.md`](../doc/architecture.md) | **Index only** — find the right topic file, then read only that file. Never load the index AND the topic file. |
 | [`doc/hardware-performance-analysis.md`](../doc/hardware-performance-analysis.md) | Before choosing algorithms, models, or suggesting hardware upgrades. |
-| [`doc/test-suite.md`](../doc/test-suite.md) | **Before running or extending tests** — complete reference for all test categories (voice regression T01–T21, Web UI Playwright, hardware audio, smoke), trigger rules, run commands, and Copilot chat-mode "test software" protocol. |
-| [`TODO.md`](../TODO.md) | **Session start** — check what is planned/in-progress/done before proposing work. |
+| [`doc/test-suite.md`](../doc/test-suite.md) | **Before running or extending tests** — all test categories, run commands, trigger rules. |
+| [`TODO.md`](../TODO.md) | **Session start** — check planned/in-progress/done before proposing work. |
+
+### Architecture Topic Files — use the right one, read only the relevant section
+
+| Topic | File | Read when |
+|---|---|---|
+| System overview, variant comparison, module map | [`doc/arch/overview.md`](../doc/arch/overview.md) | Understanding overall structure, adding a new service |
+| PicoClaw variant (Pi, Vosk, Piper, systemd) | [`doc/arch/picoclaw.md`](../doc/arch/picoclaw.md) | Pi-specific code, service files, audio HAT |
+| OpenClaw variant (faster-whisper, Ollama, REST) | [`doc/arch/openclaw-integration.md`](../doc/arch/openclaw-integration.md) | OpenClaw-specific code, skill integration |
+| Voice pipeline (STT/TTS/VAD/hotword) | [`doc/arch/voice-pipeline.md`](../doc/arch/voice-pipeline.md) | Modifying `bot_voice.py` or `voice_assistant.py` |
+| Telegram bot modules, routing, callbacks | [`doc/arch/telegram-bot.md`](../doc/arch/telegram-bot.md) | Adding handlers, callbacks, menu buttons |
+| Security, RBAC, user roles, prompt injection | [`doc/arch/security.md`](../doc/arch/security.md) | Modifying access logic, roles, `bot_security.py` |
+| Feature domains (mail, calendar, contacts, docs) | [`doc/arch/features.md`](../doc/arch/features.md) | Adding or modifying user features |
+| **Conversation, memory, multi-turn context, RAG** | [`doc/arch/conversation.md`](../doc/arch/conversation.md) | Modifying LLM call structure, history, memory, RAG injection |
+| **Data layer (SQLite/Postgres, schema, stores)** | [`doc/arch/data-layer.md`](../doc/arch/data-layer.md) | Adding DB columns, switching backends, data file paths |
+| Deployment, file layout, config, backup | [`doc/arch/deployment.md`](../doc/arch/deployment.md) | Deploying or changing config constants |
+| Multilanguage / i18n, `_t()` | [`doc/arch/multilanguage.md`](../doc/arch/multilanguage.md) | Adding i18n strings or a new language |
+| Web UI (FastAPI, routes, auth, Screen DSL) | [`doc/arch/web-ui.md`](../doc/arch/web-ui.md) | Modifying `bot_web.py` or templates |
+| LLM providers, multi-turn, tiered memory | [`doc/arch/llm-providers.md`](../doc/arch/llm-providers.md) | Modifying `bot_llm.py` or adding providers |
+
+### Architecture Doc Style Rules (enforced when writing or updating arch docs)
+
+These rules ensure docs stay useful as Copilot navigation tools and don't waste tokens:
+
+1. **Tables over prose.** Every section must lead with a table (functions, files, config constants, routing rules). Prose only for decisions that can't be expressed as a table.
+2. **File + function pointers are mandatory.** Every documented behaviour must reference the exact file and function name where the code lives.
+3. **"When to read this file" header required.** Every `doc/arch/*.md` file must open with a 1–2 line "When to read" statement so Copilot can decide whether to load it.
+4. **No background or history.** Don't explain why something was built this way. Only document what it is and where to change it.
+5. **⏳ OPEN labels for unimplemented items.** Any feature that is planned but not yet in code gets `> ⏳ **OPEN:** <one line description> → See [TODO.md §N](../TODO.md#section)`. This lets Copilot know not to rely on it.
+6. **Version header must match `BOT_VERSION`.** Update `**Version:**` on every edit.
+7. **Keep each topic file under 250 lines.** If a file grows beyond that, split into sub-topic files and add links from the parent.
+8. **Don't duplicate.** If information lives in `bot-code-map.md`, link to it from the arch doc rather than repeating it.
 
 ## Workspace Layout
 

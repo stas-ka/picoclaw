@@ -79,7 +79,12 @@ Map each changed file to one or more documentation targets using this table:
 | `src/features/bot_error_protocol.py` | `doc/bot-code-map.md` §bot_error_protocol |
 | `src/security/bot_security.py` | `doc/arch/security.md` §6 |
 | `src/security/bot_auth.py` | `doc/arch/web-ui.md` §17.2, `doc/bot-code-map.md` §bot_auth |
-| `src/core/bot_llm.py` | `doc/arch/llm-providers.md`, `doc/bot-code-map.md` §bot_llm |
+| `src/core/bot_llm.py` | `doc/arch/llm-providers.md`, `doc/arch/conversation.md`, `doc/bot-code-map.md` §bot_llm |
+| `src/core/bot_db.py` | `doc/arch/data-layer.md` (schema table) |
+| `src/core/store*.py` | `doc/arch/data-layer.md` (backend protocol / config) |
+| `src/core/bot_state.py` | `doc/arch/conversation.md` (tiered memory), `doc/bot-code-map.md` §bot_state |
+| `src/telegram/bot_handlers.py` | `doc/arch/conversation.md` (message structure), `doc/bot-code-map.md` §bot_handlers |
+| `src/telegram/bot_access.py` | `doc/arch/conversation.md` (system msg helpers), `doc/arch/security.md`, `doc/bot-code-map.md` §bot_access |
 | `src/ui/bot_ui.py` | `doc/bot-code-map.md` §bot_ui, `doc/arch/web-ui.md` §18.2 |
 | `src/ui/bot_actions.py` | `doc/bot-code-map.md` §bot_actions |
 | `src/ui/render_telegram.py` | `doc/bot-code-map.md` §render_telegram |
@@ -106,26 +111,46 @@ Edit only the matching section. Never rewrite prose in sections you did not touc
 
 ### Step 2 — Update `doc/arch/*.md` topic files
 
-For each changed area, open the relevant topic file from `doc/arch/`:
+#### ⚠️ Architecture Doc Style — MANDATORY
 
-| Topic | File |
-|---|---|
-| System overview, process hierarchy | `doc/arch/overview.md` |
-| Voice pipeline (STT/TTS/VAD) | `doc/arch/voice-pipeline.md` |
-| Telegram bot modules + callbacks | `doc/arch/telegram-bot.md` |
-| Security, RBAC | `doc/arch/security.md` |
-| Feature domains (mail, calendar, contacts) | `doc/arch/features.md` |
-| Deployment, file layout, config | `doc/arch/deployment.md` |
-| Multilanguage / i18n | `doc/arch/multilanguage.md` |
-| Web UI (FastAPI, routes, auth, Screen DSL) | `doc/arch/web-ui.md` |
-| LLM providers | `doc/arch/llm-providers.md` |
+Architecture docs are **Copilot navigation maps**. They must remain concise, table-first, and free of prose:
 
-Rules:
+| Rule | Required | Forbidden |
+|---|---|---|
+| Lead every section with a table | ✅ | ❌ Leading with paragraphs |
+| Include file + function name for every behaviour | ✅ | ❌ "Somewhere in bot_llm.py…" |
+| Mark unimplemented items `⏳ OPEN: desc → TODO.md §N` | ✅ | ❌ Describing planned features as if implemented |
+| Keep file under ~250 lines | ✅ | ❌ Prose background, rationale, history |
+| Open with "When to read this file" (1–2 lines) | ✅ | ❌ Missing or vague header |
+| Update `**Version:**` on every edit | ✅ | ❌ Stale version header |
+| Don't duplicate — link to `bot-code-map.md` instead | ✅ | ❌ Repeating function signatures already in the code map |
+
+#### Topic → File mapping
+
+| Topic | File | Changed by |
+|---|---|---|
+| System overview, variant comparison | `doc/arch/overview.md` | New service, variant flag |
+| PicoClaw variant (Pi, Vosk, Piper) | `doc/arch/picoclaw.md` | Pi-specific code, HAT |
+| OpenClaw variant (faster-whisper, Ollama) | `doc/arch/openclaw-integration.md` | OpenClaw code |
+| Voice pipeline (STT/TTS/VAD/hotword) | `doc/arch/voice-pipeline.md` | `bot_voice.py`, `voice_assistant.py` |
+| Telegram bot modules + callbacks | `doc/arch/telegram-bot.md` | New handlers, menus |
+| Security, RBAC, prompt injection | `doc/arch/security.md` | Access logic, roles |
+| Feature domains (mail, calendar, contacts, docs) | `doc/arch/features.md` | User features |
+| **Conversation, memory, multi-turn, RAG** | `doc/arch/conversation.md` | `bot_handlers.py`, `bot_state.py`, `bot_llm.py` (history) |
+| **Data layer (SQLite/Postgres, schema)** | `doc/arch/data-layer.md` | `bot_db.py`, `store*.py`, new tables |
+| Deployment, file layout, config constants | `doc/arch/deployment.md` | Deploy changes, new constants |
+| Multilanguage / i18n | `doc/arch/multilanguage.md` | `strings.json`, `_t()` |
+| Web UI (FastAPI, routes, auth, Screen DSL) | `doc/arch/web-ui.md` | `bot_web.py`, templates |
+| LLM providers, multi-turn, tiered memory | `doc/arch/llm-providers.md` | `bot_llm.py`, providers |
+
+#### Update rules
+
 - Preserve all existing structure and section numbers.
 - Update the `**Version:**` header line to match the new `BOT_VERSION`.
 - Add new functions/routes/flags to the relevant table; remove deleted ones.
 - Do _not_ add sections that are not already in the file unless a major feature makes it unavoidable.
 - If a **new** `doc/arch/*.md` topic file is created, also update `doc/architecture.md` — add a row to the Topic Index table (topic name, file link, "When to read" description).
+- When adding a new `doc/arch/*.md` topic file, also add it to the Architecture Topic Files table in `.github/copilot-instructions.md`.
 
 ---
 
