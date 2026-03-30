@@ -386,7 +386,18 @@ def _handle_profile(chat_id: int) -> None:
         "role": role,
         "reg_date": reg_date,
         "email_line": email_line,
+        "memory_btn_label": _t(chat_id, "profile_memory_enabled_label"
+                               if _memory_enabled(chat_id) else "profile_memory_disabled_label"),
     })
+
+
+def _memory_enabled(chat_id: int) -> bool:
+    """Return True if memory injection is enabled for this user."""
+    try:
+        from core.bot_db import db_get_user_pref
+        return db_get_user_pref(chat_id, "memory_enabled", "1") == "1"
+    except Exception:
+        return True
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -546,6 +557,17 @@ def _handle_profile_clear_memory_confirmed(chat_id: int) -> None:
     kb.add(InlineKeyboardButton(_t(chat_id, "btn_back"), callback_data="profile"))
     bot.send_message(chat_id, _t(chat_id, "profile_memory_cleared"),
                      reply_markup=kb, parse_mode="Markdown")
+
+
+def _handle_profile_toggle_memory(chat_id: int) -> None:
+    """Toggle per-user memory injection on/off."""
+    from core.bot_db import db_get_user_pref, db_set_user_pref
+    current = db_get_user_pref(chat_id, "memory_enabled", "1")
+    new_val = "0" if current == "1" else "1"
+    db_set_user_pref(chat_id, "memory_enabled", new_val)
+    status_key = "profile_memory_on" if new_val == "1" else "profile_memory_off"
+    bot.send_message(chat_id, _t(chat_id, status_key))
+    _handle_profile(chat_id)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -883,12 +905,14 @@ def _handle_chat_message(chat_id: int, user_text: str) -> None:
 
         # ── System message: security preamble + bot config + memory note + lang ──
         system_content = _build_system_message(chat_id, user_text)
-        # Inject tiered long/mid-term memory summaries into the system message
+        # Inject tiered long/mid-term memory summaries — respects per-user toggle
         try:
             from core.bot_state import get_memory_context
-            _mem_ctx = get_memory_context(chat_id)
-            if _mem_ctx:
-                system_content = system_content + "\n\n" + _mem_ctx
+            from core.bot_db import db_get_user_pref
+            if db_get_user_pref(chat_id, "memory_enabled", "1") == "1":
+                _mem_ctx = get_memory_context(chat_id)
+                if _mem_ctx:
+                    system_content = system_content + "\n\n" + _mem_ctx
         except Exception as _mem_e:
             log.debug("[Memory] context injection failed: %s", _mem_e)
 

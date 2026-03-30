@@ -1208,9 +1208,11 @@ def _handle_voice_message(chat_id: int, voice_obj) -> None:
         # System message: security preamble + bot config + memory note + lang instruction
         _system_content = _build_system_message(chat_id, text)
         try:
-            _mem_ctx = get_memory_context(chat_id)
-            if _mem_ctx:
-                _system_content = _system_content + "\n\n" + _mem_ctx
+            from core.bot_db import db_get_user_pref
+            if db_get_user_pref(chat_id, "memory_enabled", "1") == "1":
+                _mem_ctx = get_memory_context(chat_id)
+                if _mem_ctx:
+                    _system_content = _system_content + "\n\n" + _mem_ctx
         except Exception as _mem_e:
             log.debug("[Memory] voice context injection failed: %s", _mem_e)
 

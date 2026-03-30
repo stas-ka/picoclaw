@@ -76,6 +76,7 @@ from telegram.bot_admin import (
     _handle_admin_rag_menu, _handle_admin_rag_toggle, _handle_admin_rag_log,
     _handle_admin_rag_settings, _start_admin_rag_set, _finish_admin_rag_set,
     _handle_admin_llm_trace,
+    _handle_admin_memory_menu, _handle_admin_mem_set_start,
     _admin_keyboard,
 )
 
@@ -97,6 +98,7 @@ from telegram.bot_handlers import (
     _start_profile_change_pw, _finish_profile_change_pw,
     _handle_profile_lang, _set_profile_lang, _handle_profile_my_data,
     _handle_profile_clear_memory, _handle_profile_clear_memory_confirmed,
+    _handle_profile_toggle_memory,
     _pending_profile,
 )
 
@@ -154,7 +156,21 @@ from features.bot_documents import (
     _handle_doc_rename_start,
     _handle_doc_rename_done,
     _handle_doc_share_toggle,
+    _handle_doc_replace,
+    _handle_doc_keep_both,
     _pending_rename as _docs_pending_rename,
+)
+from features.bot_dev import (
+    _handle_dev_menu,
+    _handle_dev_chat_start,
+    handle_dev_chat_message,
+    _handle_dev_restart,
+    _handle_dev_restart_confirmed,
+    _handle_dev_log,
+    _handle_dev_error,
+    _handle_dev_files,
+    _handle_dev_security_log,
+    log_access_denied,
 )
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -367,6 +383,26 @@ def callback_handler(call):
     elif data == "profile_clear_memory_confirm":
         if not _is_allowed(cid): return _deny(cid)
         _handle_profile_clear_memory_confirmed(cid)
+    elif data == "profile_toggle_memory":
+        if not _is_allowed(cid): return _deny(cid)
+        _handle_profile_toggle_memory(cid)
+    # ── Developer menu ─────────────────────────────────────────────────────
+    elif data == "dev_menu":
+        _handle_dev_menu(cid)
+    elif data == "dev_chat":
+        _handle_dev_chat_start(cid)
+    elif data == "dev_restart":
+        _handle_dev_restart(cid)
+    elif data == "dev_restart_confirmed":
+        _handle_dev_restart_confirmed(cid)
+    elif data == "dev_log":
+        _handle_dev_log(cid)
+    elif data == "dev_error":
+        _handle_dev_error(cid)
+    elif data == "dev_files":
+        _handle_dev_files(cid)
+    elif data == "dev_security_log":
+        _handle_dev_security_log(cid)
     # ── Admin panel ────────────────────────────────────────────────────────
     elif data == "noop":
         pass  # separator buttons — ignore silently
@@ -510,6 +546,18 @@ def callback_handler(call):
     elif data == "admin_llm_trace":
         if _is_admin(cid):
             _handle_admin_llm_trace(cid)
+        else:
+            bot.send_message(cid, _t(cid, "admin_only"))
+
+    elif data == "admin_memory_menu":
+        if _is_admin(cid):
+            _handle_admin_memory_menu(cid)
+        else:
+            bot.send_message(cid, _t(cid, "admin_only"))
+
+    elif data in ("admin_mem_set_hist", "admin_mem_set_summ", "admin_mem_set_mid"):
+        if _is_admin(cid):
+            _handle_admin_mem_set_start(cid, data[len("admin_mem_set_"):])
         else:
             bot.send_message(cid, _t(cid, "admin_only"))
 
@@ -876,6 +924,12 @@ def callback_handler(call):
     elif data.startswith("doc_del_confirm:"):
         if not _is_guest(cid):
             _handle_doc_delete_confirmed(cid, data[len("doc_del_confirm:"):])
+    elif data.startswith("doc_replace:"):
+        if not _is_guest(cid):
+            _handle_doc_replace(cid, data[len("doc_replace:"):])
+    elif data == "doc_keep_both":
+        if not _is_guest(cid):
+            _handle_doc_keep_both(cid)
     # ── Confirm / cancel system command ────────────────────────────────────
     elif data == "cancel":
         _st._pending_cmd.pop(cid, None)
@@ -955,6 +1009,28 @@ def text_handler(message):
     if mode in ("admin_rag_set_topk", "admin_rag_set_chunk", "admin_rag_set_timeout", "admin_rag_set_temp"):
         if _is_admin(cid):
             _finish_admin_rag_set(cid, message.text)
+        else:
+            _st._user_mode.pop(cid, None)
+            bot.send_message(cid, _t(cid, "admin_only"))
+        return
+
+    if mode is not None and mode.startswith("admin_mem_"):
+        if _is_admin(cid):
+            setting_key = mode[len("admin_mem_"):]  # "hist", "summ", or "mid"
+            db_keys = {
+                "hist": "CONVERSATION_HISTORY_MAX",
+                "summ": "CONV_SUMMARY_THRESHOLD",
+                "mid":  "CONV_MID_MAX",
+            }
+            try:
+                val = int(message.text.strip())
+                from core.bot_db import db_set_system_setting
+                db_set_system_setting(db_keys[setting_key], str(val))
+                _st._user_mode.pop(cid, None)
+                bot.send_message(cid, f"✅ {db_keys[setting_key]} = {val}")
+                _handle_admin_memory_menu(cid)
+            except (ValueError, KeyError):
+                bot.send_message(cid, "❌ Please enter a valid integer.")
         else:
             _st._user_mode.pop(cid, None)
             bot.send_message(cid, _t(cid, "admin_only"))
@@ -1150,6 +1226,10 @@ def text_handler(message):
         else:
             _st._user_mode.pop(cid, None)
             _docs_pending_rename.pop(cid, None)
+        return
+
+    if mode == "dev_chat":
+        handle_dev_chat_message(cid, message.text)
         return
 
     # ── Chat modes ─────────────────────────────────────────────────────────

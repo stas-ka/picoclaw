@@ -81,14 +81,29 @@ def _cal_load(chat_id: int) -> list:
 
 
 def _cal_save(chat_id: int, events: list) -> None:
-    _cal_user_file(chat_id).write_text(
-        json.dumps(events, ensure_ascii=False, indent=2), encoding="utf-8"
-    )
+    """Save events to DB (primary). JSON file kept as legacy backup."""
     try:
         for ev in events:
             store.save_event(chat_id, ev)
+        # Remove DB events for this user that are not in the new list
+        current_ids = {e.get("id") for e in events if e.get("id")}
+        from core.bot_db import get_db
+        db = get_db()
+        existing = db.execute(
+            "SELECT id FROM calendar_events WHERE chat_id=?", (chat_id,)
+        ).fetchall()
+        for row in existing:
+            if row[0] not in current_ids:
+                store.delete_event(chat_id, row[0])
     except Exception as _e:
         log.warning("[Cal] store.save_event failed: %s", _e)
+        # Fallback: JSON write for safety
+        try:
+            _cal_user_file(chat_id).write_text(
+                json.dumps(events, ensure_ascii=False, indent=2), encoding="utf-8"
+            )
+        except Exception:
+            pass
 
 
 def _cal_add_event(chat_id: int, title: str, dt: datetime,
@@ -110,11 +125,7 @@ def _cal_delete_event(chat_id: int, ev_id: str) -> bool:
     events = _cal_load(chat_id)
     new_events = [e for e in events if e.get("id") != ev_id]
     if len(new_events) < len(events):
-        _cal_save(chat_id, new_events)
-        try:
-            store.delete_event(chat_id, ev_id)
-        except Exception as _e:
-            log.warning("[Cal] store.delete_event failed: %s", _e)
+        _cal_save(chat_id, new_events)  # DB-primary; _cal_save handles deletion
         return True
     return False
 

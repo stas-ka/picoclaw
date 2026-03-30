@@ -229,28 +229,41 @@ def _list_notes_for(chat_id: int) -> list[dict]:
 
 
 def _load_note_text(chat_id: int, slug: str) -> Optional[str]:
-    """Return note file contents or None if not found."""
+    """Return note contents: reads from DB first, falls back to .md file."""
+    try:
+        from core.bot_db import get_db
+        db = get_db()
+        row = db.execute(
+            "SELECT content FROM notes_index WHERE chat_id=? AND slug=? AND content != ''",
+            (chat_id, slug),
+        ).fetchone()
+        if row and row[0]:
+            return row[0]
+    except Exception as _e:
+        log.debug("[Notes] DB read failed (%s), using file fallback", _e)
+    # File fallback (backward compat / non-migrated)
     p = _notes_user_dir(chat_id) / f"{slug}.md"
     return p.read_text(encoding="utf-8") if p.exists() else None
 
 
 def _save_note_file(chat_id: int, slug: str, content: str) -> None:
-    """Write note file (creates or overwrites) and update DB index."""
+    """Write note file (creates or overwrites) and update DB index + content."""
     p = _notes_user_dir(chat_id) / f"{slug}.md"
     p.write_text(content, encoding="utf-8")
     log.info(f"[Notes] saved '{slug}' for user {chat_id}")
     try:
         _title = (content.splitlines()[0].lstrip("# ").strip()
                   if content.strip() else slug.replace("_", " "))
-        # Update DB index only (file is already written above)
         from core.bot_db import get_db
         db = get_db()
         db.execute(
-            """INSERT INTO notes_index (slug, chat_id, title, created_at, updated_at)
-               VALUES (?, ?, ?, datetime('now'), datetime('now'))
+            """INSERT INTO notes_index (slug, chat_id, title, content, created_at, updated_at)
+               VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))
                ON CONFLICT(slug, chat_id) DO UPDATE SET
-                   title = excluded.title, updated_at = datetime('now')""",
-            (slug, chat_id, _title),
+                   title = excluded.title,
+                   content = excluded.content,
+                   updated_at = datetime('now')""",
+            (slug, chat_id, _title, content),
         )
         db.commit()
     except Exception as _e:

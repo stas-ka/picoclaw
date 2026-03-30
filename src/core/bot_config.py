@@ -227,7 +227,7 @@ LLM_TIMEOUT    = int(os.environ.get("LLM_TIMEOUT",  "60"))
 RAG_TIMEOUT    = int(os.environ.get("RAG_TIMEOUT",  "30"))
 # ─────────────────────────────────────────────────────────────────────────────
 
-BOT_VERSION        = "2026.3.30+6"
+BOT_VERSION        = "2026.3.31"
 RELEASE_NOTES_FILE = os.environ.get(
     "RELEASE_NOTES_FILE",
     os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "release_notes.json"),
@@ -383,3 +383,39 @@ logging.basicConfig(
     handlers=_log_handlers,
 )
 log = logging.getLogger("taris-tgbot")
+
+
+def get_conv_history_max() -> int:
+    """Return CONVERSATION_HISTORY_MAX — from DB system_settings if set, else env/default."""
+    try:
+        from core.bot_db import db_get_system_setting
+        val = db_get_system_setting("CONVERSATION_HISTORY_MAX", "")
+        if val:
+            return int(val)
+    except Exception:
+        pass
+    return CONVERSATION_HISTORY_MAX
+
+
+def get_conv_summary_threshold() -> int:
+    """Return CONV_SUMMARY_THRESHOLD — from DB system_settings if set, else env/default."""
+    try:
+        from core.bot_db import db_get_system_setting
+        val = db_get_system_setting("CONV_SUMMARY_THRESHOLD", "")
+        if val:
+            return int(val)
+    except Exception:
+        pass
+    return CONV_SUMMARY_THRESHOLD
+
+
+def get_conv_mid_max() -> int:
+    """Return CONV_MID_MAX — from DB system_settings if set, else env/default."""
+    try:
+        from core.bot_db import db_get_system_setting
+        val = db_get_system_setting("CONV_MID_MAX", "")
+        if val:
+            return int(val)
+    except Exception:
+        pass
+    return CONV_MID_MAX

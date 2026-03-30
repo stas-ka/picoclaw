@@ -175,39 +175,41 @@ def _bot_config_block() -> str:
 
 
 def _docs_rag_context(chat_id: int, query: str) -> str:
-    """Return a [KNOWLEDGE] context block from user's FTS5 document search, or empty string.
+    """Return a [KNOWLEDGE] context block from user's documents, or empty string.
 
-    Only runs when RAG_ENABLED=1 and the user has uploaded documents.
-    Keeps context to top-3 chunks, capped at 2000 chars total to stay within LLM context.
-    Enforces rag_timeout from rag_settings; logs every retrieval to rag_log.
+    Uses adaptive routing (classify_query) to skip RAG for simple queries.
+    Uses RRF fusion when vector search is available (HYBRID/FULL tier).
+    Falls back to FTS5-only on constrained hardware.
+    Logs every retrieval to rag_log.
     """
     if not RAG_ENABLED:
         return ""
     try:
+        from core.bot_rag import retrieve_context, classify_query
         from core.store import store
         from core.rag_settings import get as _rget
-        # Quick check: skip FTS search if user has no documents
-        if not store.list_documents(chat_id):
-            return ""
+
         rag_timeout = float(_rget("rag_timeout"))
+
+        import concurrent.futures
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as _pool:
-            _fut = _pool.submit(store.search_fts, query, chat_id, RAG_TOP_K)
+            _fut = _pool.submit(retrieve_context, chat_id, query,
+                                int(_rget("rag_top_k")), 2000)
             try:
-                results = _fut.result(timeout=rag_timeout)
+                chunks, assembled, strategy = _fut.result(timeout=rag_timeout)
             except concurrent.futures.TimeoutError:
-                log.warning("[RAG] FTS timeout (%.0fs) chat_id=%s", rag_timeout, chat_id)
+                log.warning("[RAG] timeout (%.0fs) chat_id=%s", rag_timeout, chat_id)
                 return ""
-        if not results:
+
+        if strategy == "skipped" or not assembled:
             return ""
-        chunks = [r["chunk_text"] for r in results if r.get("chunk_text")]
-        if not chunks:
-            return ""
-        combined = "\n---\n".join(chunks)[:2000]
+
+        log.debug("[RAG] strategy=%s chunks=%d chars=%d", strategy, len(chunks), len(assembled))
         try:
-            store.log_rag_activity(chat_id, query, len(chunks), len(combined))
+            store.log_rag_activity(chat_id, query, len(chunks), len(assembled))
         except Exception:
             pass
-        return f"[KNOWLEDGE FROM USER DOCUMENTS]\n{combined}\n[END KNOWLEDGE]\n\n"
+        return f"[KNOWLEDGE FROM USER DOCUMENTS]\n{assembled}\n[END KNOWLEDGE]\n\n"
     except Exception as _e:
         log.debug("[RAG] docs context failed: %s", _e)
         return ""

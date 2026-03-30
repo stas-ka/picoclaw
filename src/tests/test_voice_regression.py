@@ -4348,6 +4348,261 @@ def t_llm_context_trace(**_) -> list:
     return results
 
 
+def t_notes_db_content(**_) -> list:
+    """T61: Notes content stored in DB — schema has content column, save/load use DB."""
+    import time as _time
+    results = []
+    t0 = _time.time()
+
+    # 1. notes_index schema has content column
+    try:
+        src = Path("src/core/bot_db.py").read_text()
+        ok = "content     TEXT    DEFAULT ''" in src or "content TEXT DEFAULT ''" in src
+        results.append(TestResult(
+            "notes_index_content_column",
+            "PASS" if ok else "FAIL",
+            _time.time() - t0,
+            "content column in notes_index schema" if ok else "MISSING: content column in notes_index",
+        ))
+    except Exception as e:
+        results.append(TestResult("notes_index_content_column", "FAIL", _time.time() - t0, str(e)))
+
+    # 2. _save_note_file stores content in DB
+    try:
+        src = Path("src/telegram/bot_users.py").read_text()
+        ok = "content" in src and "ON CONFLICT(slug, chat_id)" in src and "content = excluded.content" in src
+        results.append(TestResult(
+            "save_note_db_content",
+            "PASS" if ok else "FAIL",
+            _time.time() - t0,
+            "_save_note_file writes content to DB" if ok else "MISSING: content upsert in _save_note_file",
+        ))
+    except Exception as e:
+        results.append(TestResult("save_note_db_content", "FAIL", _time.time() - t0, str(e)))
+
+    # 3. _load_note_text reads from DB first
+    try:
+        src = Path("src/telegram/bot_users.py").read_text()
+        ok = "SELECT content FROM notes_index" in src and "File fallback" in src
+        results.append(TestResult(
+            "load_note_db_first",
+            "PASS" if ok else "FAIL",
+            _time.time() - t0,
+            "_load_note_text reads from DB first" if ok else "MISSING: DB-first read in _load_note_text",
+        ))
+    except Exception as e:
+        results.append(TestResult("load_note_db_first", "FAIL", _time.time() - t0, str(e)))
+
+    return results
+
+
+def t_calendar_db_primary(**_) -> list:
+    """T62: Calendar _cal_save is DB-primary — no direct JSON write as primary action."""
+    import time as _time
+    results = []
+    t0 = _time.time()
+
+    try:
+        src = Path("src/features/bot_calendar.py").read_text()
+        # Should call store.save_event and store.delete_event
+        calls_save = "store.save_event" in src
+        calls_del = "store.delete_event" in src
+        # JSON write should only be in fallback (in try/except)
+        # The primary action should NOT start with write_text
+        lines = src.splitlines()
+        cal_save_start = None
+        for i, line in enumerate(lines):
+            if "def _cal_save" in line:
+                cal_save_start = i
+                break
+        if cal_save_start is not None:
+            # Get first non-comment/non-docstring line of function body
+            body_lines = lines[cal_save_start + 1:cal_save_start + 5]
+            first_action = " ".join(body_lines)
+            no_json_first = "write_text" not in first_action
+        else:
+            no_json_first = False
+        ok = calls_save and calls_del and no_json_first
+        results.append(TestResult(
+            "calendar_db_primary",
+            "PASS" if ok else "FAIL",
+            _time.time() - t0,
+            "_cal_save is DB-primary (save_event+delete_event, no JSON first)" if ok
+            else f"FAIL: calls_save={calls_save} calls_del={calls_del} no_json_first={no_json_first}",
+        ))
+    except Exception as e:
+        results.append(TestResult("calendar_db_primary", "FAIL", _time.time() - t0, str(e)))
+
+    return results
+
+
+def t_doc_dedup_logic(**_) -> list:
+    """T63: Document deduplication — _pending_doc_replace, handlers, and i18n string present."""
+    import time as _time
+    results = []
+    t0 = _time.time()
+
+    # 1. _pending_doc_replace dict exists
+    try:
+        src = Path("src/features/bot_documents.py").read_text()
+        ok = "_pending_doc_replace" in src
+        results.append(TestResult(
+            "doc_pending_replace_dict",
+            "PASS" if ok else "FAIL",
+            _time.time() - t0,
+            "_pending_doc_replace exists" if ok else "MISSING: _pending_doc_replace in bot_documents.py",
+        ))
+    except Exception as e:
+        results.append(TestResult("doc_pending_replace_dict", "FAIL", _time.time() - t0, str(e)))
+
+    # 2. _handle_doc_replace and _handle_doc_keep_both functions exist
+    try:
+        src = Path("src/features/bot_documents.py").read_text()
+        ok = "def _handle_doc_replace" in src and "def _handle_doc_keep_both" in src
+        results.append(TestResult(
+            "doc_dedup_handlers",
+            "PASS" if ok else "FAIL",
+            _time.time() - t0,
+            "_handle_doc_replace + _handle_doc_keep_both present" if ok
+            else "MISSING: dedup handlers in bot_documents.py",
+        ))
+    except Exception as e:
+        results.append(TestResult("doc_dedup_handlers", "FAIL", _time.time() - t0, str(e)))
+
+    # 3. docs_dup_found i18n key present in strings.json
+    try:
+        import json as _json
+        strings = _json.loads(Path("src/strings.json").read_text())
+        ok = all("docs_dup_found" in strings.get(lang, {}) for lang in ("ru", "en", "de"))
+        results.append(TestResult(
+            "doc_dedup_i18n",
+            "PASS" if ok else "FAIL",
+            _time.time() - t0,
+            "docs_dup_found key in all 3 languages" if ok
+            else "MISSING: docs_dup_found not in all languages",
+        ))
+    except Exception as e:
+        results.append(TestResult("doc_dedup_i18n", "FAIL", _time.time() - t0, str(e)))
+
+    return results
+
+
+def t_user_prefs_db(**_) -> list:
+    """T64: Per-user memory toggle — user_prefs table and helpers in bot_db, callback wired."""
+    import time as _time
+    results = []
+    t0 = _time.time()
+
+    # 1. user_prefs table in _SCHEMA_SQL
+    try:
+        src = Path("src/core/bot_db.py").read_text()
+        ok = "CREATE TABLE IF NOT EXISTS user_prefs" in src
+        results.append(TestResult(
+            "user_prefs_schema",
+            "PASS" if ok else "FAIL",
+            _time.time() - t0,
+            "user_prefs table in schema" if ok else "MISSING: user_prefs CREATE TABLE in bot_db.py",
+        ))
+    except Exception as e:
+        results.append(TestResult("user_prefs_schema", "FAIL", _time.time() - t0, str(e)))
+
+    # 2. db_get_user_pref / db_set_user_pref helpers
+    try:
+        src = Path("src/core/bot_db.py").read_text()
+        ok = "def db_get_user_pref" in src and "def db_set_user_pref" in src
+        results.append(TestResult(
+            "user_prefs_helpers",
+            "PASS" if ok else "FAIL",
+            _time.time() - t0,
+            "db_get_user_pref + db_set_user_pref present" if ok
+            else "MISSING: user pref helpers in bot_db.py",
+        ))
+    except Exception as e:
+        results.append(TestResult("user_prefs_helpers", "FAIL", _time.time() - t0, str(e)))
+
+    # 3. profile_toggle_memory callback wired in telegram_menu_bot.py
+    try:
+        src = Path("src/telegram_menu_bot.py").read_text()
+        ok = "profile_toggle_memory" in src
+        results.append(TestResult(
+            "profile_toggle_memory_wired",
+            "PASS" if ok else "FAIL",
+            _time.time() - t0,
+            "profile_toggle_memory callback in telegram_menu_bot.py" if ok
+            else "MISSING: profile_toggle_memory callback",
+        ))
+    except Exception as e:
+        results.append(TestResult("profile_toggle_memory_wired", "FAIL", _time.time() - t0, str(e)))
+
+    return results
+
+
+def t_admin_memory_settings(**_) -> list:
+    """T65: Admin memory settings — system_settings table, helpers, runtime getters, callback wired."""
+    import time as _time
+    results = []
+    t0 = _time.time()
+
+    # 1. system_settings table in _SCHEMA_SQL
+    try:
+        src = Path("src/core/bot_db.py").read_text()
+        ok = "CREATE TABLE IF NOT EXISTS system_settings" in src
+        results.append(TestResult(
+            "system_settings_schema",
+            "PASS" if ok else "FAIL",
+            _time.time() - t0,
+            "system_settings table in schema" if ok else "MISSING: system_settings CREATE TABLE",
+        ))
+    except Exception as e:
+        results.append(TestResult("system_settings_schema", "FAIL", _time.time() - t0, str(e)))
+
+    # 2. db_get_system_setting / db_set_system_setting helpers
+    try:
+        src = Path("src/core/bot_db.py").read_text()
+        ok = "def db_get_system_setting" in src and "def db_set_system_setting" in src
+        results.append(TestResult(
+            "system_settings_helpers",
+            "PASS" if ok else "FAIL",
+            _time.time() - t0,
+            "db_get_system_setting + db_set_system_setting present" if ok
+            else "MISSING: system settings helpers in bot_db.py",
+        ))
+    except Exception as e:
+        results.append(TestResult("system_settings_helpers", "FAIL", _time.time() - t0, str(e)))
+
+    # 3. get_conv_history_max / get_conv_summary_threshold / get_conv_mid_max in bot_config
+    try:
+        src = Path("src/core/bot_config.py").read_text()
+        ok = ("def get_conv_history_max" in src
+              and "def get_conv_summary_threshold" in src
+              and "def get_conv_mid_max" in src)
+        results.append(TestResult(
+            "bot_config_runtime_getters",
+            "PASS" if ok else "FAIL",
+            _time.time() - t0,
+            "get_conv_history_max + get_conv_summary_threshold + get_conv_mid_max in bot_config" if ok
+            else "MISSING: runtime getter functions in bot_config.py",
+        ))
+    except Exception as e:
+        results.append(TestResult("bot_config_runtime_getters", "FAIL", _time.time() - t0, str(e)))
+
+    # 4. admin_memory_menu callback wired
+    try:
+        src = Path("src/telegram_menu_bot.py").read_text()
+        ok = "admin_memory_menu" in src
+        results.append(TestResult(
+            "admin_memory_menu_wired",
+            "PASS" if ok else "FAIL",
+            _time.time() - t0,
+            "admin_memory_menu in telegram_menu_bot.py" if ok
+            else "MISSING: admin_memory_menu callback",
+        ))
+    except Exception as e:
+        results.append(TestResult("admin_memory_menu_wired", "FAIL", _time.time() - t0, str(e)))
+
+    return results
+
+
 TEST_FUNCTIONS = [
     t_model_files_present,
     t_piper_json_present,
@@ -4444,6 +4699,16 @@ TEST_FUNCTIONS = [
     t_voice_history_context,
     # LLM context trace tool: db_get_llm_trace, voice logs, admin_llm_trace panel (T60)
     t_llm_context_trace,
+    # DB-primary notes storage: content column, DB write+read (T61)
+    t_notes_db_content,
+    # Calendar DB-primary: _cal_save uses store.save_event, no JSON first (T62)
+    t_calendar_db_primary,
+    # Document deduplication: pending dict, handlers, i18n (T63)
+    t_doc_dedup_logic,
+    # Per-user memory toggle: user_prefs table, helpers, profile callback (T64)
+    t_user_prefs_db,
+    # Admin memory settings: system_settings table, helpers, runtime getters (T65)
+    t_admin_memory_settings,
 ]
 
 

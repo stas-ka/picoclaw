@@ -31,6 +31,7 @@ from core.bot_config import (
     PIPER_BIN, PIPER_MODEL, STT_LANG,
     _VOICE_OPTS_DEFAULTS, DEVICE_VARIANT,
     _LOG_FILE, _ASSISTANT_LOG_FILE, _SECURITY_LOG_FILE, _VOICE_LOG_FILE, _DATASTORE_LOG_FILE,
+    CONVERSATION_HISTORY_MAX, CONV_SUMMARY_THRESHOLD, CONV_MID_MAX,
     log,
 )
 from core.bot_llm import get_per_func_provider, set_per_func_provider
@@ -783,6 +784,7 @@ def _handle_admin_llm_menu(chat_id: int) -> None:
     kb.add(InlineKeyboardButton("🔵 OpenAI ChatGPT (key + models) ▶", callback_data="openai_llm_menu"))
     kb.add(InlineKeyboardButton("🔁  Fallback config ▶", callback_data="admin_llm_fallback_menu"))
     kb.add(InlineKeyboardButton("🔍  Context Trace ▶", callback_data="admin_llm_trace"))
+    kb.add(InlineKeyboardButton("🧠  Memory Settings ▶", callback_data="admin_memory_menu"))
     kb.add(InlineKeyboardButton("🔙  Admin", callback_data="admin_menu"))
 
     try:
@@ -1242,3 +1244,41 @@ def _handle_admin_llm_trace(chat_id: int) -> None:
         bot.send_message(chat_id, text, parse_mode="Markdown", reply_markup=kb)
     except Exception:
         bot.send_message(chat_id, _re.sub(r"[*_`]", "", text), reply_markup=kb)
+
+
+def _handle_admin_memory_menu(chat_id: int) -> None:
+    """Admin panel: memory configuration."""
+    from core.bot_db import db_get_system_setting
+    hist_max = db_get_system_setting("CONVERSATION_HISTORY_MAX", str(CONVERSATION_HISTORY_MAX))
+    summ_thr = db_get_system_setting("CONV_SUMMARY_THRESHOLD", str(CONV_SUMMARY_THRESHOLD))
+    mid_max  = db_get_system_setting("CONV_MID_MAX", str(CONV_MID_MAX))
+
+    text = (
+        f"🧠 *Memory Configuration*\n\n"
+        f"Short-term window: `{hist_max}` messages\n"
+        f"Summarize after: `{summ_thr}` messages\n"
+        f"Max mid-term summaries: `{mid_max}`\n\n"
+        f"_Each summarization compresses older messages into a summary._\n"
+        f"_When mid-term summaries reach max, they compact into long-term memory._"
+    )
+    kb = InlineKeyboardMarkup()
+    kb.add(InlineKeyboardButton(f"📝 Short-term window: {hist_max}", callback_data="admin_mem_set_hist"))
+    kb.add(InlineKeyboardButton(f"📝 Summarize threshold: {summ_thr}", callback_data="admin_mem_set_summ"))
+    kb.add(InlineKeyboardButton(f"📝 Mid-term max: {mid_max}", callback_data="admin_mem_set_mid"))
+    kb.add(InlineKeyboardButton("🔙 Back", callback_data="admin_llm_menu"))
+    try:
+        bot.send_message(chat_id, text, parse_mode="Markdown", reply_markup=kb)
+    except Exception:
+        bot.send_message(chat_id, _re.sub(r"[*_`]", "", text), reply_markup=kb)
+
+
+def _handle_admin_mem_set_start(chat_id: int, setting_key: str) -> None:
+    """Prompt admin to enter a new value for a memory setting."""
+    labels = {
+        "hist": ("Short-term window (messages)", "CONVERSATION_HISTORY_MAX"),
+        "summ": ("Summarize threshold (messages)", "CONV_SUMMARY_THRESHOLD"),
+        "mid":  ("Mid-term max (summaries)", "CONV_MID_MAX"),
+    }
+    label, _db_key = labels[setting_key]
+    _st._user_mode[chat_id] = f"admin_mem_{setting_key}"
+    bot.send_message(chat_id, f"Enter new value for {label} (integer):")

@@ -69,11 +69,12 @@ CREATE TABLE IF NOT EXISTS calendar_events (
 CREATE INDEX IF NOT EXISTS idx_calendar_chat_dt
     ON calendar_events(chat_id, dt_iso);
 
--- Notes metadata index (content stays in .md files)
+-- Notes index and content (content also stored in DB since v2026.3.31)
 CREATE TABLE IF NOT EXISTS notes_index (
     slug        TEXT,
     chat_id     INTEGER,
     title       TEXT    NOT NULL,
+    content     TEXT    DEFAULT '',
     created_at  TEXT    DEFAULT (datetime('now')),
     updated_at  TEXT    DEFAULT (datetime('now')),
     PRIMARY KEY (slug, chat_id)
@@ -192,6 +193,33 @@ CREATE TABLE IF NOT EXISTS conversation_summaries (
     created_at  TEXT    DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_summ_chat ON conversation_summaries(chat_id, tier, created_at DESC);
+
+-- Per-user preferences (toggleable settings)
+CREATE TABLE IF NOT EXISTS user_prefs (
+    chat_id    INTEGER,
+    key        TEXT,
+    value      TEXT    NOT NULL DEFAULT '1',
+    updated_at TEXT    DEFAULT (datetime('now')),
+    PRIMARY KEY (chat_id, key)
+);
+
+-- System-wide settings (admin-configurable)
+CREATE TABLE IF NOT EXISTS system_settings (
+    key        TEXT PRIMARY KEY,
+    value      TEXT NOT NULL,
+    updated_at TEXT DEFAULT (datetime('now'))
+);
+
+-- Security event log (access denied, auth failures, admin ops)
+CREATE TABLE IF NOT EXISTS security_events (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    chat_id     INTEGER NOT NULL,
+    event_type  TEXT    NOT NULL,
+    detail      TEXT    DEFAULT '',
+    created_at  TEXT    DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_sec_events_chat ON security_events(chat_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_sec_events_type ON security_events(event_type, created_at DESC);
 """
 
 
@@ -229,6 +257,12 @@ def init_db() -> None:
             conn.execute(_migration)
         except Exception:
             pass  # column already exists
+    # notes_index content column (added in v2026.3.31)
+    try:
+        conn.execute("ALTER TABLE notes_index ADD COLUMN content TEXT DEFAULT ''")
+        conn.commit()
+    except Exception:
+        pass  # column already exists
     conn.commit()
     log.info(f"[DB] init OK : {DB_PATH}")
 
@@ -362,3 +396,62 @@ def db_get_llm_trace(chat_id: int, limit: int = 10) -> list:
         (chat_id, limit),
     ).fetchall()
     return [dict(r) for r in rows]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Per-user preferences helpers
+# ─────────────────────────────────────────────────────────────────────────────
+
+def db_get_user_pref(chat_id: int, key: str, default: str = "1") -> str:
+    """Get a user preference value from DB."""
+    try:
+        db = get_db()
+        row = db.execute(
+            "SELECT value FROM user_prefs WHERE chat_id=? AND key=?", (chat_id, key)
+        ).fetchone()
+        return row[0] if row else default
+    except Exception:
+        return default
+
+
+def db_set_user_pref(chat_id: int, key: str, value: str) -> None:
+    """Set a user preference in DB."""
+    try:
+        db = get_db()
+        db.execute(
+            """INSERT INTO user_prefs(chat_id, key, value, updated_at)
+               VALUES(?,?,?,datetime('now'))
+               ON CONFLICT(chat_id,key) DO UPDATE SET value=excluded.value, updated_at=datetime('now')""",
+            (chat_id, key, value),
+        )
+        db.commit()
+    except Exception as exc:
+        log.warning("[UserPrefs] set failed: %s", exc)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# System settings helpers (admin-configurable)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def db_get_system_setting(key: str, default: str = "") -> str:
+    """Get a system setting from DB."""
+    try:
+        db = get_db()
+        row = db.execute("SELECT value FROM system_settings WHERE key=?", (key,)).fetchone()
+        return row[0] if row else default
+    except Exception:
+        return default
+
+
+def db_set_system_setting(key: str, value: str) -> None:
+    """Set a system setting in DB."""
+    try:
+        db = get_db()
+        db.execute(
+            """INSERT INTO system_settings(key, value, updated_at) VALUES(?,?,datetime('now'))
+               ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=datetime('now')""",
+            (key, value),
+        )
+        db.commit()
+    except Exception as exc:
+        log.warning("[SysSettings] set failed: %s", exc)

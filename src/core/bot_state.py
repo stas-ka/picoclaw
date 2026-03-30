@@ -22,6 +22,9 @@ from core.bot_config import (
     _VOICE_OPTS_DEFAULTS,
     _WEB_LINK_CODES_FILE,
     log,
+    get_conv_history_max,
+    get_conv_summary_threshold,
+    get_conv_mid_max,
 )
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -234,11 +237,11 @@ def add_to_history(chat_id: int, role: str, content: str,
         log.debug("[State] store.append_history failed: %s", _e)
     hist = _conversation_history.setdefault(chat_id, [])
     hist.append({"role": role, "content": content, "_db_id": db_id})
-    if len(hist) >= CONV_SUMMARY_THRESHOLD and role == "assistant":
+    if len(hist) >= get_conv_summary_threshold() and role == "assistant":
         # Summarize what we have before trimming
         _summarize_session_async(chat_id, list(hist))
-    if len(hist) > CONVERSATION_HISTORY_MAX:
-        _conversation_history[chat_id] = hist[-CONVERSATION_HISTORY_MAX:]
+    if len(hist) > get_conv_history_max():
+        _conversation_history[chat_id] = hist[-get_conv_history_max():]
     return db_id
 
 
@@ -294,7 +297,7 @@ def _summarize_session_async(chat_id: int, messages: list) -> None:
                 "SELECT COUNT(*) FROM conversation_summaries WHERE chat_id=? AND tier='mid'",
                 (chat_id,),
             ).fetchone()[0]
-            if count >= CONV_MID_MAX:
+            if count >= get_conv_mid_max():
                 # Compact mid-term → long-term
                 rows = db.execute(
                     "SELECT summary FROM conversation_summaries "
@@ -359,7 +362,7 @@ def load_conversation_history() -> None:
         ]
         loaded = 0
         for cid in chat_ids:
-            rows = db_get_history(cid, limit=CONVERSATION_HISTORY_MAX)
+            rows = db_get_history(cid, limit=get_conv_history_max())
             if rows:
                 _conversation_history[cid] = rows
                 loaded += 1

@@ -1,5 +1,11 @@
 [
   {
+    "version": "2026.3.31",
+    "date": "2026-03-30",
+    "title": "DB-primary storage, memory toggle, doc dedup",
+    "notes": "- Notes content stored in SQLite DB (content column in notes_index); file fallback preserved for backward compat. Calendar fully DB-primary, no more JSON dual-write.\n- Document deduplication: same-hash upload detected, user can replace old doc or keep both. doc_replace/doc_keep_both callbacks added.\n- Per-user memory toggle in profile (memory_enabled pref in user_prefs table). Admin > Memory Settings page to configure short/mid/long-term memory parameters (CONVERSATION_HISTORY_MAX, CONV_SUMMARY_THRESHOLD, CONV_MID_MAX) stored in system_settings table.\n- T61-T65 regression tests added."
+  },
+  {
     "version": "2026.3.30+6",
     "date": "2026-03-30",
     "title": "LLM context trace debug tool",

@@ -15,7 +15,7 @@ from pathlib import Path
 
 from telebot.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-from core.bot_config import log, DOCS_DIR
+from core.bot_config import log, DOCS_DIR, MAX_DOC_SIZE_MB
 from core.bot_instance import bot
 from core.store import store
 from telegram.bot_access import _is_guest, _t
@@ -28,6 +28,9 @@ _CHUNK_OVERLAP = 50
 
 # pending rename state: {chat_id: doc_id}
 _pending_rename: dict[int, str] = {}
+
+# pending replace state: {chat_id: {"tmp_path": str, "file_ext": str, "orig_name": str}}
+_pending_doc_replace: dict[int, dict] = {}
 
 
 def _docs_user_dir(chat_id: int) -> Path:
@@ -193,6 +196,64 @@ def _handle_doc_share_toggle(chat_id: int, doc_id: str) -> None:
     _handle_doc_detail(chat_id, doc_id)
 
 
+def _process_doc_file(chat_id: int, file_path: Path, file_ext: str, orig_name: str,
+                      status_msg_id: int | None = None) -> None:
+    """Extract text, chunk, and store a document file. Sends result to user."""
+    try:
+        t0 = time.monotonic()
+        data = file_path.read_bytes()
+        file_size = len(data)
+        doc_hash = hashlib.sha256(data).hexdigest()
+
+        doc_id = str(uuid.uuid4())
+        dest = _docs_user_dir(chat_id) / f"{doc_id}{file_ext}"
+        dest.write_bytes(data)
+        text = _extract_text(dest, file_ext)
+        if not text.strip():
+            if status_msg_id:
+                bot.edit_message_text(_t(chat_id, "docs_upload_failed"), chat_id, status_msg_id)
+            else:
+                bot.send_message(chat_id, _t(chat_id, "docs_upload_failed"))
+            # Clean up the pending file if it's different from dest
+            if file_path != dest and file_path.exists():
+                try:
+                    file_path.unlink()
+                except Exception:
+                    pass
+            return
+        chunks = _chunk_text(text)
+        n = _store_text_chunks(doc_id, chat_id, chunks)
+        parse_ms = int((time.monotonic() - t0) * 1000)
+        meta = {
+            "char_count": len(text),
+            "n_chunks": n,
+            "file_size_bytes": file_size,
+            "parse_time_ms": parse_ms,
+        }
+        store.save_document_meta(doc_id, chat_id, orig_name, str(dest), file_ext.lstrip("."), meta)
+        store.update_document_field(doc_id, doc_hash=doc_hash)
+        msg = _t(chat_id, "docs_uploaded", title=orig_name, chunks=n)
+        if status_msg_id:
+            bot.edit_message_text(msg, chat_id, status_msg_id, parse_mode="Markdown")
+        else:
+            bot.send_message(chat_id, msg, parse_mode="Markdown")
+        # Clean up pending file if different from dest
+        if file_path != dest and file_path.exists():
+            try:
+                file_path.unlink()
+            except Exception:
+                pass
+    except Exception as e:
+        log.error("[Docs] process_doc_file failed: %s", e)
+        try:
+            if status_msg_id:
+                bot.edit_message_text(_t(chat_id, "docs_upload_failed"), chat_id, status_msg_id)
+            else:
+                bot.send_message(chat_id, _t(chat_id, "docs_upload_failed"))
+        except Exception:
+            pass
+
+
 def _handle_doc_upload(message) -> None:
     """Handle an incoming document message from Telegram."""
     chat_id = message.chat.id
@@ -207,47 +268,53 @@ def _handle_doc_upload(message) -> None:
     if ext not in _SUPPORTED_EXTS:
         bot.send_message(chat_id, _t(chat_id, "docs_unsupported"))
         return
+    file_size = getattr(doc, "file_size", None) or 0
+    if file_size > MAX_DOC_SIZE_MB * 1024 * 1024:
+        bot.send_message(chat_id, _t(chat_id, "docs_too_large", max_mb=MAX_DOC_SIZE_MB))
+        return
     status_msg = bot.send_message(chat_id, _t(chat_id, "docs_uploading"))
 
     def _process():
         try:
-            t0 = time.monotonic()
             file_info = bot.get_file(doc.file_id)
             data = bot.download_file(file_info.file_path)
-            file_size = len(data)
 
-            # SHA256 duplicate detection
             doc_hash = hashlib.sha256(data).hexdigest()
             existing = store.get_document_by_hash(chat_id, doc_hash)
             if existing:
+                # Duplicate found — save pending file and offer replace/keep
+                pending_id = str(uuid.uuid4())
+                pending_path = _docs_user_dir(chat_id) / f"_pending_{pending_id}{ext}"
+                pending_path.write_bytes(data)
+                _pending_doc_replace[chat_id] = {
+                    "tmp_path": str(pending_path),
+                    "file_ext": ext,
+                    "orig_name": fname,
+                }
+                kb = InlineKeyboardMarkup()
+                kb.add(
+                    InlineKeyboardButton(
+                        _t(chat_id, "docs_replace_btn"),
+                        callback_data=f"doc_replace:{existing['doc_id']}",
+                    ),
+                    InlineKeyboardButton(
+                        _t(chat_id, "docs_keep_both_btn"),
+                        callback_data="doc_keep_both",
+                    ),
+                )
+                kb.add(InlineKeyboardButton(_t(chat_id, "docs_cancel_btn"), callback_data="docs_menu"))
                 bot.edit_message_text(
-                    _t(chat_id, "docs_duplicate_hash", title=existing["title"]),
-                    chat_id, status_msg.message_id, parse_mode="Markdown")
+                    _t(chat_id, "docs_dup_found").format(title=existing.get("title", fname)),
+                    chat_id, status_msg.message_id,
+                    reply_markup=kb, parse_mode="Markdown",
+                )
                 return
 
-            doc_id = str(uuid.uuid4())
-            dest = _docs_user_dir(chat_id) / f"{doc_id}{ext}"
-            dest.write_bytes(data)
-            text = _extract_text(dest, ext)
-            if not text.strip():
-                bot.edit_message_text(
-                    _t(chat_id, "docs_upload_failed"),
-                    chat_id, status_msg.message_id)
-                return
-            chunks = _chunk_text(text)
-            n = _store_text_chunks(doc_id, chat_id, chunks)
-            parse_ms = int((time.monotonic() - t0) * 1000)
-            meta = {
-                "char_count": len(text),
-                "n_chunks": n,
-                "file_size_bytes": file_size,
-                "parse_time_ms": parse_ms,
-            }
-            store.save_document_meta(doc_id, chat_id, fname, str(dest), ext.lstrip("."), meta)
-            store.update_document_field(doc_id, doc_hash=doc_hash)
-            bot.edit_message_text(
-                _t(chat_id, "docs_uploaded", title=fname, chunks=n),
-                chat_id, status_msg.message_id, parse_mode="Markdown")
+            # No duplicate — write to staging path and process
+            staging_id = str(uuid.uuid4())
+            staging_path = _docs_user_dir(chat_id) / f"_staging_{staging_id}{ext}"
+            staging_path.write_bytes(data)
+            _process_doc_file(chat_id, staging_path, ext, fname, status_msg.message_id)
         except Exception as e:
             log.error("[Docs] upload failed: %s", e)
             try:
@@ -257,6 +324,28 @@ def _handle_doc_upload(message) -> None:
                 pass
 
     threading.Thread(target=_process, daemon=True).start()
+
+
+def _handle_doc_replace(chat_id: int, old_doc_id: str) -> None:
+    """Replace an existing document with the pending upload."""
+    state = _pending_doc_replace.pop(chat_id, None)
+    if not state:
+        bot.send_message(chat_id, _t(chat_id, "docs_cancel_btn"))
+        return
+    try:
+        store.delete_text_chunks(old_doc_id)
+        store.delete_document(old_doc_id)
+    except Exception as e:
+        log.warning("[Docs] replace: delete old failed: %s", e)
+    _process_doc_file(chat_id, Path(state["tmp_path"]), state["file_ext"], state["orig_name"])
+
+
+def _handle_doc_keep_both(chat_id: int) -> None:
+    """Keep both documents — process the pending upload as new."""
+    state = _pending_doc_replace.pop(chat_id, None)
+    if not state:
+        return
+    _process_doc_file(chat_id, Path(state["tmp_path"]), state["file_ext"], state["orig_name"])
 
 
 def _handle_doc_delete(chat_id: int, doc_id: str) -> None:
