@@ -36,9 +36,10 @@ from core.bot_instance import bot
 from telegram.bot_access import (
     _t, _lang, _safe_edit, _back_keyboard, _voice_back_keyboard,
     _escape_tts, _escape_md, _truncate, _with_lang_voice,
+    _build_system_message, _voice_user_turn_content,
     _is_guest, _is_admin,
 )
-from core.bot_llm import ask_llm
+from core.bot_llm import ask_llm, ask_llm_with_history
 from telegram.bot_users import (
     _slug, _list_notes_for, _load_note_text, _save_note_file,
 )
@@ -1201,14 +1202,40 @@ def _handle_voice_message(chat_id: int, voice_obj) -> None:
                        reply_markup=_back_keyboard())
             return
 
+        # ── Build history-aware messages for LLM ─────────────────────────────
+        from core.bot_state import get_history_with_ids, add_to_history, get_memory_context
+
+        # System message: security preamble + bot config + memory note + lang instruction
+        _system_content = _build_system_message(chat_id, text)
+        try:
+            _mem_ctx = get_memory_context(chat_id)
+            if _mem_ctx:
+                _system_content = _system_content + "\n\n" + _mem_ctx
+        except Exception as _mem_e:
+            log.debug("[Memory] voice context injection failed: %s", _mem_e)
+
+        # User turn: RAG context + optional STT hint + wrapped text
+        _current_content = _voice_user_turn_content(chat_id, text)
+
+        # Prior conversation turns
+        _history_entries = get_history_with_ids(chat_id)
+        _history_msgs = [{"role": m["role"], "content": m["content"]} for m in _history_entries]
+        _messages = [{"role": "system", "content": _system_content}] + _history_msgs + [{"role": "user", "content": _current_content}]
+
+        # Save clean user turn (without [?] markers) before calling LLM
+        add_to_history(chat_id, "user", _clean_text)
+
         _ts = time.time()
-        log.info(f"[Voice] LLM call start: provider={LLM_PROVIDER} text_len={len(text)}")
-        response = ask_llm(_with_lang_voice(chat_id, text), timeout=90)
+        log.info(f"[Voice] LLM call start: provider={LLM_PROVIDER} text_len={len(text)} history={len(_history_msgs)}")
+        response = ask_llm_with_history(_messages, timeout=90)
         _timing["LLM"] = time.time() - _ts
         log.info(f"[Voice] LLM done: {_timing['LLM']:.1f}s resp_len={len(response or '')}")
 
         if not response:
             response = _t(chat_id, "no_answer")
+
+        # Save assistant turn to history
+        add_to_history(chat_id, "assistant", response)
 
         # ── Text answer ───────────────────────────────────────────────────────
         audio_on = (not opts.get("user_audio_toggle")

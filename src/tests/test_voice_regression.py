@@ -4065,6 +4065,180 @@ def t_multiturn_system_message(**_) -> list[TestResult]:
     return results
 
 
+def t_voice_history_context(**_) -> list[TestResult]:
+    """T59 — Voice pipeline uses ask_llm_with_history + saves turns to history."""
+    results = []
+    t0 = time.time()
+
+    # 1. ask_llm_with_history imported in bot_voice.py
+    try:
+        src = Path("src/features/bot_voice.py").read_text()
+        ok = "ask_llm_with_history" in src
+        results.append(TestResult(
+            "voice_imports_ask_llm_with_history", "PASS" if ok else "FAIL",
+            time.time() - t0,
+            "ask_llm_with_history imported in bot_voice.py" if ok
+            else "MISSING: voice still uses single-turn ask_llm only",
+        ))
+    except Exception as e:
+        results.append(TestResult("voice_imports_ask_llm_with_history", "FAIL", time.time() - t0, str(e)))
+
+    # 2. _build_system_message imported/used in bot_voice.py
+    try:
+        src = Path("src/features/bot_voice.py").read_text()
+        ok = "_build_system_message" in src
+        results.append(TestResult(
+            "voice_uses_build_system_message", "PASS" if ok else "FAIL",
+            time.time() - t0,
+            "_build_system_message used in bot_voice.py" if ok
+            else "MISSING: _build_system_message not found in bot_voice.py",
+        ))
+    except Exception as e:
+        results.append(TestResult("voice_uses_build_system_message", "FAIL", time.time() - t0, str(e)))
+
+    # 3. _voice_user_turn_content defined in bot_access.py
+    try:
+        src = Path("src/telegram/bot_access.py").read_text()
+        ok = "def _voice_user_turn_content(" in src
+        results.append(TestResult(
+            "voice_user_turn_content_defined", "PASS" if ok else "FAIL",
+            time.time() - t0,
+            "_voice_user_turn_content defined in bot_access.py" if ok
+            else "MISSING: _voice_user_turn_content not in bot_access.py",
+        ))
+    except Exception as e:
+        results.append(TestResult("voice_user_turn_content_defined", "FAIL", time.time() - t0, str(e)))
+
+    # 4. get_history_with_ids called in voice pipeline
+    try:
+        src = Path("src/features/bot_voice.py").read_text()
+        ok = "get_history_with_ids" in src
+        results.append(TestResult(
+            "voice_gets_history", "PASS" if ok else "FAIL",
+            time.time() - t0,
+            "get_history_with_ids called in voice pipeline" if ok
+            else "MISSING: voice never reads conversation history",
+        ))
+    except Exception as e:
+        results.append(TestResult("voice_gets_history", "FAIL", time.time() - t0, str(e)))
+
+    # 5. add_to_history called for both user and assistant turns
+    try:
+        src = Path("src/features/bot_voice.py").read_text()
+        count = src.count("add_to_history(chat_id,")
+        ok = count >= 2
+        results.append(TestResult(
+            "voice_saves_both_turns", "PASS" if ok else "FAIL",
+            time.time() - t0,
+            f"add_to_history called {count} times (user + assistant)" if ok
+            else f"FAIL: add_to_history called {count} time(s) — need both user + assistant",
+        ))
+    except Exception as e:
+        results.append(TestResult("voice_saves_both_turns", "FAIL", time.time() - t0, str(e)))
+
+    # 6. get_memory_context injected into voice system message
+    try:
+        src = Path("src/features/bot_voice.py").read_text()
+        ok = "get_memory_context" in src
+        results.append(TestResult(
+            "voice_injects_memory_context", "PASS" if ok else "FAIL",
+            time.time() - t0,
+            "get_memory_context called in voice pipeline" if ok
+            else "MISSING: voice doesn't inject long-term memory context",
+        ))
+    except Exception as e:
+        results.append(TestResult("voice_injects_memory_context", "FAIL", time.time() - t0, str(e)))
+
+    return results
+
+
+def t_rag_pipeline_completeness(**_) -> list[TestResult]:
+    """T58 — §4 RAG pipeline: log_rag_activity called, FTS timeout enforced, temperature configurable."""
+    results = []
+    t0 = time.time()
+
+    # 1. log_rag_activity must be called in _docs_rag_context
+    try:
+        src = Path("src/telegram/bot_access.py").read_text()
+        called = "log_rag_activity" in src and "store.log_rag_activity" in src
+        results.append(TestResult(
+            "rag_log_activity_called", "PASS" if called else "FAIL",
+            time.time() - t0,
+            "store.log_rag_activity called in _docs_rag_context" if called
+            else "MISSING: store.log_rag_activity not called in bot_access.py",
+        ))
+    except Exception as e:
+        results.append(TestResult("rag_log_activity_called", "FAIL", time.time() - t0, str(e)))
+
+    # 2. concurrent.futures timeout must be in _docs_rag_context
+    try:
+        src = Path("src/telegram/bot_access.py").read_text()
+        has_timeout = "concurrent.futures" in src and "TimeoutError" in src
+        results.append(TestResult(
+            "rag_fts_timeout_enforced", "PASS" if has_timeout else "FAIL",
+            time.time() - t0,
+            "concurrent.futures timeout in _docs_rag_context" if has_timeout
+            else "MISSING: concurrent.futures timeout not found in bot_access.py",
+        ))
+    except Exception as e:
+        results.append(TestResult("rag_fts_timeout_enforced", "FAIL", time.time() - t0, str(e)))
+
+    # 3. llm_temperature must be in rag_settings defaults (source inspection)
+    try:
+        src_rs = Path("src/core/rag_settings.py").read_text()
+        has_temp = "llm_temperature" in src_rs and "LOCAL_TEMPERATURE" in src_rs
+        results.append(TestResult(
+            "rag_llm_temperature_in_defaults", "PASS" if has_temp else "FAIL",
+            time.time() - t0,
+            "llm_temperature in rag_settings defaults" if has_temp
+            else "MISSING: llm_temperature not in rag_settings._DEFAULTS",
+        ))
+    except Exception as e:
+        results.append(TestResult("rag_llm_temperature_in_defaults", "FAIL", time.time() - t0, str(e)))
+
+    # 4. _effective_temperature() must exist in bot_llm.py
+    try:
+        src = Path("src/core/bot_llm.py").read_text()
+        has_fn = "def _effective_temperature" in src and "_effective_temperature()" in src
+        results.append(TestResult(
+            "rag_effective_temperature_fn", "PASS" if has_fn else "FAIL",
+            time.time() - t0,
+            "_effective_temperature() defined and used in bot_llm.py" if has_fn
+            else "MISSING: _effective_temperature not found in bot_llm.py",
+        ))
+    except Exception as e:
+        results.append(TestResult("rag_effective_temperature_fn", "FAIL", time.time() - t0, str(e)))
+
+    # 5. MAX_DOC_SIZE_MB must be in bot_config.py (source inspection)
+    try:
+        src_cfg = Path("src/core/bot_config.py").read_text()
+        has_const = "MAX_DOC_SIZE_MB" in src_cfg
+        results.append(TestResult(
+            "rag_max_doc_size_constant", "PASS" if has_const else "FAIL",
+            time.time() - t0,
+            "MAX_DOC_SIZE_MB in bot_config.py" if has_const
+            else "MISSING: MAX_DOC_SIZE_MB not in bot_config.py",
+        ))
+    except Exception as e:
+        results.append(TestResult("rag_max_doc_size_constant", "FAIL", time.time() - t0, str(e)))
+
+    # 6. docs_too_large i18n key must be present in all 3 languages
+    try:
+        import json
+        strings = json.loads(Path("src/strings.json").read_text())
+        for lang in ("ru", "en", "de"):
+            ok = "docs_too_large" in strings.get(lang, {})
+            results.append(TestResult(
+                f"i18n_docs_too_large_{lang}", "PASS" if ok else "FAIL",
+                time.time() - t0,
+                f"docs_too_large present in {lang}" if ok else f"MISSING: docs_too_large in {lang}",
+            ))
+    except Exception as e:
+        results.append(TestResult("i18n_docs_too_large", "FAIL", time.time() - t0, str(e)))
+
+    return results
+
+
 TEST_FUNCTIONS = [
     t_model_files_present,
     t_piper_json_present,
@@ -4155,6 +4329,10 @@ TEST_FUNCTIONS = [
     t_ollama_history_native_messages,
     # System message architecture: role:system prepended in multi-turn chat (T57)
     t_multiturn_system_message,
+    # §4 RAG pipeline fixes: log called, timeout enforced, temperature configurable (T58)
+    t_rag_pipeline_completeness,
+    # Voice pipeline uses ask_llm_with_history + saves turns to history (T59)
+    t_voice_history_context,
 ]
 
 

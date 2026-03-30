@@ -10,6 +10,7 @@ Provides:
   - LLM taris integration (_ask_taris, _get_active_model)
 """
 
+import concurrent.futures
 import json
 import os
 import re
@@ -178,21 +179,34 @@ def _docs_rag_context(chat_id: int, query: str) -> str:
 
     Only runs when RAG_ENABLED=1 and the user has uploaded documents.
     Keeps context to top-3 chunks, capped at 2000 chars total to stay within LLM context.
+    Enforces rag_timeout from rag_settings; logs every retrieval to rag_log.
     """
     if not RAG_ENABLED:
         return ""
     try:
         from core.store import store
+        from core.rag_settings import get as _rget
         # Quick check: skip FTS search if user has no documents
         if not store.list_documents(chat_id):
             return ""
-        results = store.search_fts(query, chat_id, top_k=RAG_TOP_K)
+        rag_timeout = float(_rget("rag_timeout"))
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as _pool:
+            _fut = _pool.submit(store.search_fts, query, chat_id, RAG_TOP_K)
+            try:
+                results = _fut.result(timeout=rag_timeout)
+            except concurrent.futures.TimeoutError:
+                log.warning("[RAG] FTS timeout (%.0fs) chat_id=%s", rag_timeout, chat_id)
+                return ""
         if not results:
             return ""
         chunks = [r["chunk_text"] for r in results if r.get("chunk_text")]
         if not chunks:
             return ""
         combined = "\n---\n".join(chunks)[:2000]
+        try:
+            store.log_rag_activity(chat_id, query, len(chunks), len(combined))
+        except Exception:
+            pass
         return f"[KNOWLEDGE FROM USER DOCUMENTS]\n{combined}\n[END KNOWLEDGE]\n\n"
     except Exception as _e:
         log.debug("[RAG] docs context failed: %s", _e)
@@ -239,7 +253,9 @@ def _user_turn_content(chat_id: int, user_text: str) -> str:
 
 
 def _with_lang_voice(chat_id: int, stt_text: str) -> str:
-    """Like _with_lang but includes STT-error hint for low-confidence words ([?word])."""
+    """Like _with_lang but includes STT-error hint for low-confidence words ([?word]).
+    Kept for compatibility; voice pipeline now uses _voice_user_turn_content + history.
+    """
     from security.bot_security import SECURITY_PREAMBLE, _wrap_user_input
     has_uncertain = bool(re.search(r'\[\?', stt_text))
     lang = _resolve_lang(chat_id, stt_text)
@@ -250,6 +266,22 @@ def _with_lang_voice(chat_id: int, stt_text: str) -> str:
         stt_hint = PROMPTS["stt_hints"].get(lang, PROMPTS["stt_hints"]["en"])
         return SECURITY_PREAMBLE + config_block + rag_ctx + instruction + stt_hint + _wrap_user_input(stt_text)
     return SECURITY_PREAMBLE + config_block + rag_ctx + instruction + _wrap_user_input(stt_text)
+
+
+def _voice_user_turn_content(chat_id: int, stt_text: str) -> str:
+    """Build the current user turn for a voice multi-turn call.
+
+    Like _user_turn_content but adds the STT uncertainty hint when [?word]
+    markers are present (low-confidence words from Vosk/Whisper).
+    """
+    from security.bot_security import _wrap_user_input
+    rag_ctx = _docs_rag_context(chat_id, stt_text)
+    has_uncertain = bool(re.search(r'\[\?', stt_text))
+    if has_uncertain:
+        lang = _resolve_lang(chat_id, stt_text)
+        stt_hint = PROMPTS["stt_hints"].get(lang, PROMPTS["stt_hints"]["en"])
+        return rag_ctx + stt_hint + _wrap_user_input(stt_text)
+    return rag_ctx + _wrap_user_input(stt_text)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
