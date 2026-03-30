@@ -5,17 +5,19 @@
 ---
 
 ## 0. Known bugs
-- [] System chat error . Not enough admin rights to run commands. LOg from Telegram:
-[18.03.2026 20:05] SU: how much space i have on flash
-[18.03.2026 20:05] Smart PicoClaw Bot: ❌ Could not generate a command. Try again.
-[20.03.2026 06:28] Smart PicoClaw Bot: 📄 taris
-- [] PI2 missing Piper ONNX models (`ru_RU-irina-medium.onnx`, `.onnx.json`) — T01 `model_files_required` FAIL
-- [] PI1 missing `migrate_to_db.py` at expected path — T23 `db_migration_idempotent` FAIL
-- [] PI1 `taris-web.service` not running
-- [] German voice models absent on both PIs (`de_DE-thorsten-medium.onnx`, `vosk-model-small-de`)
-- [] PI2 has no Whisper model (`ggml-base.bin`) — Whisper tests SKIP
-- [] Vosk WER regression on short audio (`audio_2026-03-08_08-34-23.ogg`) — WER 0.70 vs threshold 0.35
+
+### ✅ Fixed
+- [x] System chat "Could not generate a command" — code rewritten in v2026.3.30: `_extract_bash_cmd()`, `_ask_llm_strict()`, role-aware RBAC guards. Old error message no longer exists.
+- [x] Delete personal context (memory) for User via Profile menu — `profile_clear_memory` button + handler wired in profile.yaml + telegram_menu_bot.py (v2026.3.30+)
 - [x] Static texts hardcoded in Python — `bot_calendar.py` `cal_event_saved_prefix`, `bot_voice.py` `audio_interrupted` + `voice_note_msg` moved to strings.json; T55 regression test added (v2026.3.30+1)
+
+### ⏳ Infrastructure / Hardware (cannot fix in code)
+- [] PI2 missing Piper ONNX models (`ru_RU-irina-medium.onnx`, `.onnx.json`) — PI2 offline; install on next access
+- [] PI1 missing `migrate_to_db.py` at expected path — PI1 frozen (demo); fix after demo
+- [] PI1 `taris-web.service` not running — PI1 frozen (demo); fix after demo
+- [] German voice models absent on both PIs (`de_DE-thorsten-medium.onnx`, `vosk-model-small-de`) — hardware task, install when Pi targets are accessible
+- [] PI2 has no Whisper model (`ggml-base.bin`) — PI2 offline; install on next access
+- [] Vosk WER regression on short audio (`audio_2026-03-08_08-34-23.ogg`) — WER 0.70 vs threshold 0.35; Pi-only (TariStation2 uses faster-whisper); tune model or adjust threshold when Pi is online
 
 
 ## 1. Access & Security
@@ -47,7 +49,7 @@ Role validation on every command/callback, security event logging, configurable 
 - [x] Store per-user conversation history (sliding window, default 15 messages)
 - [x] Inject last N messages as context into LLM prompt
 - [x] Optional: persist across restarts (JSON / SQLite)
-- [] Delete personly context (memory) for User via Profile menu after confirmation
+- [x] Delete personal context (memory) via Profile menu after confirmation (v2026.3.30+)
 
 
 ---
