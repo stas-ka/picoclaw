@@ -8,6 +8,120 @@ Choosing a library, checking a dependency version, understanding which third-par
 
 ---
 
+## Diagrams
+
+> Color key — applies to all diagrams on this page  
+> 🔵 **PicoClaw** — Raspberry Pi / aarch64 (`master` branch)  
+> 🟢 **OpenClaw** — x86_64 laptop/PC (`taris-openclaw` branch)  
+> 🟣 **Both variants** — shared component  
+> 🟠 **Cloud service** — external, requires internet  
+
+### Deployment Topology
+
+```mermaid
+flowchart LR
+    classDef pc   fill:#2874A6,stroke:#1A5276,color:#fff
+    classDef oc   fill:#1A7A3C,stroke:#0E4D24,color:#fff
+    classDef br   fill:#6C3483,stroke:#4A235A,color:#fff
+
+    MB(["📦 master branch"]):::br
+    OB(["📦 taris-openclaw branch"]):::br
+
+    subgraph DEV["⚙️ Development"]
+        PI2["🍓 OpenClawPI2\nRPi 4B · aarch64\nPicoClaw · dev target"]:::pc
+        TS2["💻 TariStation2\nx86_64 Ubuntu\nOpenClaw · dev target"]:::oc
+    end
+
+    subgraph PROD["🚀 Production"]
+        PI1["🍓 OpenClawPI\nRPi 4B · aarch64\nPicoClaw · production"]:::pc
+        TS1["💻 SintAItion\nx86_64 Ubuntu\nOpenClaw · production"]:::oc
+    end
+
+    MB --> PI2
+    MB --> PI1
+    OB --> TS2
+    OB --> TS1
+
+    PI2 -. "tests pass →" .-> PI1
+    TS2 -. "tests pass →" .-> TS1
+```
+
+### Full Software Stack — All Variants
+
+```mermaid
+flowchart TB
+    classDef pc    fill:#2874A6,stroke:#1A5276,color:#fff
+    classDef oc    fill:#1A7A3C,stroke:#0E4D24,color:#fff
+    classDef both  fill:#6C3483,stroke:#4A235A,color:#fff
+    classDef cloud fill:#935116,stroke:#784212,color:#fff
+
+    subgraph UI["🖥️ User Interface"]
+        TG["Telegram Bot\npyTelegramBotAPI 4.x"]:::both
+        WEB["Web UI · FastAPI\nJinja2 + uvicorn + JWT"]:::both
+    end
+
+    subgraph LOGIC["⚙️ Bot Logic"]
+        CORE["Handlers · RAG · Memory\nbot_handlers / bot_state"]:::both
+        LLMR["LLM Router\nbot_llm.py"]:::both
+    end
+
+    subgraph VOICE["🎙️ Voice Stack"]
+        VOSK_PC["Vosk 0.3.45\nhotword + command STT\n🔵 PicoClaw"]:::pc
+        VOSK_OC["Vosk 0.3.45\nhotword only\n🟢 OpenClaw"]:::oc
+        FW["faster-whisper\nCTranslate2 command STT\n🟢 OpenClaw"]:::oc
+        PIPER["Piper TTS · ONNX Runtime\nru / de / en · both variants"]:::both
+        VAD["WebRTC VAD\nboth variants"]:::both
+    end
+
+    subgraph LLM["🤖 LLM Backends"]
+        PC_LLM["picoclaw binary\n→ OpenRouter\n🔵 PicoClaw default"]:::pc
+        LLAMA["llama.cpp GGUF\nPi 4/5 optional\n🔵 PicoClaw"]:::pc
+        OAI["OpenAI API\ngpt-4o-mini\n🟠 Cloud"]:::cloud
+        OLL["Ollama 0.18.3\nqwen3:8b local\n🟢 OpenClaw default"]:::oc
+    end
+
+    subgraph DATA["💾 Data Store"]
+        SQLITE["SQLite + FTS5\n+ sqlite-vec 384-dim\n🔵 PicoClaw"]:::pc
+        PG["PostgreSQL 14\n+ pgvector ⏳ planned\n🟢 OpenClaw"]:::oc
+        FILES["~/.taris/ files\nJSON fallback\nboth variants"]:::both
+    end
+
+    UI --> LOGIC
+    LOGIC --> VOICE
+    LOGIC --> LLM
+    LOGIC --> DATA
+```
+
+### Voice Pipeline — Variant Comparison
+
+```mermaid
+flowchart LR
+    classDef pc    fill:#2874A6,stroke:#1A5276,color:#fff
+    classDef oc    fill:#1A7A3C,stroke:#0E4D24,color:#fff
+    classDef both  fill:#6C3483,stroke:#4A235A,color:#fff
+
+    MIC["🎤 Microphone\npw-record"]:::both
+    VAD2["WebRTC VAD\nspeech detection"]:::both
+    HW_PC["Vosk\nhotword detect\n🔵"]:::pc
+    HW_OC["Vosk\nhotword detect\n🟢"]:::oc
+    STT_PC["Vosk\nfull command STT\n🔵 PicoClaw"]:::pc
+    STT_OC["faster-whisper\nfull command STT\n🟢 OpenClaw"]:::oc
+    LLM2["LLM Router\nask_llm_with_history"]:::both
+    TTS2["Piper TTS\nONNX synthesis"]:::both
+    OUT["🔊 Audio reply\nOGG via Telegram\nor speaker"]:::both
+
+    MIC --> VAD2
+    VAD2 --> HW_PC & HW_OC
+    HW_PC -->|hotword trigger| STT_PC
+    HW_OC -->|hotword trigger| STT_OC
+    STT_PC --> LLM2
+    STT_OC --> LLM2
+    LLM2 --> TTS2
+    TTS2 --> OUT
+```
+
+---
+
 ## Variant Comparison — Top-Level Stack
 
 | Layer | PicoClaw (Pi) | OpenClaw (Laptop/PC) |
