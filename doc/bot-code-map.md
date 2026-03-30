@@ -115,6 +115,11 @@ Imports: `bot_config` only.
 | `_web_link_codes` | `dict[str, tuple[int, float]]` — active Telegram↔Web link codes (code → (chat_id, expiry)) |
 | `generate_web_link_code(chat_id)` | Create 6-char uppercase code with 15-min TTL → returns code string |
 | `validate_web_link_code(code)` | Verify code is valid + not expired → returns `chat_id` and consumes code (one-time use) |
+| `add_to_history(chat_id, role, content)` | Append message to `chat_history` DB; triggers tiered summarization at `CONV_SUMMARY_THRESHOLD` |
+| `load_conversation_history()` | Load all user histories from DB on startup |
+| `get_memory_context(chat_id)` | Return formatted summaries string (mid + long tier) for injection into system message |
+| `_summarize_session_async(chat_id)` | Background thread: summarizes oldest messages → `conversation_summaries` table |
+| `clear_history(chat_id)` | Clear `chat_history` + `conversation_summaries` for user (all tiers) |
 
 ---
 
@@ -180,8 +185,10 @@ Imports: `bot_config`, `bot_state`, `bot_instance`.
 |---|---|
 | `_detect_text_lang(text)` | Heuristic: Cyrillic ratio → `'ru'` / `'en'` / `None` |
 | `_resolve_lang(chat_id, user_text)` | Priority chain: detected → TG lang → Russian |
-| `_with_lang(chat_id, user_text)` | Prepend LLM language instruction |
-| `_with_lang_voice(chat_id, stt_text)` | Same + hint for low-confidence words `[?word]` |
+| `_with_lang(chat_id, user_text)` | Single-turn LLM call: prepend security preamble + bot config + lang instruction into one string |
+| `_with_lang_voice(chat_id, stt_text)` | Same as `_with_lang` + hint for low-confidence words `[?word]` |
+| `_build_system_message(chat_id, user_text)` | Multi-turn: returns `role:system` content — security preamble + bot config + tiered memory note + lang instruction |
+| `_user_turn_content(chat_id, user_text)` | Multi-turn: returns current user turn content — RAG context + user text (no preamble) |
 
 ### Text utilities
 
@@ -398,7 +405,7 @@ Imports: `bot_config`, `bot_state`, `bot_instance`, `bot_access`, `bot_users`.
 
 | Function | Purpose |
 |---|---|
-| `_handle_chat_message(chat_id, user_text)` | Forward to LLM via `ask_llm()`, return reply; response sent with `parse_mode=None` to avoid silent failures on LLM-generated content containing Markdown special characters |
+| `_handle_chat_message(chat_id, user_text)` | Forward to LLM via `ask_llm_with_history()` with `[role:system] + history + [user_turn]` structure; response sent with `parse_mode=None` |
 
 ### Screen DSL helpers (v2026.3.43)
 
@@ -599,8 +606,11 @@ Imports: `bot_config` only. Shared by Telegram and Web channels.
 | `_ask_gemini(prompt, timeout)` | Google Gemini REST API (`GEMINI_API_KEY`, `GEMINI_MODEL`) |
 | `_ask_anthropic(prompt, timeout)` | Anthropic Claude REST API (`ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL`) |
 | `_ask_local(prompt, timeout)` | Local llama.cpp HTTP server (`LLAMA_CPP_URL` default `http://127.0.0.1:8081`) |
+| `_ask_ollama(prompt, timeout)` | Ollama single-turn HTTP POST to `/api/generate` (`OLLAMA_URL`, `OLLAMA_MODEL`) |
 | `_DISPATCH` | `dict` mapping `LLM_PROVIDER` values → provider functions |
-| `ask_llm(prompt, timeout=60) -> str` | Public entry point: routes via `_DISPATCH`; if primary fails and `LLM_LOCAL_FALLBACK=true`, retries via `_ask_local()` with `⚠️ [local fallback]` prefix |
+| `ask_llm(prompt, timeout=60) -> str` | Single-turn entry point: routes via `_DISPATCH`; if primary fails and `LLM_LOCAL_FALLBACK=true`, retries via `_ask_local()` with `⚠️ [local fallback]` prefix |
+| `ask_llm_with_history(messages, provider, timeout) -> str` | Multi-turn entry point: sends `[role:system] + history + [role:user]` natively to provider; has explicit branches for openai, anthropic, ollama, yandexgpt, gemini, local, taris |
+| `_format_history_as_text(messages) -> str` | Fallback: collapses messages into plain text for providers without native multi-turn support |
 
 ---
 
@@ -956,6 +966,10 @@ All `data=` keys handled in `callback_handler()`:
 | `admin_rag_menu` | `_handle_admin_rag_menu` — RAG toggle + activity log (v2026.3.43) |
 | `admin_rag_toggle` | `_handle_admin_rag_toggle` — flip `RAG_FLAG_FILE` presence (v2026.3.43) |
 | `admin_rag_log` | `_handle_admin_rag_log` — show last 20 RAG queries + chunks (v2026.3.43) |
+| `admin_rag_settings` | `_handle_admin_rag_settings` — show RAG settings panel (top-k, chunk, timeout) (v2026.3.30+2) |
+| `admin_rag_set_topk` | `_start_admin_rag_set("rag_top_k")` — prompt for new top-K value |
+| `admin_rag_set_chunk` | `_start_admin_rag_set("rag_chunk_size")` — prompt for new chunk size |
+| `admin_rag_set_timeout` | `_start_admin_rag_set("rag_timeout")` — prompt for new RAG timeout |
 | `reload_screens` | `reload_screens()` in `screen_loader` — hot-reload YAML screen cache (v2026.3.43) |
 | `menu_notes` | `_handle_notes_menu` |
 | `note_create` | `_start_note_create` |
@@ -996,6 +1010,12 @@ All `data=` keys handled in `callback_handler()`:
 | `errp_start` | `_start_error_protocol` |
 | `errp_send` | `_errp_send` |
 | `errp_cancel` | `_errp_cancel` |
+| `doc_detail:<id>` | `_handle_doc_detail` — document detail view: type, chunks, size, shared, created (v2026.3.30+2) |
+| `doc_rename:<id>` | `_handle_doc_rename_prompt` — start rename flow (input mode `doc_rename`) |
+| `doc_rename_confirm:<id>` | `_handle_doc_rename_confirm` — apply new name |
+| `doc_share:<id>` | `_handle_doc_share_toggle` — flip `shared` flag |
+| `doc_del:<id>` | `_handle_doc_delete_request` — show delete confirmation |
+| `doc_del_confirm:<id>` | `_handle_doc_delete_confirm` — actual delete |
 | `cancel` | clear pending cmd/note/mode |
 | `run:<hash>` | `_execute_pending_cmd` |
 

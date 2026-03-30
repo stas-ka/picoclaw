@@ -1,6 +1,6 @@
 # Taris — Feature Domains
 
-**Version:** `2026.3.43`  
+**Version:** `2026.3.30+3`  
 → Architecture index: [architecture.md](../architecture.md)
 
 ---
@@ -215,8 +215,33 @@ The admin can enable/disable RAG at runtime without restarting the bot:
 |---|---|---|
 | `store_sqlite.index_document(chunks)` | `store_sqlite.py` | Insert chunked text into FTS5 table |
 | `store_sqlite.search_fts(query, top_k)` | `store_sqlite.py` | BM25-ranked FTS5 search, returns top-K chunks |
+| `store_sqlite.update_document_field(doc_id, field, value)` | `store_sqlite.py` | Update a single metadata field on a document row |
+| `store_sqlite.get_document_by_hash(chat_id, doc_hash)` | `store_sqlite.py` | Lookup existing document by SHA256 hash (dedup) |
 | `_rag_context(text)` | `bot_llm.py` | Calls `search_fts`, formats chunks for prompt injection |
 | `POST /admin/rag/upload` | `bot_web.py` | Web UI upload endpoint (admin-only) |
+
+### 11.6 Runtime RAG Settings (Admin Panel, v2026.3.30+2)
+
+Admins can tune RAG parameters at runtime without restarting via **Admin Panel → 🔍 RAG Settings**:
+
+| Setting | Callback | Default | Description |
+|---|---|---|---|
+| Top-K chunks | `admin_rag_set_topk` | `RAG_TOP_K` (env) | How many chunks to inject per LLM call |
+| Chunk size | `admin_rag_set_chunk` | `RAG_CHUNK_SIZE` (env) | Characters per chunk during indexing |
+| RAG timeout | `admin_rag_set_timeout` | `RAG_TIMEOUT` (env) | FTS search timeout (seconds) |
+
+Settings are stored in `~/.taris/rag_settings.json` and read by `core/rag_settings.py` (`get(key)` / `set_value(key, val)`).
+
+### 11.7 Document Admin (v2026.3.30+2)
+
+| Feature | Description |
+|---|---|
+| Detail view | `doc_detail:<id>` → shows type, chunks, size, shared flag, created date |
+| Rename | `doc_rename:<id>` → input mode `doc_rename` → `doc_rename_confirm:<id>` |
+| Share toggle | `doc_share:<id>` → flips `shared` flag (shared docs visible to all users) |
+| Delete | `doc_del:<id>` → confirm → `doc_del_confirm:<id>` |
+| Hash dedup | SHA256 hash stored in `doc_hash` column; upload skipped if hash already exists for user |
+| Upload stats | `char_count`, `n_chunks`, `file_size_bytes`, `parse_time_ms` stored in document metadata |
 
 ## 12. Notes (`bot_users.py`, `bot_handlers.py`)
 

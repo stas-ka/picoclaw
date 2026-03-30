@@ -1,6 +1,6 @@
 # Taris — LLM Provider Abstraction
 
-**Version:** `2026.3.43`  
+**Version:** `2026.3.30+3`  
 → Architecture index: [architecture.md](../architecture.md)
 
 ---
@@ -171,3 +171,59 @@ sudo systemctl restart taris-telegram
 ---
 
 *For hardware performance implications of local LLM — see [hardware-performance-analysis.md](../hardware-performance-analysis.md) §8.9.*
+
+---
+
+## 20. Multi-Turn Conversation Context (v2026.3.30+3)
+
+### 20.1 Architecture
+
+Every user chat message is sent to the LLM as a proper multi-turn message array:
+
+```
+messages = [
+  {"role": "system",    "content": <system_msg>},   ← bot identity + config + memory note
+  {"role": "user",      "content": <prior turn 1>},  ← history loaded from DB
+  {"role": "assistant", "content": <prior reply 1>},
+  ...
+  {"role": "user",      "content": <rag_context + user_text>}  ← current turn
+]
+```
+
+**Key functions** (`src/telegram/bot_access.py`):
+
+| Function | Purpose |
+|---|---|
+| `_build_system_message(chat_id, user_text)` | Returns `role:system` content: security preamble + bot config + memory context note + lang instruction |
+| `_user_turn_content(chat_id, user_text)` | Returns current user turn: RAG context (if any) + wrapped user text (no preamble) |
+| `_with_lang(chat_id, user_text)` | Single-turn path (voice, system chat) — bundles everything into one string |
+
+### 20.2 Ollama Multi-Turn Fix (v2026.3.30+3)
+
+`ask_llm_with_history(messages, provider, timeout)` in `bot_llm.py` now has an explicit `elif provider == "ollama"` branch that sends the full `messages` list natively to `/api/chat`. Previously, the `else` fallback called `_format_history_as_text()` → `_ask_ollama()` which collapsed all history into a single user message, losing multi-turn structure entirely.
+
+### 20.3 Tiered Memory (v2026.3.30+2)
+
+Long conversation histories are summarized into a two-tier memory to stay within LLM context limits:
+
+| Tier | Storage | Trigger |
+|---|---|---|
+| **Short** | `chat_history` DB table (live messages) | Always |
+| **Mid** | `conversation_summaries` DB table (`tier='mid'`) | When `chat_history` reaches `CONV_SUMMARY_THRESHOLD` (15) messages |
+| **Long** | `conversation_summaries` DB table (`tier='long'`) | When mid-tier count reaches `CONV_MID_MAX` (5) summaries |
+
+**Key functions** (`src/core/bot_state.py`):
+
+| Function | Purpose |
+|---|---|
+| `add_to_history(chat_id, role, content)` | Append message; triggers async summarization at threshold |
+| `_summarize_session_async(chat_id)` | Background thread: summarizes oldest messages → inserts `tier='mid'` row |
+| `get_memory_context(chat_id)` | Returns formatted summary string injected into the system message |
+| `clear_history(chat_id)` | Clears both `chat_history` and `conversation_summaries` for user |
+
+**Constants** (`src/core/bot_config.py`):
+
+| Constant | Default | Description |
+|---|---|---|
+| `CONV_SUMMARY_THRESHOLD` | `15` | Message count that triggers mid-tier summarization |
+| `CONV_MID_MAX` | `5` | Mid-tier count that triggers long-tier compaction |
