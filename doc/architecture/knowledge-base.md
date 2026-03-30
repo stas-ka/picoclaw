@@ -1,6 +1,6 @@
 # Taris — Knowledge Base Architecture
 
-**Version:** `2026.3.30+3`  
+**Version:** `2026.3.32`  
 → Architecture index: [architecture.md](../architecture.md)
 
 ## When to read this file
@@ -33,14 +33,15 @@ bot_documents.py: read file → detect mime type (PDF/txt/md/docx)
     ▼
 Text extraction:
   - .txt / .md  → direct read
-  - .pdf        → ⏳ pdfplumber / pdfminer (OPEN)
-  - .docx       → ⏳ python-docx (OPEN)
+  - .pdf        → PyMuPDF (fitz) first → image placeholders → pdfminer fallback
+  - .docx       → python-docx
     │
     ▼
 Chunking: split at RAG_CHUNK_SIZE (512 chars, configurable) with sentence boundaries
     │
     ▼
 Deduplication: SHA256(content) → skip if doc_hash already in store
+               (user prompted: Replace / Keep Both)
     │
     ▼
 Indexing:
@@ -59,15 +60,23 @@ Stored in: documents + document_chunks tables
 User sends text message
     │
     ▼ (if RAG_ENABLED and not flag-file ~/.taris/rag_disabled)
-store.search_fts(query=text, top_k=RAG_TOP_K)
-  PicoClaw:  SELECT … FROM fts_documents WHERE fts_documents MATCH ? ORDER BY bm25(...)
-  OpenClaw:  hybrid: BM25 + cosine similarity (pgvector <=> operator)
+bot_rag.classify_query(text, has_documents) → "simple" | "factual" | "contextual"
+  "simple"     → skip RAG entirely (greeting, very short, yes/no)
+  "factual"    → use RAG (factual keyword detected + user has docs)
+  "contextual" → RAG optional (no docs / no factual marker)
+    │
+    ▼ (if not "simple")
+bot_rag.retrieve_context(chat_id, query, top_k, max_chars)
+  hardware tier: detect_rag_capability() → FTS5_ONLY | HYBRID | FULL
+  FTS5_ONLY:  store.search_fts() → BM25 results
+  HYBRID/FULL: FTS5 + store.search_similar() → reciprocal_rank_fusion(k=60)
     │
     ▼
-Top-K chunks → prepended to user turn as "Context:\n{chunks}\n"
+Top-K chunks → prepended as "[KNOWLEDGE FROM USER DOCUMENTS]\n{chunks}\n[END KNOWLEDGE]"
     │
     ▼
 LLM answer grounded in document content
+Logged to rag_log with latency_ms + query_type
 ```
 
 ---
@@ -102,13 +111,47 @@ Admin can list all docs, toggle shared flag, delete any doc.
 | Constant | Default | Description |
 |---|---|---|
 | `RAG_ENABLED` | `true` | Master on/off |
-| `RAG_TOP_K` | `3` | Chunks returned per query |
+| `RAG_TOP_K` | `3` | Chunks returned per query (overridable per-user via `user_prefs`) |
 | `RAG_CHUNK_SIZE` | `512` | Chars per chunk at indexing |
 | `RAG_FLAG_FILE` | `~/.taris/rag_disabled` | Presence = RAG off (runtime toggle, no restart) |
 | `EMBED_MODEL` | `all-MiniLM-L6-v2` | OpenClaw embedding model |
 
 Runtime override: Admin Panel → 🔍 RAG / Knowledge Base → writes `rag_settings.json`.  
+Per-user override: Profile → ⚙️ RAG Settings → stored in `user_prefs` table (`rag_top_k`, `rag_chunk_size`).  
 → `core/rag_settings.py` reads `~/.taris/rag_settings.json` at each LLM call.
+
+---
+
+## RAG Intelligence Layer (`core/bot_rag.py`)
+
+New module added in v2026.3.32 — adaptive routing + fusion.
+
+| Function | Returns | Description |
+|---|---|---|
+| `classify_query(text, has_documents)` | `"simple"` \| `"factual"` \| `"contextual"` | Heuristic routing — no LLM call |
+| `detect_rag_capability()` | `RAGCapability` enum | RAM + vector-store detection (cached) |
+| `reciprocal_rank_fusion(fts5, vector, k=60)` | merged list | Interleaves + deduplicates by `id`; adds `rrf_score` |
+| `retrieve_context(chat_id, query, top_k, max_chars)` | `(chunks, assembled, strategy)` | Unified entry — auto-selects FTS5/hybrid by tier |
+
+Hardware tier → strategy mapping:
+
+| `RAGCapability` | Condition | Strategy |
+|---|---|---|
+| `FTS5_ONLY` | RAM < 4 GB or no vector search | BM25 search only |
+| `HYBRID` | 4–8 GB RAM + vectors available | BM25 + cosine + RRF |
+| `FULL` | ≥ 8 GB RAM + vectors | BM25 + cosine + RRF + reranking |
+
+---
+
+## RAG Monitoring (`admin_rag_stats`)
+
+Admin Panel → RAG → 📊 RAG Stats shows:
+- Total retrievals, average latency (ms), average chunks/query
+- Top-5 most queried texts
+- Query type breakdown (simple / factual / contextual)
+
+Source: `store_sqlite.rag_stats()` · `telegram/bot_admin._handle_admin_rag_stats()`  
+Data: `rag_log` table — columns: `query_type`, `latency_ms`, `n_chunks`, `chars_injected`
 
 ---
 
@@ -137,12 +180,16 @@ Currently calendar data is only available when the user explicitly opens the cal
 |---|---|---|
 | Document RAG (FTS5/pgvector) | ✅ Implemented (v2026.3.29) | — |
 | Admin RAG settings panel | ✅ Implemented (v2026.3.30) | — |
-| Document deduplication (SHA256) | ✅ Implemented (v2026.3.29) | — |
+| Document deduplication (SHA256) | ✅ Implemented (v2026.3.31) | — |
 | Shared documents across users | ✅ Implemented (v2026.3.29) | — |
 | Tiered conversation memory | ✅ Implemented (v2026.3.30+2) | — |
-| PDF / DOCX extraction | ⏳ Planned | [TODO.md §10](../TODO.md) |
+| PDF extraction (PyMuPDF + pdfminer) | ✅ Implemented (v2026.3.32) | — |
+| DOCX extraction (python-docx) | ✅ Implemented (v2026.3.30+2) | — |
+| classify_query + RRF fusion | ✅ Implemented (v2026.3.32) | — |
+| RAG monitoring dashboard | ✅ Implemented (v2026.3.32) | — |
+| Per-user RAG settings | ✅ Implemented (v2026.3.32) | — |
 | Notes indexed as KB | ⏳ Planned | [TODO.md §10](../TODO.md) |
 | Calendar context injection | ⏳ Planned | [TODO.md §10](../TODO.md) |
 | Contacts lookup in conversation | ⏳ Planned | [TODO.md §4](../TODO.md) |
 | Knowledge base UI (browse, edit) | ⏳ Planned | [TODO.md §10](../TODO.md) |
-| Per-source RAG weight tuning | ⏳ Planned | [TODO.md §10](../TODO.md) |
+| sqlite-vec HNSW for PicoClaw | ⏳ Planned | [TODO.md §25.6](../TODO.md) |

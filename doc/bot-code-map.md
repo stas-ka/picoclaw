@@ -3,7 +3,7 @@
 **Architecture:** 20-module split — Telegram core (v2026.3.19) + shared LLM/auth + Web UI layer (v2026.3.28)  
 **Entry point (Telegram):** `src/telegram_menu_bot.py` (~280 lines — handlers + `main()`)  
 **Entry point (Web):** `src/bot_web.py` — FastAPI application, all HTTP routes  
-**Version:** 2026.3.43
+**Version:** 2026.3.32
 
 Use this map to locate any function by module. Modules are organized into packages under `src/`:
 
@@ -157,7 +157,41 @@ Imports: `bot_config` (incl. `TARIS_DIR`), `store_base`.
 
 ---
 
-## bot_access.py — Core Utilities
+## core/bot_rag.py — RAG Intelligence Layer *(v2026.3.32)*
+
+Imports: `bot_config`, `core.store`.
+
+| Function | Returns | Purpose |
+|---|---|---|
+| `classify_query(text, has_documents)` | `"simple"\|"factual"\|"contextual"` | Heuristic — no LLM. Simple=short/greeting, factual=knowledge+docs, contextual=fallback |
+| `detect_rag_capability()` | `RAGCapability` enum | Checks RAM (psutil) + vector availability; cached after first call |
+| `reciprocal_rank_fusion(fts5_results, vector_results, k=60)` | merged list | Deduplicates by `id`, scores with 1/(rank+k), sorts descending |
+| `retrieve_context(chat_id, query, top_k, max_chars)` | `(chunks, assembled, strategy)` | Unified entry point: auto-selects FTS5_ONLY / HYBRID / FULL strategy |
+
+`RAGCapability` enum values: `FTS5_ONLY` (< 4 GB RAM), `HYBRID` (4-8 GB), `FULL` (≥ 8 GB)
+
+---
+
+## features/bot_dev.py — Developer Menu *(v2026.3.32)*
+
+Imports: `bot_config`, `bot_instance`, `core.bot_db`.
+
+| Function | Purpose |
+|---|---|
+| `handle_dev_menu(chat_id)` | Sends developer menu keyboard (only to `_is_developer()` users) |
+| `handle_dev_chat(chat_id, call)` | Sets `_user_mode = "dev_chat"`, sends mode indicator |
+| `handle_dev_restart(chat_id)` | Sends confirm-restart prompt with `dev_restart_confirmed` callback |
+| `handle_dev_restart_confirmed(chat_id)` | `systemctl restart taris-telegram` — requires developer role |
+| `handle_dev_log(chat_id)` | Sends last 30 lines of `telegram_bot.log` |
+| `handle_dev_error(chat_id)` | Sends last ERROR entry from journal |
+| `handle_dev_files(chat_id)` | Lists `~/.taris/*.py` with sizes + mtimes |
+| `handle_dev_security_log(chat_id)` | Fetches last 20 rows from `security_events` table |
+| `log_security_event(chat_id, event_type, detail)` | INSERT into `security_events` table |
+| `log_access_denied(chat_id, resource)` | Convenience wrapper: `log_security_event(…, "access_denied", …)` |
+
+---
+
+
 
 Imports: `bot_config`, `bot_state`, `bot_instance`.
 
@@ -1018,8 +1052,24 @@ All `data=` keys handled in `callback_handler()`:
 | `doc_del_confirm:<id>` | `_handle_doc_delete_confirm` — actual delete |
 | `cancel` | clear pending cmd/note/mode |
 | `run:<hash>` | `_execute_pending_cmd` |
+| `admin_rag_stats` | `_handle_admin_rag_stats` — RAG monitoring dashboard: latency, query types, top queries *(v2026.3.32)* |
+| `dev_menu` | `handle_dev_menu` — Developer Menu (developer role only) *(v2026.3.32)* |
+| `dev_chat` | `handle_dev_chat` — enter dev chat mode *(v2026.3.32)* |
+| `dev_restart` | `handle_dev_restart` — show restart confirmation *(v2026.3.32)* |
+| `dev_restart_confirmed` | `handle_dev_restart_confirmed` — execute restart *(v2026.3.32)* |
+| `dev_log` | `handle_dev_log` — last 30 log lines *(v2026.3.32)* |
+| `dev_error` | `handle_dev_error` — last ERROR entry from journal *(v2026.3.32)* |
+| `dev_files` | `handle_dev_files` — list `~/.taris/*.py` *(v2026.3.32)* |
+| `dev_security_log` | `handle_dev_security_log` — last 20 `security_events` rows *(v2026.3.32)* |
+| `profile_rag_settings` | `_handle_profile_rag_settings` — per-user RAG settings panel *(v2026.3.32)* |
+| `profile_rag_topk_inc` | `_handle_profile_rag_adjust("rag_top_k", +1)` *(v2026.3.32)* |
+| `profile_rag_topk_dec` | `_handle_profile_rag_adjust("rag_top_k", -1)` *(v2026.3.32)* |
+| `profile_rag_chunk_inc` | `_handle_profile_rag_adjust("rag_chunk_size", +200)` *(v2026.3.32)* |
+| `profile_rag_chunk_dec` | `_handle_profile_rag_adjust("rag_chunk_size", -200)` *(v2026.3.32)* |
+| `profile_rag_reset` | `_handle_profile_rag_reset` — reset to system defaults *(v2026.3.32)* |
+| `profile_toggle_memory` | `_handle_profile_toggle_memory` — per-user memory on/off *(v2026.3.32)* |
 
----
+
 
 ## Key Files on Pi (runtime)
 

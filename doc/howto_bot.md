@@ -194,30 +194,63 @@ Admins can upload documents to the bot's knowledge base. During chat, the most r
 ### Uploading Documents
 - Open the Web UI and navigate to the **Admin** panel.
 - Use the **Upload Document** form or send a `POST` request to `/admin/rag/upload`.
-- Supported formats: plain text, Markdown, PDF (text layer).
-- Documents are split into chunks (~512 characters) and indexed in an **SQLite FTS5** full-text search table.
+- Supported formats: plain text, Markdown, PDF (PyMuPDF + pdfminer fallback), DOCX.
+- Documents are split into chunks (~512 characters) and indexed in **SQLite FTS5** full-text search.
+- Duplicate documents (same SHA256 hash) are detected — you can replace or keep both.
 
 ### How RAG Works
 1. User sends a message in 💬 Chat.
-2. `store_sqlite.search_fts(query, top_k=3)` retrieves the top-K most relevant chunks.
-3. Chunks are prepended to the LLM system prompt as context.
-4. LLM produces a grounded answer.
+2. `bot_rag.classify_query()` routes the query: **simple** (skip RAG), **factual** (use RAG), **contextual** (RAG if docs available).
+3. `bot_rag.retrieve_context()` selects search strategy based on hardware tier:
+   - **FTS5_ONLY** — BM25 full-text search (low RAM)
+   - **HYBRID** — BM25 + vector similarity + Reciprocal Rank Fusion (4–8 GB RAM)
+   - **FULL** — hybrid + reranking (≥ 8 GB RAM)
+4. Top-K chunks are prepended to the LLM prompt as `[KNOWLEDGE FROM USER DOCUMENTS]`.
+5. LLM produces a grounded answer. Retrieval metrics logged to `rag_log`.
 
 ### Admin Controls (Telegram)
 - Admin panel → **System** → **🔍 RAG / Knowledge Base** — toggle RAG on/off at runtime.
+- Admin panel → **🔍 RAG** → **📊 Stats** — view retrieval latency, query type breakdown, top queries.
 - The toggle writes/removes `~/.taris/rag_disabled` (flag file; presence = RAG off).
+
+### Per-User RAG Settings
+Each user can override the system defaults in **Profile → ⚙️ RAG Settings**:
+- **Top-K** — number of chunks to inject (1–20, ± 1)
+- **Chunk size** — maximum characters per chunk (200–4000, ± 200)
+- Press **↩️ Reset** to restore system defaults.
 
 ### Configuration
 | Constant | Default | Env var | Description |
 |---|---|---|---|
 | `RAG_ENABLED` | `true` | `RAG_ENABLED` | Master on/off switch |
-| `RAG_TOP_K` | `3` | `RAG_TOP_K` | Max chunks injected per request |
+| `RAG_TOP_K` | `3` | `RAG_TOP_K` | Max chunks injected per request (overridable per-user) |
 | `RAG_CHUNK_SIZE` | `512` | `RAG_CHUNK_SIZE` | Characters per chunk when indexing |
 | `RAG_FLAG_FILE` | `~/.taris/rag_disabled` | — | Flag file (presence = RAG off) |
 
 ---
 
-## Commands
+## 🛠 Developer Menu
+
+> Available to users with the **developer** role only.
+
+The Developer Menu provides debugging and monitoring tools accessible via Telegram.
+
+Access: Main Menu → **🛠 Dev**
+
+| Button | What it does |
+|---|---|
+| 💬 Dev Chat | Enter developer chat mode (LLM with developer context) |
+| 🔄 Restart Bot | Restart the Telegram service (requires confirmation) |
+| 📋 View Log | Show the last 30 lines of `telegram_bot.log` |
+| 🐛 Last Error | Show the most recent ERROR entry from the journal |
+| 📂 File List | List `~/.taris/*.py` files with sizes and modification times |
+| 🔒 Security Log | Show the last 20 security events (access denials, suspicious activity) |
+
+Security events are automatically logged to the `security_events` database table whenever an access denial or suspicious action occurs.
+
+---
+
+
 
 | Command | Description |
 |---------|-------------|

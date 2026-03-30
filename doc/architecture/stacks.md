@@ -1,6 +1,6 @@
 # Taris — Software Stacks
 
-**Version:** `2026.3.30+3`  
+**Version:** `2026.3.32`  
 → Architecture index: [architecture.md](../architecture.md)
 
 ## When to read this file
@@ -155,6 +155,10 @@ flowchart LR
 | `webrtcvad` | 2.0.10 | Voice Activity Detection (VAD) |
 | `requests` | 2.x | HTTP calls (LLM APIs, Telegram download) |
 | `openai` | 1.x | OpenAI API + compatible (Ollama REST) |
+| `pdfminer.six` | 20.x | PDF text extraction (fallback) |
+| `PyMuPDF` (`fitz`) | 1.23+ | PDF text + image extraction (primary; optional) |
+| `python-docx` | 0.8+ | DOCX document extraction |
+| `psutil` | 5.x | RAM detection for RAG tier selection |
 
 ### PicoClaw-only Python dependencies
 

@@ -1,6 +1,6 @@
 # Taris — Data Layer
 
-**Version:** `2026.3.30+3`  
+**Version:** `2026.3.32`  
 → Architecture index: [architecture.md](../architecture.md)
 
 ---
@@ -49,9 +49,14 @@ All backends implement this. Do NOT import `store_sqlite` or `store_postgres` di
 | `document_chunks` | Chunk text storage | `chunk_id, doc_id, chunk_text, chunk_index` |
 | `fts_documents` | FTS5 virtual table (BM25) | auto-indexed from `document_chunks` |
 | `chat_history` | Conversation turns | `chat_id, role, content, created_at` |
-| `conversation_summaries` | Tiered memory | `chat_id, tier (mid/long), content` |
-| `notes_index` | Note metadata | `slug, chat_id, title, updated_at` |
+| `conversation_summaries` | Tiered memory | `chat_id, tier (mid/long), summary, msg_count` |
+| `notes_index` | Note metadata + content | `slug, chat_id, title, content, updated_at` (DB-primary v2026.3.31) |
 | `contacts` | Contact book | `chat_id, name, phone, email` |
+| `rag_log` | RAG retrieval audit | `chat_id, query, query_type, n_chunks, chars_injected, latency_ms, created_at` |
+| `user_prefs` | Per-user settings | `chat_id, key, value` (e.g. `rag_top_k`, `rag_chunk_size`, `memory_enabled`) |
+| `system_settings` | Admin-configured globals | `key, value` (e.g. `CONVERSATION_HISTORY_MAX`, `CONV_SUMMARY_THRESHOLD`) |
+| `security_events` | Security audit log | `chat_id, event_type, detail, created_at` |
+| `llm_calls` | LLM call trace | `chat_id, model, prompt_chars, response_chars, latency_ms, rag_chunks, context_snapshot` |
 
 **Add a new column:** Add `ALTER TABLE ... ADD COLUMN ...` in `init_db()` — wrapped in `try/except OperationalError` for idempotency. See existing examples at `bot_db.py` lines ~85–100.
 

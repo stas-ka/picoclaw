@@ -29,13 +29,9 @@ Per-role command allowlists, System Chat branching, Developer role and menu.
 - [x] `DEVELOPER_USERS` constant + `_is_developer()` helper (v2026.3.30)
 - [x] `ADMIN_ALLOWED_CMDS` / `DEVELOPER_ALLOWED_CMDS` allowlists (v2026.3.30)
 - [x] Role-aware `_handle_system_message()` with `_classify_cmd_class()` (v2026.3.30)
-- [ ] Dev Menu — `_handle_dev_menu()`, Dev Chat, Restart / Log / Error / FileList buttons
+- [x] Dev Menu — `bot_dev.py`: Dev Chat, Restart/Log/Error/FileList/Security Log buttons (v2026.3.32)
+- [x] `security_events` DB table + `log_security_event()` + `log_access_denied()` (v2026.3.32)
 - [ ] Regression test — allowlist enforcement
-
-### 1.2 Central Security Layer — MicoGuard 🔲
-Role validation on every command/callback, security event logging, configurable access rules, runtime policy updates.
-
-- [ ] Security event logging (`security.log`)
 - [ ] Configurable access rules (admin UI + config file); runtime policy updates without restart
 ### 1.3 Contact Book ✅ Implemented (v2026.3.30)
 [] Add additional fields for contact

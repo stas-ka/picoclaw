@@ -1,6 +1,6 @@
 # Taris — Security Architecture
 
-**Version:** `2026.3.30+3`  
+**Version:** `2026.3.32`  
 → Architecture index: [architecture.md](../architecture.md)
 
 ## When to read this file
@@ -53,16 +53,14 @@ Modifying user roles, adding access guards, changing `bot_security.py`, `bot_acc
 
 ---
 
-## 6.5 Planned RBAC Extensions
-
-> ⏳ All items in this section are **not yet implemented** unless marked ✅.
+## 6.5 RBAC Extensions
 
 ### Full Role Model (Target)
 
 | Role | Status | System Chat | Admin Panel | Dev Menu | Features |
 |---|---|---|---|---|---|
 | **Admin** | ✅ Implemented | ✅ Read + config ops | ✅ Full | ❌ No | ✅ Full |
-| **Developer** | ✅ Infra done | ✅ All ops + restart | ✅ Full | ⏳ Menu not built | ✅ Full |
+| **Developer** | ✅ Implemented | ✅ All ops + restart | ✅ Full | ✅ bot_dev.py (v2026.3.32) | ✅ Full |
 | **Full User** | ✅ Implemented | ❌ No | ❌ No | ❌ No | ✅ Full |
 | **Approved Guest** | ✅ Implemented | ❌ No | ❌ No | ❌ No | ✅ Full (dynamic) |
 | **Limited Guest** | ⏳ Planned | ❌ No | ❌ No | ❌ No | ⏳ Subset only |
@@ -72,17 +70,22 @@ Modifying user roles, adding access guards, changing `bot_security.py`, `bot_acc
 
 → Spec: [doc/todo/1.1-rbac.md](../todo/1.1-rbac.md) · [doc/todo/1.3-developer-role.md](../todo/1.3-developer-role.md)
 
-### Developer Menu (Planned)
+### Developer Menu — ✅ Implemented (v2026.3.32)
 
-> ⏳ **OPEN:** Dev menu not yet built — infra (`_is_developer()`, allowlists) is ready. → [TODO.md §1.1](../TODO.md)
+Module: `src/features/bot_dev.py`  · Entry point: `dev_menu` callback
 
-| Button | Action | Allowlist class |
+| Button | Callback key | Action |
 |---|---|---|
-| 💬 Dev Chat | LLM with source context injected | n/a |
-| 🔄 Restart Bot | `systemctl restart taris-telegram` + confirm gate | `DEVELOPER_ALLOWED_CMDS` |
-| 📋 View Log | Last 30 lines `telegram_bot.log` | `ADMIN_ALLOWED_CMDS` |
-| 🐛 Last Error | Last ERROR line from journal | `ADMIN_ALLOWED_CMDS` |
-| 📂 File List | `~/.taris/*.py` with sizes + mtimes | `ADMIN_ALLOWED_CMDS` |
+| 💬 Dev Chat | `dev_chat` | LLM chat with role = developer context |
+| 🔄 Restart Bot | `dev_restart` → `dev_restart_confirmed` | `systemctl restart taris-telegram` + confirm gate |
+| 📋 View Log | `dev_log` | Last 30 lines `telegram_bot.log` |
+| 🐛 Last Error | `dev_error` | Last ERROR line from journal |
+| 📂 File List | `dev_files` | `~/.taris/*.py` with sizes + mtimes |
+| 🔒 Security Log | `dev_security_log` | Last 20 `security_events` rows |
+
+Security event logging functions:
+- `log_security_event(chat_id, event_type, detail)` → `security_events` table
+- `log_access_denied(chat_id, resource)` → records denied access attempts
 
 ### MicoGuard — Central Security Layer (Planned)
 

@@ -1,6 +1,6 @@
 # Taris — Conversation Architecture
 
-**Version:** `2026.3.30+3`  
+**Version:** `2026.3.32`  
 → Architecture index: [architecture.md](../architecture.md)
 
 ---
@@ -59,6 +59,16 @@ chat_history (DB, live turns)
 Injection: get_memory_context() → appended to role:system at every call
 Clear: Profile → 🗑 Clear memory → clear_history() deletes both tables
 ```
+
+**Per-user memory toggle:** Profile → 🧠 Memory On/Off → writes `memory_enabled` to `user_prefs` table.  
+When off: `get_memory_context()` returns empty string; no new summaries are generated.
+
+**Admin memory settings:** Admin Panel → 🧠 Memory Settings → updates `system_settings` table:
+- `CONVERSATION_HISTORY_MAX` — max turns in live window
+- `CONV_SUMMARY_THRESHOLD` — turns before mid-tier summary
+- `CONV_MID_MAX` — mid summaries before long-tier compaction
+
+Handler: `telegram/bot_admin._handle_admin_memory_settings()`
 
 ---
 
