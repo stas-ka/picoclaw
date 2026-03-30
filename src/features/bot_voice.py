@@ -1237,6 +1237,36 @@ def _handle_voice_message(chat_id: int, voice_obj) -> None:
         # Save assistant turn to history
         add_to_history(chat_id, "assistant", response)
 
+        # ── Log LLM call context trace ────────────────────────────────────────
+        try:
+            import uuid as _uuid, json as _json
+            from core.bot_db import db_log_llm_call
+            from core.bot_llm import _effective_temperature, get_active_model, OLLAMA_MODEL
+            from telegram.bot_access import _rag_debug_stats
+            _call_id = str(_uuid.uuid4())
+            _history_ids = [m["_db_id"] for m in _history_entries if m.get("_db_id")]
+            _rag_stats = _rag_debug_stats(chat_id, text)
+            _snapshot = _json.dumps([
+                {"role": m["role"], "content": m["content"][:80]}
+                for m in _history_msgs[-5:]
+            ])
+            db_log_llm_call(
+                _call_id, chat_id, LLM_PROVIDER,
+                _history_ids,
+                sum(len(m["content"]) for m in _messages),
+                bool(response),
+                model=get_active_model() or OLLAMA_MODEL,
+                temperature=_effective_temperature(),
+                system_chars=len(_system_content),
+                history_chars=sum(len(m["content"]) for m in _history_msgs),
+                rag_chunks_count=_rag_stats.get("chunks", 0),
+                rag_context_chars=_rag_stats.get("chars", 0),
+                response_preview=response[:300],
+                context_snapshot=_snapshot,
+            )
+        except Exception as _trace_e:
+            log.debug("[Voice] LLM call trace logging failed: %s", _trace_e)
+
         # ── Text answer ───────────────────────────────────────────────────────
         audio_on = (not opts.get("user_audio_toggle")
                     or _st._user_audio.get(chat_id, True))

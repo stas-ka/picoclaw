@@ -2857,7 +2857,8 @@ def t_voice_llm_routing(**_) -> list[TestResult]:
 
         imports_ask_llm   = "from core.bot_llm import ask_llm" in src
         no_ask_taris_imp  = "_ask_taris" not in src
-        calls_ask_llm     = "ask_llm(" in src
+        # Voice must use ask_llm_with_history (history-aware), not bare ask_llm()
+        calls_ask_llm     = "ask_llm_with_history(" in src
         no_taris_bin_call = "TARIS_BIN" not in src
 
         results.append(TestResult(
@@ -4239,6 +4240,114 @@ def t_rag_pipeline_completeness(**_) -> list[TestResult]:
     return results
 
 
+def t_llm_context_trace(**_) -> list:
+    """T60: LLM call trace — db_get_llm_trace exists, voice and chat log extended params.
+
+    Verifies the context contamination debug tooling added in v2026.5.x:
+    1. db_log_llm_call signature has extended keyword params (model, temperature, system_chars, etc.)
+    2. db_get_llm_trace function exists in bot_db.py
+    3. Voice pipeline calls db_log_llm_call after ask_llm_with_history
+    4. _rag_debug_stats helper exists in bot_access.py
+    5. admin_llm_trace callback wired in telegram_menu_bot.py
+    6. _handle_admin_llm_trace function exists in bot_admin.py
+    """
+    import time as _time
+    results = []
+    t0 = _time.time()
+
+    # 1. db_log_llm_call has extended keyword params
+    try:
+        src = Path("src/core/bot_db.py").read_text()
+        checks = [
+            ("model:", "model parameter in db_log_llm_call"),
+            ("temperature:", "temperature parameter in db_log_llm_call"),
+            ("system_chars:", "system_chars parameter in db_log_llm_call"),
+            ("history_chars:", "history_chars parameter in db_log_llm_call"),
+            ("rag_chunks_count:", "rag_chunks_count parameter in db_log_llm_call"),
+            ("response_preview:", "response_preview parameter in db_log_llm_call"),
+            ("context_snapshot:", "context_snapshot parameter in db_log_llm_call"),
+        ]
+        for term, label in checks:
+            ok = term in src
+            results.append(TestResult(
+                f"llm_trace_param_{term.replace(':', '')}",
+                "PASS" if ok else "FAIL",
+                _time.time() - t0,
+                f"db_log_llm_call has {label}" if ok else f"MISSING: {label} in bot_db.py",
+            ))
+    except Exception as e:
+        results.append(TestResult("llm_trace_db_params", "FAIL", _time.time() - t0, str(e)))
+
+    # 2. db_get_llm_trace function exists
+    try:
+        src = Path("src/core/bot_db.py").read_text()
+        ok = "def db_get_llm_trace" in src
+        results.append(TestResult(
+            "llm_trace_get_fn",
+            "PASS" if ok else "FAIL",
+            _time.time() - t0,
+            "db_get_llm_trace() defined in bot_db.py" if ok else "MISSING: db_get_llm_trace in bot_db.py",
+        ))
+    except Exception as e:
+        results.append(TestResult("llm_trace_get_fn", "FAIL", _time.time() - t0, str(e)))
+
+    # 3. Voice pipeline calls db_log_llm_call after LLM call
+    try:
+        src = Path("src/features/bot_voice.py").read_text()
+        ok = "db_log_llm_call" in src and "ask_llm_with_history" in src
+        results.append(TestResult(
+            "llm_trace_voice_logs",
+            "PASS" if ok else "FAIL",
+            _time.time() - t0,
+            "voice pipeline calls db_log_llm_call" if ok else "MISSING: db_log_llm_call not called in bot_voice.py",
+        ))
+    except Exception as e:
+        results.append(TestResult("llm_trace_voice_logs", "FAIL", _time.time() - t0, str(e)))
+
+    # 4. _rag_debug_stats exists in bot_access.py
+    try:
+        src = Path("src/telegram/bot_access.py").read_text()
+        ok = "def _rag_debug_stats" in src
+        results.append(TestResult(
+            "llm_trace_rag_stats_fn",
+            "PASS" if ok else "FAIL",
+            _time.time() - t0,
+            "_rag_debug_stats() in bot_access.py" if ok else "MISSING: _rag_debug_stats not in bot_access.py",
+        ))
+    except Exception as e:
+        results.append(TestResult("llm_trace_rag_stats_fn", "FAIL", _time.time() - t0, str(e)))
+
+    # 5. admin_llm_trace callback wired in telegram_menu_bot.py
+    try:
+        src = Path("src/telegram_menu_bot.py").read_text()
+        ok = "admin_llm_trace" in src and "_handle_admin_llm_trace" in src
+        results.append(TestResult(
+            "llm_trace_callback_wired",
+            "PASS" if ok else "FAIL",
+            _time.time() - t0,
+            "admin_llm_trace callback wired in telegram_menu_bot.py" if ok
+            else "MISSING: admin_llm_trace not dispatched in telegram_menu_bot.py",
+        ))
+    except Exception as e:
+        results.append(TestResult("llm_trace_callback_wired", "FAIL", _time.time() - t0, str(e)))
+
+    # 6. _handle_admin_llm_trace in bot_admin.py
+    try:
+        src = Path("src/telegram/bot_admin.py").read_text()
+        ok = "def _handle_admin_llm_trace" in src
+        results.append(TestResult(
+            "llm_trace_admin_handler",
+            "PASS" if ok else "FAIL",
+            _time.time() - t0,
+            "_handle_admin_llm_trace() in bot_admin.py" if ok
+            else "MISSING: _handle_admin_llm_trace not in bot_admin.py",
+        ))
+    except Exception as e:
+        results.append(TestResult("llm_trace_admin_handler", "FAIL", _time.time() - t0, str(e)))
+
+    return results
+
+
 TEST_FUNCTIONS = [
     t_model_files_present,
     t_piper_json_present,
@@ -4333,6 +4442,8 @@ TEST_FUNCTIONS = [
     t_rag_pipeline_completeness,
     # Voice pipeline uses ask_llm_with_history + saves turns to history (T59)
     t_voice_history_context,
+    # LLM context trace tool: db_get_llm_trace, voice logs, admin_llm_trace panel (T60)
+    t_llm_context_trace,
 ]
 
 

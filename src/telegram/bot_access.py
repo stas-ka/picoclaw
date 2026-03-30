@@ -213,6 +213,33 @@ def _docs_rag_context(chat_id: int, query: str) -> str:
         return ""
 
 
+def _rag_debug_stats(chat_id: int, query: str) -> dict:
+    """Return RAG stats (chunks count, total chars) for the last retrieval for this query.
+
+    Used by db_log_llm_call to record how much RAG context was injected.
+    Returns {"chunks": 0, "chars": 0} on any error or when RAG is disabled.
+    """
+    if not RAG_ENABLED:
+        return {"chunks": 0, "chars": 0}
+    try:
+        from core.store import store
+        from core.rag_settings import get as _rget
+        if not store.list_documents(chat_id):
+            return {"chunks": 0, "chars": 0}
+        rag_timeout = float(_rget("rag_timeout"))
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as _pool:
+            _fut = _pool.submit(store.search_fts, query, chat_id, RAG_TOP_K)
+            try:
+                results = _fut.result(timeout=rag_timeout)
+            except concurrent.futures.TimeoutError:
+                return {"chunks": 0, "chars": 0}
+        chunks = [r["chunk_text"] for r in (results or []) if r.get("chunk_text")]
+        combined = "\n---\n".join(chunks)[:2000]
+        return {"chunks": len(chunks), "chars": len(combined)}
+    except Exception:
+        return {"chunks": 0, "chars": 0}
+
+
 def _with_lang(chat_id: int, user_text: str) -> str:
     """Prepend security preamble + bot config + RAG context + language instruction, then wrap user text.
     Used for single-turn LLM calls (ask_llm). For multi-turn use _build_system_message + _user_turn_content.

@@ -105,14 +105,23 @@ CREATE INDEX IF NOT EXISTS idx_history_chat_time
 
 -- LLM calls tracker — records which history entries were included in each call
 CREATE TABLE IF NOT EXISTS llm_calls (
-    call_id       TEXT    PRIMARY KEY,
-    chat_id       INTEGER NOT NULL,
-    provider      TEXT,
-    history_count INTEGER DEFAULT 0,
-    history_ids   TEXT,
-    prompt_chars  INTEGER DEFAULT 0,
-    response_ok   INTEGER DEFAULT 1,
-    created_at    TEXT    DEFAULT (datetime('now'))
+    call_id            TEXT    PRIMARY KEY,
+    chat_id            INTEGER NOT NULL,
+    provider           TEXT,
+    history_count      INTEGER DEFAULT 0,
+    history_ids        TEXT,
+    prompt_chars       INTEGER DEFAULT 0,
+    response_ok        INTEGER DEFAULT 1,
+    -- extended trace columns (added in v2026.5.x)
+    model              TEXT    DEFAULT '',
+    temperature        REAL    DEFAULT 0.0,
+    system_chars       INTEGER DEFAULT 0,
+    history_chars      INTEGER DEFAULT 0,
+    rag_chunks_count   INTEGER DEFAULT 0,
+    rag_context_chars  INTEGER DEFAULT 0,
+    response_preview   TEXT    DEFAULT '',
+    context_snapshot   TEXT    DEFAULT '',
+    created_at         TEXT    DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_llm_calls_chat ON llm_calls(chat_id, created_at);
 
@@ -206,6 +215,15 @@ def init_db() -> None:
     for _migration in [
         "ALTER TABLE chat_history ADD COLUMN call_id TEXT",
         "ALTER TABLE documents ADD COLUMN doc_hash TEXT",
+        # llm_calls extended trace columns (v2026.5.x)
+        "ALTER TABLE llm_calls ADD COLUMN model TEXT DEFAULT ''",
+        "ALTER TABLE llm_calls ADD COLUMN temperature REAL DEFAULT 0.0",
+        "ALTER TABLE llm_calls ADD COLUMN system_chars INTEGER DEFAULT 0",
+        "ALTER TABLE llm_calls ADD COLUMN history_chars INTEGER DEFAULT 0",
+        "ALTER TABLE llm_calls ADD COLUMN rag_chunks_count INTEGER DEFAULT 0",
+        "ALTER TABLE llm_calls ADD COLUMN rag_context_chars INTEGER DEFAULT 0",
+        "ALTER TABLE llm_calls ADD COLUMN response_preview TEXT DEFAULT ''",
+        "ALTER TABLE llm_calls ADD COLUMN context_snapshot TEXT DEFAULT ''",
     ]:
         try:
             conn.execute(_migration)
@@ -290,20 +308,57 @@ def db_clear_history(chat_id: int) -> None:
     conn.commit()
 
 
-def db_log_llm_call(call_id: str, chat_id: int, provider: str,
-                    history_ids: list, prompt_chars: int,
-                    response_ok: bool) -> None:
-    """Record which history entries were sent to the LLM in this call."""
+def db_log_llm_call(
+    call_id: str, chat_id: int, provider: str,
+    history_ids: list, prompt_chars: int, response_ok: bool,
+    *,
+    model: str = "",
+    temperature: float = 0.0,
+    system_chars: int = 0,
+    history_chars: int = 0,
+    rag_chunks_count: int = 0,
+    rag_context_chars: int = 0,
+    response_preview: str = "",
+    context_snapshot: str = "",
+) -> None:
+    """Record which history entries were sent to the LLM in this call.
+
+    Extended trace params (all keyword-only) capture the full context breakdown:
+    - model/temperature: LLM runtime params
+    - system_chars/history_chars/rag_context_chars: context size breakdown
+    - rag_chunks_count: number of RAG document chunks injected
+    - response_preview: first 300 chars of the LLM response
+    - context_snapshot: JSON list of last N history messages (role + short preview)
+    """
     import json as _json
     conn = get_db()
     conn.execute(
         "INSERT OR IGNORE INTO llm_calls "
-        "(call_id, chat_id, provider, history_count, history_ids, prompt_chars, response_ok) "
-        "VALUES (?,?,?,?,?,?,?)",
+        "(call_id, chat_id, provider, history_count, history_ids, prompt_chars, response_ok,"
+        " model, temperature, system_chars, history_chars,"
+        " rag_chunks_count, rag_context_chars, response_preview, context_snapshot) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         (
             call_id, chat_id, provider, len(history_ids),
             _json.dumps(history_ids), prompt_chars,
             1 if response_ok else 0,
+            model, temperature, system_chars, history_chars,
+            rag_chunks_count, rag_context_chars,
+            response_preview[:300] if response_preview else "",
+            context_snapshot,
         ),
     )
     conn.commit()
+
+
+def db_get_llm_trace(chat_id: int, limit: int = 10) -> list:
+    """Return the N most recent LLM calls for a user with full trace info."""
+    conn = get_db()
+    rows = conn.execute(
+        "SELECT call_id, provider, model, temperature, history_count, history_chars,"
+        " system_chars, rag_chunks_count, rag_context_chars,"
+        " response_preview, context_snapshot, response_ok, created_at "
+        "FROM llm_calls WHERE chat_id=? ORDER BY created_at DESC LIMIT ?",
+        (chat_id, limit),
+    ).fetchall()
+    return [dict(r) for r in rows]

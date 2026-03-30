@@ -1,15 +1,21 @@
 [
   {
+    "version": "2026.3.30+6",
+    "date": "2026-03-30",
+    "title": "LLM context trace debug tool",
+    "notes": "- Admin > LLM Settings > Context Trace: shows last 5 LLM calls with provider/model/temperature/history/RAG breakdown\n- Extended llm_calls DB table: logs model, temperature, system_chars, history_chars, rag_chunks, response_preview, context_snapshot per call\n- Voice pipeline now logs to llm_calls (was missing)\n- Root cause analysis of 1837 context contamination bug documented\n- _rag_debug_stats() helper for RAG context size stats\n- T60 regression test (12 checks) for LLM trace tool\n- T39 updated: voice must use ask_llm_with_history (not bare ask_llm)"
+  },
+  {
     "version": "2026.3.30+5",
-    "date":    "2026-03-30",
-    "title":   "Voice pipeline conversation context memory fix",
-    "notes":   "- Fix: voice messages now use full conversation history (ask_llm_with_history) — was stateless single-turn before\n- Voice LLM call now includes: system message (security + bot config + long-term memory), prior conversation turns, and current user turn with RAG context\n- Both user (clean STT text) and assistant turns saved to conversation history\n- Add _voice_user_turn_content() in bot_access.py to properly split STT hint from system context\n- T59 regression test: 6 checks covering history-aware voice pipeline"
+    "date": "2026-03-30",
+    "title": "Voice pipeline conversation context memory fix",
+    "notes": "- Fix: voice messages now use full conversation history (ask_llm_with_history) — was stateless single-turn before\n- Voice LLM call now includes: system message (security + bot config + long-term memory), prior conversation turns, and current user turn with RAG context\n- Both user (clean STT text) and assistant turns saved to conversation history\n- Add _voice_user_turn_content() in bot_access.py to properly split STT hint from system context\n- T59 regression test: 6 checks covering history-aware voice pipeline"
   },
   {
     "version": "2026.3.30+4",
-    "date":    "2026-03-30",
-    "title":   "RAG pipeline fixes and admin LLM temperature control",
-    "notes":   "- Fix: store.log_rag_activity() was never called — RAG log was always empty; now called after every FTS retrieval\n- Fix: FTS search now enforced with rag_timeout via concurrent.futures (no more silent hangs)\n- Feature: LLM temperature configurable at runtime via Admin > RAG Settings (range 0.0-2.0)\n- Feature: _effective_temperature() in bot_llm.py reads runtime setting, falls back to LOCAL_TEMPERATURE\n- Feature: MAX_DOC_SIZE_MB=20 constant; upload rejects oversized files with user-visible error\n- Improvement: docs_restrictions_info now shows max file size (20 MB) in all 3 languages\n- Test: T58 regression test (8 checks) for all §4 RAG pipeline fixes\n- Docs: 3 Mermaid architecture diagrams added to doc/architecture/stacks.md"
+    "date": "2026-03-30",
+    "title": "RAG pipeline fixes and admin LLM temperature control",
+    "notes": "- Fix: store.log_rag_activity() was never called — RAG log was always empty; now called after every FTS retrieval\n- Fix: FTS search now enforced with rag_timeout via concurrent.futures (no more silent hangs)\n- Feature: LLM temperature configurable at runtime via Admin > RAG Settings (range 0.0-2.0)\n- Feature: _effective_temperature() in bot_llm.py reads runtime setting, falls back to LOCAL_TEMPERATURE\n- Feature: MAX_DOC_SIZE_MB=20 constant; upload rejects oversized files with user-visible error\n- Improvement: docs_restrictions_info now shows max file size (20 MB) in all 3 languages\n- Test: T58 regression test (8 checks) for all §4 RAG pipeline fixes\n- Docs: 3 Mermaid architecture diagrams added to doc/architecture/stacks.md"
   },
   {
     "version": "2026.3.30+3",

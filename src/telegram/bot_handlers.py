@@ -911,11 +911,28 @@ def _handle_chat_message(chat_id: int, user_text: str) -> None:
 
         # Log which history messages were included in this LLM call
         try:
+            import json as _json
+            from core.bot_llm import _effective_temperature, get_active_model, OLLAMA_MODEL
+            from telegram.bot_access import _rag_debug_stats
+            _rag_stats = _rag_debug_stats(chat_id, user_text)
+            _history_chars = sum(len(m["content"]) for m in history_msgs)
+            _snapshot = _json.dumps([
+                {"role": m["role"], "content": m["content"][:80]}
+                for m in history_msgs[-5:]
+            ])
             db_log_llm_call(
                 call_id, chat_id, LLM_PROVIDER,
                 history_ids,
                 sum(len(m["content"]) for m in messages),
                 bool(response),
+                model=get_active_model() or OLLAMA_MODEL,
+                temperature=_effective_temperature(),
+                system_chars=len(system_content),
+                history_chars=_history_chars,
+                rag_chunks_count=_rag_stats.get("chunks", 0),
+                rag_context_chars=_rag_stats.get("chars", 0),
+                response_preview=reply[:300],
+                context_snapshot=_snapshot,
             )
         except Exception as _e:
             log.warning(f"[History] LLM call DB logging failed: {_e}")

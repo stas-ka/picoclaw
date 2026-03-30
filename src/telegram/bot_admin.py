@@ -782,6 +782,7 @@ def _handle_admin_llm_menu(chat_id: int) -> None:
 
     kb.add(InlineKeyboardButton("🔵 OpenAI ChatGPT (key + models) ▶", callback_data="openai_llm_menu"))
     kb.add(InlineKeyboardButton("🔁  Fallback config ▶", callback_data="admin_llm_fallback_menu"))
+    kb.add(InlineKeyboardButton("🔍  Context Trace ▶", callback_data="admin_llm_trace"))
     kb.add(InlineKeyboardButton("🔙  Admin", callback_data="admin_menu"))
 
     try:
@@ -1097,6 +1098,7 @@ def _handle_admin_rag_settings(chat_id: int) -> None:
     topk    = _rget("rag_top_k")
     chunk   = _rget("rag_chunk_size")
     timeout = _rget("rag_timeout")
+    temp    = _rget("llm_temperature")
     kb = InlineKeyboardMarkup()
     kb.add(InlineKeyboardButton(
         _t(chat_id, "admin_rag_set_topk").format(topk=topk),
@@ -1107,16 +1109,20 @@ def _handle_admin_rag_settings(chat_id: int) -> None:
     kb.add(InlineKeyboardButton(
         _t(chat_id, "admin_rag_set_timeout").format(timeout=timeout),
         callback_data="admin_rag_set_timeout"))
+    kb.add(InlineKeyboardButton(
+        _t(chat_id, "admin_rag_set_temp").format(temp=temp),
+        callback_data="admin_rag_set_temp"))
     kb.add(InlineKeyboardButton(_t(chat_id, "btn_back"), callback_data="admin_rag_menu"))
     bot.send_message(chat_id, _t(chat_id, "admin_rag_settings"), reply_markup=kb)
 
 
 def _start_admin_rag_set(chat_id: int, param: str) -> None:
-    """Prompt admin to enter a new value for param (topk/chunk/timeout)."""
+    """Prompt admin to enter a new value for param (topk/chunk/timeout/temp)."""
     key_map = {
         "topk":    "admin_rag_enter_topk",
         "chunk":   "admin_rag_enter_chunk",
         "timeout": "admin_rag_enter_timeout",
+        "temp":    "admin_rag_enter_temp",
     }
     _st._user_mode[chat_id] = f"admin_rag_set_{param}"
     bot.send_message(chat_id, _t(chat_id, key_map[param]),
@@ -1128,11 +1134,16 @@ def _finish_admin_rag_set(chat_id: int, text: str) -> None:
     mode = _st._user_mode.pop(chat_id, "")
     from core.rag_settings import set_value as _rset
     param = mode.replace("admin_rag_set_", "")
-    limits = {"topk": (1, 20), "chunk": (128, 2048), "timeout": (5, 120)}
-    key_map = {"topk": "rag_top_k", "chunk": "rag_chunk_size", "timeout": "rag_timeout"}
+    limits: dict = {
+        "topk": (1, 20), "chunk": (128, 2048), "timeout": (5, 120), "temp": (0.0, 2.0),
+    }
+    key_map = {
+        "topk": "rag_top_k", "chunk": "rag_chunk_size",
+        "timeout": "rag_timeout", "temp": "llm_temperature",
+    }
     lo, hi = limits.get(param, (1, 9999))
     try:
-        val = int(text.strip())
+        val: float | int = float(text.strip()) if param == "temp" else int(text.strip())
         assert lo <= val <= hi
     except (ValueError, AssertionError):
         bot.send_message(chat_id, _t(chat_id, "admin_rag_setting_invalid"))
@@ -1166,3 +1177,68 @@ def _handle_admin_rag_log(chat_id: int) -> None:
         bot.send_message(chat_id, text, parse_mode="Markdown")
     except Exception:
         bot.send_message(chat_id, _re.sub(r"[*_`]", "", text))
+
+
+def _handle_admin_llm_trace(chat_id: int) -> None:
+    """Show a detailed context trace of recent LLM calls for this user.
+
+    Displays: provider/model, temperature, history count/chars, RAG chunks,
+    system message chars, and a preview of the last few history messages that
+    were injected into each call. Helps diagnose context contamination bugs
+    (e.g. the '1837 year' hallucination from Pushkin conversation history).
+    """
+    from core.bot_db import db_get_llm_trace
+    rows = db_get_llm_trace(chat_id, limit=5)
+    kb = InlineKeyboardMarkup()
+    kb.add(InlineKeyboardButton("🔙  LLM Settings", callback_data="admin_llm_menu"))
+    if not rows:
+        text = _t(chat_id, "admin_llm_trace_title").format(n=0) + "\n" + _t(chat_id, "admin_llm_trace_empty")
+        try:
+            bot.send_message(chat_id, text, parse_mode="Markdown", reply_markup=kb)
+        except Exception:
+            bot.send_message(chat_id, _re.sub(r"[*_`]", "", text), reply_markup=kb)
+        return
+
+    lines = [_t(chat_id, "admin_llm_trace_title").format(n=len(rows))]
+    for i, r in enumerate(rows, 1):
+        model_s = (r.get("model") or "?")[:20]
+        temp_s  = f"{r.get('temperature', 0.0):.2f}"
+        resp_preview = (r.get("response_preview") or "")[:60].replace("\n", " ")
+        lines.append(
+            _t(chat_id, "admin_llm_trace_call").format(
+                i=i,
+                ts=r["created_at"][:16],
+                provider=r.get("provider") or "?",
+                model=model_s,
+                temp=temp_s,
+                hist=r.get("history_count", 0),
+                hist_c=r.get("history_chars", 0),
+                sys_c=r.get("system_chars", 0),
+                rag_n=r.get("rag_chunks_count", 0),
+                rag_c=r.get("rag_context_chars", 0),
+                resp=resp_preview or "—",
+            )
+        )
+        # Show context snapshot (last N history messages at call time)
+        snapshot_json = r.get("context_snapshot") or ""
+        if snapshot_json:
+            try:
+                import json as _json
+                snaps = _json.loads(snapshot_json)
+                if snaps:
+                    lines.append(_t(chat_id, "admin_llm_trace_snapshot_title").format(i=i))
+                    for s in snaps:
+                        role    = s.get("role", "?")
+                        preview = (s.get("content") or "")[:60].replace("\n", " ")
+                        lines.append(_t(chat_id, "admin_llm_trace_snapshot_row").format(
+                            role=role, preview=preview
+                        ))
+            except Exception:
+                pass
+        lines.append("")  # blank separator
+
+    text = "\n".join(lines)
+    try:
+        bot.send_message(chat_id, text, parse_mode="Markdown", reply_markup=kb)
+    except Exception:
+        bot.send_message(chat_id, _re.sub(r"[*_`]", "", text), reply_markup=kb)

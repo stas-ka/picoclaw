@@ -75,6 +75,7 @@ from telegram.bot_admin import (
     _handle_admin_voice_config, _handle_admin_stt_set, _handle_admin_fw_model_set,
     _handle_admin_rag_menu, _handle_admin_rag_toggle, _handle_admin_rag_log,
     _handle_admin_rag_settings, _start_admin_rag_set, _finish_admin_rag_set,
+    _handle_admin_llm_trace,
     _admin_keyboard,
 )
 
@@ -506,13 +507,19 @@ def callback_handler(call):
         else:
             bot.send_message(cid, _t(cid, "admin_only"))
 
+    elif data == "admin_llm_trace":
+        if _is_admin(cid):
+            _handle_admin_llm_trace(cid)
+        else:
+            bot.send_message(cid, _t(cid, "admin_only"))
+
     elif data == "admin_rag_settings":
         if _is_admin(cid):
             _handle_admin_rag_settings(cid)
         else:
             bot.send_message(cid, _t(cid, "admin_only"))
 
-    elif data in ("admin_rag_set_topk", "admin_rag_set_chunk", "admin_rag_set_timeout"):
+    elif data in ("admin_rag_set_topk", "admin_rag_set_chunk", "admin_rag_set_timeout", "admin_rag_set_temp"):
         if _is_admin(cid):
             _start_admin_rag_set(cid, data[len("admin_rag_set_"):])
         else:
@@ -945,7 +952,7 @@ def text_handler(message):
             bot.send_message(cid, _t(cid, "admin_only"))
         return
 
-    if mode in ("admin_rag_set_topk", "admin_rag_set_chunk", "admin_rag_set_timeout"):
+    if mode in ("admin_rag_set_topk", "admin_rag_set_chunk", "admin_rag_set_timeout", "admin_rag_set_temp"):
         if _is_admin(cid):
             _finish_admin_rag_set(cid, message.text)
         else:
