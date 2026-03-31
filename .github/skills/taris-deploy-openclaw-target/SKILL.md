@@ -54,28 +54,48 @@ TariStation2 is the local machine — no SSH credentials needed.
 
 ## 🚀 Quick Deploy via Script (Recommended)
 
-Use the interactive deploy scripts instead of manual steps for all standard deployments:
+All deployment operations use the unified `taris_deploy.sh` script:
 
 ```bash
 # Deploy to TariStation2 (local engineering target) — ALWAYS first
-bash src/setup/update_openclaw.sh --target ts2
+bash src/setup/taris_deploy.sh --action deploy --target ts2
 
 # Deploy to TariStation1 (remote production) — only after TS2 verified + user confirmed
-bash src/setup/update_openclaw.sh --target ts1
+bash src/setup/taris_deploy.sh --action deploy --target ts1
+
+# Patch specific files only (fast iteration)
+bash src/setup/taris_deploy.sh --action patch --target ts2 \
+  --files "core/bot_llm.py,telegram_menu_bot.py"
+
+# Backup only (before risky changes)
+bash src/setup/taris_deploy.sh --action backup --target ts2 --backup-type all
+
+# Run migration only (after schema change)
+bash src/setup/taris_deploy.sh --action migrate --target ts2
+
+# Verify service status + journal
+bash src/setup/taris_deploy.sh --action verify --target ts2
+
+# Restart services only
+bash src/setup/taris_deploy.sh --action restart --target ts2
+
+# Full install (first-time setup on new TariStation machine)
+bash src/setup/taris_deploy.sh --action install --target ts2
 
 # Options:
-#   --yes          Non-interactive (CI mode)
-#   --no-backup    Skip backup (iteration only)
-#   --no-tests     Skip smoke tests
+#   --yes            Non-interactive (CI mode)
+#   --no-backup      Skip pre-deploy backup (rapid iteration only)
+#   --no-tests       Skip smoke tests
+#   --no-migrate     Skip migration step
 #   --force-restart  Restart even if no change detected
+#   --git-ref TAG    Checkout specific commit/tag before deploy
 ```
 
-The script handles: backup → deploy all packages → service files → restart → journal check → smoke tests → summary.
+The script handles: backup → data check → deploy all packages → service files → migration → restart → journal verify → smoke tests → summary.
 
-**Fresh install** (first-time setup on a new TariStation machine):
-```bash
-bash src/setup/install_openclaw.sh [--variant ts2] [--gpu] [--no-postgres]
-```
+> **Legacy wrappers** (backward compat, delegate to taris_deploy.sh):
+> - `bash src/setup/update_openclaw.sh --target ts2`
+> - `bash src/setup/update_openclaw.sh --target ts1`
 
 ---
 

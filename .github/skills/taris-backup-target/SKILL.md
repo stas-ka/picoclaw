@@ -1,38 +1,63 @@
 ---
 name: taris-backup-target
 description: >
-  Backup a Raspberry Pi target (data, software, system config, binaries, or all).
+  Backup a target (data, software, system config, binaries, or all).
   Use before any deploy, migration, or schema change.
+  Supports all targets: ts2, ts1, pi2, pi1 via taris_deploy.sh.
 argument-hint: >
-  host: OpenClawPI | OpenClawPI2 (default: OpenClawPI)
-  type: data | software | system | binaries | all (default: all)
-  path: local destination (default: ./backup/snapshots/)
+  target: ts2 | ts1 | pi2 | pi1
+  type: data | software | system | binaries | all (default: data)
 ---
 
 ## When to Use
 
 | Trigger | Minimal type |
 |---|---|
-| Before any `deploy-to-target` or `safe-update` | `data` |
+| Before any `deploy` or `safe-update` | `data` |
 | Before schema migration | `data` |
-| After Pi re-image | `all` |
+| After re-image / fresh install | `all` |
 | Periodic snapshot | `all` |
 
 ---
 
-## Step 0 — Read credentials
+## 🚀 Quick Backup via Script (Recommended)
 
-Read `.env` from workspace root:
-- `HOSTPWD` → password for `OpenClawPI`
-- `HOSTPWD2` → password for `OpenClawPI2`
-
-If no parameters provided, ask: **"Back up which host? (OpenClawPI / OpenClawPI2)"**
-
-Generate timestamp label from remote:
 ```bash
-plink -pw "PASS" -batch stas@HOST "date +%Y%m%d_%H%M%S"
+# Backup TariStation2 (local OpenClaw) — data only
+bash src/setup/taris_deploy.sh --action backup --target ts2 --backup-type data
+
+# Backup TariStation1 (SintAItion, remote OpenClaw) — all types
+bash src/setup/taris_deploy.sh --action backup --target ts1 --backup-type all
+
+# Backup PI2 (engineering Pi) — data only
+bash src/setup/taris_deploy.sh --action backup --target pi2 --backup-type data
+
+# Backup PI1 (production Pi) — all types
+bash src/setup/taris_deploy.sh --action backup --target pi1 --backup-type all
 ```
-Local snapshot name: `taris_backup_HOST_vVERSION_TIMESTAMP`
+
+Backup types: `data` (db+config+user files), `software` (Python src), `system` (service files), `binaries` (pip freeze + dpkg list), `all` (everything)
+
+Backups saved to: `backup/snapshots/taris_backup_<TARGET>_v<VERSION>_<TIMESTAMP>/`
+Last 3 backups per target are kept; older ones are removed automatically.
+
+---
+
+## Backup Contents by Type
+
+| Type | Contents |
+|---|---|
+| `data` | `taris.db`, `bot.env`, `config.json`, `voice_opts.json`, `users.json`, `calendar/`, `mail_creds/`, `notes/`, `error_protocols/`, `docs/` (RAG documents), `screens/` |
+| `software` | `*.py`, `strings.json`, `release_notes.json`, `core/`, `telegram/`, `features/`, `ui/`, `security/`, `web/`, `setup/`, `services/` |
+| `system` | User systemd `~/.config/systemd/user/taris*.service` (openclaw) or `/etc/systemd/system/taris*.service` (picoclaw) |
+| `binaries` | `pip3 freeze`, `dpkg -l` for key packages, binary version |
+| `all` | All of the above |
+
+---
+
+## Manual Backup (Pi targets, legacy)
+
+For Pi targets without sshpass available on the dev machine:
 
 ---
 
