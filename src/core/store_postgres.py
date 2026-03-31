@@ -180,6 +180,8 @@ CREATE TABLE IF NOT EXISTS vec_embeddings (
 CREATE INDEX IF NOT EXISTS idx_vec_embedding
     ON vec_embeddings USING hnsw (embedding vector_cosine_ops)
     WITH (m = 16, ef_construction = 64);
+CREATE INDEX IF NOT EXISTS idx_vec_fts
+    ON vec_embeddings USING GIN (to_tsvector('simple', coalesce(chunk_text, '')));
 """
 
 
@@ -672,20 +674,90 @@ class PostgresStore:
             )
             conn.commit()
 
-    # ── FTS5 text search (stubs — not implemented for Postgres) ───────────────
+    # ── FTS text search (Postgres plainto_tsquery on vec_embeddings) ──────────
 
     def has_document_search(self) -> bool:
-        return False  # Postgres adapter uses pgvector; FTS5 not implemented here
+        return True  # implemented via Postgres full-text search
 
     def upsert_chunk_text(self, doc_id: str, chunk_idx: int, chat_id: int,
                           chunk_text: str) -> None:
-        pass  # not implemented for Postgres
+        """Store a text chunk without a vector (FTS-only path)."""
+        with self._pool.connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO vec_embeddings(doc_id, chunk_idx, chat_id, chunk_text)
+                VALUES (%s, %s, %s, %s)
+                ON CONFLICT (doc_id, chunk_idx, chat_id) DO UPDATE
+                    SET chunk_text = EXCLUDED.chunk_text
+                """,
+                (doc_id, chunk_idx, chat_id, chunk_text),
+            )
+            conn.commit()
 
     def search_fts(self, query: str, chat_id: int, top_k: int = 5) -> list[dict]:
-        return []  # not implemented for Postgres
+        """Full-text search across user's document chunks using Postgres tsvector.
+
+        Uses 'simple' dictionary so no language-specific stemming is needed —
+        works for Russian, German, and English without extra config.
+        Falls back to ILIKE when no FTS tokens matched.
+        """
+        import re
+        tokens = re.findall(r"\w+", query, re.UNICODE)
+        meaningful = [t for t in tokens if len(t) >= 2][:12]
+        if not meaningful:
+            return []
+
+        # plainto_tsquery automatically handles OR/AND; 'simple' = no stemming
+        fts_query = " ".join(meaningful)
+        try:
+            with self._pool.connection() as conn:
+                rows = conn.execute(
+                    """
+                    SELECT doc_id, chunk_text,
+                           ts_rank(to_tsvector('simple', coalesce(chunk_text,'')),
+                                   plainto_tsquery('simple', %s)) AS rank
+                    FROM vec_embeddings
+                    WHERE chat_id = %s
+                      AND chunk_text IS NOT NULL
+                      AND to_tsvector('simple', coalesce(chunk_text,''))
+                              @@ plainto_tsquery('simple', %s)
+                    ORDER BY rank DESC
+                    LIMIT %s
+                    """,
+                    (fts_query, chat_id, fts_query, top_k),
+                ).fetchall()
+                if rows:
+                    return [{"doc_id": r["doc_id"], "chunk_text": r["chunk_text"],
+                             "score": float(r["rank"])} for r in rows]
+
+            # Fallback: ILIKE partial match when plainto_tsquery finds nothing
+            with self._pool.connection() as conn:
+                patterns = [f"%{t}%" for t in meaningful[:4]]
+                conditions = " OR ".join("chunk_text ILIKE %s" for _ in patterns)
+                rows = conn.execute(
+                    f"""
+                    SELECT doc_id, chunk_text, 0.01 AS rank
+                    FROM vec_embeddings
+                    WHERE chat_id = %s AND chunk_text IS NOT NULL
+                      AND ({conditions})
+                    LIMIT %s
+                    """,
+                    (chat_id, *patterns, top_k),
+                ).fetchall()
+                return [{"doc_id": r["doc_id"], "chunk_text": r["chunk_text"],
+                         "score": float(r["rank"])} for r in rows]
+        except Exception as exc:
+            log.warning("[StorePostgres] FTS search error: %s", exc)
+            return []
 
     def delete_text_chunks(self, doc_id: str) -> None:
-        pass  # not implemented for Postgres
+        """Remove all text chunks for a document (rows without embeddings only)."""
+        with self._pool.connection() as conn:
+            conn.execute(
+                "DELETE FROM vec_embeddings WHERE doc_id = %s AND embedding IS NULL",
+                (doc_id,),
+            )
+            conn.commit()
 
     # ── Lifecycle ─────────────────────────────────────────────────────────────
 
