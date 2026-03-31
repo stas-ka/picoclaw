@@ -1361,15 +1361,14 @@ def main() -> None:
         log.info("[VoiceOpt] persistent_piper enabled — starting Piper keepalive")
         threading.Thread(target=_start_persistent_piper, daemon=True).start()
 
-    # NOTE: FasterWhisper preloading is intentionally DISABLED in the Telegram bot process.
-    # Preloading imports transformers→torch which pulls in 1+ GB of CUDA libraries,
-    # causing VmRSS to reach 1GB and VmPeak to 6GB on x86_64 machines with CUDA installed.
-    # The first voice message will have a ~1-2s model-load delay — acceptable.
-    # Voice assistant process (voice_assistant.py) may still preload independently.
-    #
-    # if STT_PROVIDER == "faster_whisper" or _st._voice_opts.get("faster_whisper_stt"):
-    #     log.info("[FasterWhisper] preloading model in background thread")
-    #     threading.Thread(target=_fw_preload, daemon=True).start()
+    # FasterWhisper preloading: disabled by default (CUDA libs inflate RSS to 1 GB+).
+    # Re-enabled for the openclaw variant where the device is ROCm (AMD GPU), not CUDA,
+    # so the RAM penalty is lower and cold-start latency (~4s) is unacceptable.
+    if DEVICE_VARIANT == "openclaw" and (
+        STT_PROVIDER == "faster_whisper" or _st._voice_opts.get("faster_whisper_stt")
+    ):
+        log.info("[FasterWhisper] openclaw: preloading model in background thread")
+        threading.Thread(target=_fw_preload, daemon=True).start()
 
     # ── Startup tasks ─────────────────────────────────────────────────────
     _st.load_conversation_history()

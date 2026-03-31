@@ -2790,7 +2790,7 @@ async def api_benchmark(request: Request):
     llm_error = None
     llm_reply = ""
     try:
-        llm_reply = ask_llm(prompt, timeout=60) or ""
+        llm_reply = await asyncio.to_thread(lambda: ask_llm(prompt, timeout=60)) or ""
     except Exception as e:
         llm_error = str(e)
     llm_ms = int((time.monotonic() - t0) * 1000)
@@ -2817,12 +2817,15 @@ async def api_benchmark(request: Request):
         tts_error = None
         tts_audio_ms = 0
         try:
-            pr = subprocess.run(
-                [piper_bin, "--model", model_path, "--output-raw"],
-                input=tts_text.encode("utf-8"), capture_output=True, timeout=60,
-            )
-            if pr.stdout:
-                tts_audio_ms = int(len(pr.stdout) / (22050 * 2) * 1000)
+            def _run_piper() -> bytes:
+                pr = subprocess.run(
+                    [piper_bin, "--model", model_path, "--output-raw"],
+                    input=tts_text.encode("utf-8"), capture_output=True, timeout=60,
+                )
+                return pr.stdout or b""
+            tts_out = await asyncio.to_thread(_run_piper)
+            if tts_out:
+                tts_audio_ms = int(len(tts_out) / (22050 * 2) * 1000)
         except Exception as e:
             tts_error = str(e)
         tts_ms = int((time.monotonic() - t0) * 1000)
@@ -2842,7 +2845,9 @@ async def api_benchmark(request: Request):
     stt_result = None
     try:
         silence_pcm = b"\x00" * (16000 * 2 * 2)   # 2 s of silence
-        stt_result = _stt_faster_whisper_web(silence_pcm, 16000, lang=lang)
+        stt_result = await asyncio.to_thread(
+            lambda: _stt_faster_whisper_web(silence_pcm, 16000, lang=lang)
+        )
     except Exception as e:
         stt_error = str(e)
     stt_ms = int((time.monotonic() - t0) * 1000)

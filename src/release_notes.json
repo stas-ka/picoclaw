@@ -1,5 +1,13 @@
 [
   {
+    "version": "2026.3.49",
+    "date": "2026-03-31",
+    "changes": [
+      "Fix: api_benchmark blocks uvicorn event loop — LLM/TTS/STT calls now use asyncio.to_thread, eliminating HTTP 000 timeouts under load",
+      "Fix: FasterWhisper preload re-enabled for openclaw variant (DEVICE_VARIANT=openclaw) to eliminate 4s cold-start delay; CUDA RAM concern does not apply to ROCm setup"
+    ]
+  },
+  {
     "version": "2026.3.48",
     "date": "2026-03-31",
     "changes": [
