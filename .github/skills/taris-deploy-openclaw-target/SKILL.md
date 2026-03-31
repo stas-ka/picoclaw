@@ -165,18 +165,23 @@ echo "Local backup: backup/snapshots/${BNAME}/"
 ### TariStation2 (local)
 
 ```bash
-for d in calendar notes contacts mail_creds error_protocols screens; do
+# Directories that must exist (docs/ = uploaded RAG knowledge base)
+for d in calendar notes docs mail_creds error_protocols screens; do
   echo "=== $d ==="; ls -la ~/.taris/$d/ 2>/dev/null || echo MISSING
 done
+# Core files + DB row counts
 ls -la ~/.taris/taris.db ~/.taris/bot.env ~/.taris/voice_opts.json 2>/dev/null || echo SOME_FILES_MISSING
+python3 -c "import sqlite3; c=sqlite3.connect(os.path.expanduser('~/.taris/taris.db')); [print(t, c.execute('SELECT COUNT(*) FROM '+t).fetchone()[0]) for t in ['users','calendar_events','notes_index','contacts','documents','chat_history','conversation_summaries']]" 2>/dev/null
 ```
+
+> Note: `contacts` is stored in SQLite only (no `contacts/` directory). `docs/` holds uploaded RAG document files.
 
 ### TariStation1 (SintAItion)
 
 ```bash
 source /home/stas/projects/sintaris-pl/.env
 sshpass -p "$OPENCLAW1PWD" ssh -o StrictHostKeyChecking=no ${OPENCLAW1_USER:-stas}@${OPENCLAW1_HOST} \
-  "for d in calendar notes contacts mail_creds error_protocols screens; do echo \"=== \$d ===\"; ls -la ~/.taris/\$d/ 2>/dev/null || echo MISSING; done && ls -la ~/.taris/taris.db ~/.taris/bot.env 2>/dev/null || echo SOME_FILES_MISSING"
+  "for d in calendar notes docs mail_creds error_protocols screens; do echo \"=== \$d ===\"; ls -la ~/.taris/\$d/ 2>/dev/null || echo MISSING; done && ls -la ~/.taris/taris.db ~/.taris/bot.env 2>/dev/null || echo SOME_FILES_MISSING"
 ```
 
 ---

@@ -376,6 +376,70 @@ After setup, access the Pi from anywhere: `plink -pw "..." -batch stas@<TAILSCAL
 
 ---
 
+## User Data: Storage, Backup & Migration
+
+### Data map — what lives where
+
+| Data | Storage | Path |
+|------|---------|------|
+| Users + roles | SQLite | `taris.db` → `users` table |
+| Voice settings | SQLite | `taris.db` → `voice_opts`, `global_voice_opts` |
+| Calendar events | SQLite | `taris.db` → `calendar_events` |
+| Notes index + content | SQLite + Files | `taris.db` → `notes_index`; files at `notes/<chat_id>/*.md` |
+| Contacts | SQLite | `taris.db` → `contacts` (no files) |
+| Mail credentials | SQLite + Files | `taris.db` → `mail_creds`; legacy JSON in `mail_creds/` |
+| Chat history | SQLite | `taris.db` → `chat_history` |
+| Conversation memory | SQLite | `taris.db` → `conversation_summaries`, `user_prefs` |
+| RAG documents (metadata) | SQLite | `taris.db` → `documents`, `doc_chunks` |
+| RAG documents (files) | Files | `docs/<chat_id>/*.pdf/.docx/.txt/.md` |
+| Uploaded knowledge base | Files | `docs/<chat_id>/` |
+| Screen DSL configs | Files | `screens/*.yaml` |
+| Error protocols | Files | `error_protocols/` |
+| Secrets | File | `bot.env` |
+| System settings | File + SQLite | `config.json`, `taris.db` → `system_settings` |
+
+### Before every deploy: backup user data
+
+```bash
+# TariStation2 (local)
+TS=$(date +%Y%m%d_%H%M%S)
+VER=$(grep BOT_VERSION ~/.taris/core/bot_config.py | head -1 | cut -d'"' -f2)
+BNAME="taris_backup_TariStation2_v${VER}_${TS}"
+tar czf ~/projects/sintaris-pl/backup/snapshots/${BNAME}.tar.gz \
+  -C ~/.taris \
+  --exclude='vosk-model-*' --exclude='*.onnx' --exclude='ggml-*.bin' --exclude='*/__pycache__' \
+  taris.db bot.env config.json *.json \
+  calendar/ mail_creds/ notes/ error_protocols/ docs/ screens/ \
+  2>/dev/null && echo "BACKUP_OK"
+```
+
+> **CRITICAL:** `docs/` must be included — it holds uploaded PDF/DOCX files for the RAG knowledge base.
+> Without backing up `docs/`, document metadata in the DB exists but the files are gone.
+
+### After fresh install / restore: run migration
+
+```bash
+# After restoring a backup to a new machine or fresh OS:
+cd ~/.taris
+python3 setup/migrate_to_db.py
+
+# To skip document re-indexing (faster, e.g. schema-only migration):
+python3 setup/migrate_to_db.py --skip-docs
+
+# Dry-run preview:
+python3 setup/migrate_to_db.py --dry-run
+```
+
+Migration handles:
+- `users.json` / `registrations.json` → `users` table
+- `voice_opts.json` → `global_voice_opts` table
+- `calendar/<user>.json` → `calendar_events` table
+- `notes/<user>/*.md` → `notes_index` table
+- `mail_creds/<user>.json` → `mail_creds` table
+- `docs/<chat_id>/<file>` → `documents` + `doc_chunks` tables *(re-indexes on restore)*
+
+---
+
 ## Updating an Existing Target
 
 For incremental code updates (no fresh OS needed), see the deployment workflow in `.github/copilot-instructions.md`:

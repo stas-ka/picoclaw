@@ -46,6 +46,7 @@ plink -pw "PASS" -batch stas@HOST \
     --exclude='.taris/*.onnx' --exclude='.taris/*.bin' --exclude='.taris/*.log' \
     .taris/taris.db .taris/*.json .taris/bot.env .taris/config.json \
     .taris/calendar/ .taris/mail_creds/ .taris/notes/ .taris/error_protocols/ \
+    .taris/docs/ .taris/screens/ \
     2>/dev/null; echo done"
 
 # Pull to local
@@ -55,7 +56,7 @@ pscp -pw "PASS" stas@HOST:/tmp/taris_data_TS.tar.gz "PATH\taris_backup_HOST_TS\"
 plink -pw "PASS" -batch stas@HOST "rm -f /tmp/taris_data_TS.tar.gz"
 ```
 
-**Archive contents:** `taris.db`, `bot.env`, `config.json`, `voice_opts.json`, `calendar/`, `mail_creds/`, `notes/`
+**Archive contents:** `taris.db`, `bot.env`, `config.json`, `voice_opts.json`, `calendar/`, `mail_creds/`, `notes/`, `docs/` (RAG uploaded documents), `screens/` (screen DSL YAML)
 
 ---
 
