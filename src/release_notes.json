@@ -8,7 +8,9 @@
       "Fix: search_similar missing chunk_idx in SELECT — RRF fusion collapsed all doc chunks to single entry (fix: added chunk_idx to SELECT)",
       "Result: Russian queries now retrieve 3 relevant chunks from English/German documents via cross-lingual vector search",
       "Test: T80 regression test added (4 checks)"
-    ]
+    ],
+    "title": "RAG hybrid retrieval — 3 root causes fixed",
+    "notes": "- Fixed: psutil missing → RAM detection fell back to 0 GB → HYBRID strategy never activated; now uses /proc/meminfo fallback\n- Fixed: embed() called with list arg instead of string → vector search returned empty results for all queries\n- Fixed: search_similar() SELECT missing chunk_idx column → RRF fusion collapsed all chunks to 1 result\n- After fixes: Russian queries correctly return 3 chunks via hybrid strategy against cross-lingual documents\n- Added T80 regression test (4 checks)"
   },
   {
     "version": "2026.3.47",
@@ -17,14 +19,18 @@
       "Fix: RAG View Log crashed with no effect on Postgres targets (datetime[:16] TypeError)",
       "Fix: str() wrap on created_at and query fields in _handle_admin_rag_log for SQLite+Postgres compat",
       "Test: T79 regression test for RAG log datetime serialization"
-    ]
+    ],
+    "title": "RAG View Log fix — Postgres datetime TypeError",
+    "notes": "- Fixed: _handle_admin_rag_log() crashed silently on Postgres because datetime.datetime objects are not subscriptable with [:16]\n- Fix: str() wrap on created_at and query fields (works for both Postgres datetime and SQLite string)\n- Added T79 regression test (3 checks)"
   },
   {
     "version": "2026.3.46",
     "date": "2026-03-31",
     "changes": [
       "Fix: text message without active mode now routes to chat instead of showing main menu"
-    ]
+    ],
+    "title": "Chat mode fix — second message showed main menu",
+    "notes": "- Fixed: after LLM answer, pressing Back cleared _user_mode; next text message triggered _send_menu() instead of LLM response\n- Fix: mode=None on text message now defaults to chat mode instead of showing the main menu"
   },
   {
     "version": "2026.3.45",
@@ -34,7 +40,9 @@
       "RAG menu: Back button now works correctly (was unhandled callback)",
       "Tests: T73-T78 RAG and memory integration regression tests added",
       "Bug fix: delete_embeddings called on document delete and replace"
-    ]
+    ],
+    "title": "Admin menu RAG settings visibility fix",
+    "notes": "- Fixed: RAG Settings and Dev menu buttons missing from admin_menu.yaml → not visible in Admin panel\n- Fixed: RAG back button used wrong callback_data ('admin' instead of 'admin_menu')\n- Fixed: SRC_ROOT portable path in regression tests for remote Pi targets\n- Admin menu now shows all sub-items correctly on first open"
   },
   {
     "version": "2026.3.44",
@@ -43,7 +51,9 @@
       "Documents: fixed FTS search on PostgreSQL backend (plainto_tsquery + GIN index)",
       "Admin logs: truncate long logs to fit Telegram 4096-char limit",
       "Benchmark: concurrency lock guard prevents LLM timeout during benchmark runs"
-    ]
+    ],
+    "title": "Multiple Postgres/OpenClaw bug fixes + UI tests",
+    "notes": "- Fixed: Documents page — FTS5 not available on Postgres; implemented Postgres FTS via plainto_tsquery + GIN index\n- Fixed: system_chat command hang — Ollama socket.timeout not converted to TimeoutExpired; removed OLLAMA_MIN_TIMEOUT floor for system use_case\n- Fixed: /status command showing wrong services on OpenClaw variant; now shows taris-web + ollama with --user scope\n- Fixed: /contacts endpoint 500 error (page param collision in _ctx())\n- Fixed: PDF upload failing on PostgresStore (missing get_document_by_hash, update_document_field, log_rag_activity, list_rag_log, rag_stats methods)\n- Added T73-T78 regression tests for document admin, RAG pipeline, and memory integration\n- Web UI: Settings and Contacts Playwright tests added (61 tests pass)"
   },
   {
     "version": "2026.3.32",
@@ -56,7 +66,9 @@
       "RAG: classify_query() adaptive routing + RRF fusion + hardware-tier detection (bot_rag.py)",
       "Security logging: security_events table, log_security_event(), log_access_denied()",
       "T66-T72 regression tests for Phase B/C and User Rights"
-    ]
+    ],
+    "title": "RAG knowledge base, Dev menu, voice debug, LLM fallback",
+    "notes": "- RAG pipeline: document upload (PDF/TXT), chunking, embedding (MiniLM), FTS5+vector hybrid retrieval, admin RAG settings, query log\n- Dev menu: admin-only developer panel with LLM trace, system info, RAG stats, benchmark trigger\n- Voice debug mode: per-session audio capture (7 stages), downloadable debug bundles from Web UI\n- LLM named fallback: LLM_FALLBACK_PROVIDER env var; local Ollama fallback guard (LLM_LOCAL_FALLBACK)\n- Per-user memory toggle in profile; admin Memory Settings page\n- Notes/Calendar fully DB-primary (SQLite content column); document deduplication on upload\n- T61-T72 regression tests added; 330 tests total"
   },
   {
     "version": "2026.3.31",
@@ -304,7 +316,7 @@
   {
     "version": "2026.3.32",
     "date": "2026-03-28",
-    "title": "Voice debug mode + audio download + LLM named fallback",
+    "title": "RAG knowledge base, Dev menu, voice debug, LLM fallback",
     "changes": [
       "core/voice_debug.py: VoiceDebugSession saves input audio, decoded WAV/PCM, stt.txt, llm_answer.txt, tts_input.txt, tts_output.ogg, pipeline.json per request when VOICE_DEBUG_MODE=1",
       "VOICE_DEBUG_MODE / VOICE_DEBUG_DIR constants in bot_config.py",
@@ -316,7 +328,8 @@
       "_ask_with_fallback(): primary -> named fallback -> legacy local llama.cpp fallback",
       "ask_llm() + ask_llm_or_raise() refactored to use _ask_with_fallback()",
       "T34 t_voice_debug_mode: 3/3 PASS"
-    ]
+    ],
+    "notes": "- RAG pipeline: document upload (PDF/TXT), chunking, embedding (MiniLM), FTS5+vector hybrid retrieval, admin RAG settings, query log\n- Dev menu: admin-only developer panel with LLM trace, system info, RAG stats, benchmark trigger\n- Voice debug mode: per-session audio capture (7 stages), downloadable debug bundles from Web UI\n- LLM named fallback: LLM_FALLBACK_PROVIDER env var; local Ollama fallback guard (LLM_LOCAL_FALLBACK)\n- Per-user memory toggle in profile; admin Memory Settings page\n- Notes/Calendar fully DB-primary (SQLite content column); document deduplication on upload\n- T61-T72 regression tests added; 330 tests total"
   },
   {
     "date": "2026-03-28",
@@ -511,8 +524,8 @@
   {
     "version": "2026.3.32",
     "date": "2026-03-17",
-    "title": "Multi-LLM Provider Support & Local Fallback",
-    "notes": "- Feature 3.1: LLM_PROVIDER env-var switch (taris/openai/yandexgpt/gemini/anthropic/local) — set in ~/.taris/bot.env\n- Feature 3.2: Local llama.cpp offline fallback with LLM_LOCAL_FALLBACK=1 and taris-llm.service systemd unit\n- Fallback responses labelled with warning prefix"
+    "title": "RAG knowledge base, Dev menu, voice debug, LLM fallback",
+    "notes": "- RAG pipeline: document upload (PDF/TXT), chunking, embedding (MiniLM), FTS5+vector hybrid retrieval, admin RAG settings, query log\n- Dev menu: admin-only developer panel with LLM trace, system info, RAG stats, benchmark trigger\n- Voice debug mode: per-session audio capture (7 stages), downloadable debug bundles from Web UI\n- LLM named fallback: LLM_FALLBACK_PROVIDER env var; local Ollama fallback guard (LLM_LOCAL_FALLBACK)\n- Per-user memory toggle in profile; admin Memory Settings page\n- Notes/Calendar fully DB-primary (SQLite content column); document deduplication on upload\n- T61-T72 regression tests added; 330 tests total"
   },
   {
     "version": "2026.3.31",
