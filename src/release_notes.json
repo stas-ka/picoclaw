@@ -1,5 +1,15 @@
 [
   {
+    "version": "2026.3.45",
+    "date": "2026-03-31",
+    "changes": [
+      "Admin menu: RAG Knowledge Base and Voice Config buttons now always visible",
+      "RAG menu: Back button now works correctly (was unhandled callback)",
+      "Tests: T73-T78 RAG and memory integration regression tests added",
+      "Bug fix: delete_embeddings called on document delete and replace"
+    ]
+  },
+  {
     "version": "2026.3.44",
     "date": "2026-03-31",
     "changes": [

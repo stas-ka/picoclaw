@@ -652,10 +652,10 @@ class TestMainMenuYaml:
         assert len(screen.widgets) == 8
 
     def test_main_menu_admin_sees_11_widgets(self):
-        """Admin should see all 11 widgets."""
+        """Admin should see all 10 widgets."""
         self._skip_if_missing()
         screen = load_screen(self.SCREEN_PATH, _user("admin"), variables={}, t_func=_t)
-        assert len(screen.widgets) == 11
+        assert len(screen.widgets) == 10
 
 
 # ===========================================================================
@@ -678,7 +678,7 @@ class TestAdminMenuYaml:
             pytest.skip("pyyaml not installed")
 
     def test_admin_menu_yaml_loads_with_empty_badge(self):
-        """File loads without error; picoclaw admin sees 11 widgets (openclaw row hidden)."""
+        """File loads without error; picoclaw admin sees 13 widgets (openclaw row hidden)."""
         self._skip_if_missing()
         screen = load_screen(
             self.SCREEN_PATH, _user("admin", variant="picoclaw"),
@@ -686,7 +686,7 @@ class TestAdminMenuYaml:
         )
         assert screen is not None
         assert isinstance(screen, Screen)
-        assert len(screen.widgets) == 11
+        assert len(screen.widgets) == 13
 
     def test_admin_menu_with_pending_badge_variable(self):
         """pending_badge variable should be accepted and substituted without error."""
@@ -696,14 +696,14 @@ class TestAdminMenuYaml:
             variables={"pending_badge": "  (2 new)"}, t_func=_t,
         )
         assert screen is not None
-        assert len(screen.widgets) == 11
+        assert len(screen.widgets) == 13
 
     def test_admin_menu_openclaw_sees_extra_button(self):
-        """OpenClaw admin sees 12 widgets (11 standard + OpenClaw gateway button)."""
+        """OpenClaw admin sees 14 widgets (13 standard + OpenClaw gateway button)."""
         self._skip_if_missing()
         screen = load_screen(
             self.SCREEN_PATH, _user("admin", variant="openclaw"),
             variables={"pending_badge": ""}, t_func=_t,
         )
         assert screen is not None
-        assert len(screen.widgets) == 12
+        assert len(screen.widgets) == 14
