@@ -201,8 +201,11 @@ def _http_post_json(url: str, headers: dict, body: dict, timeout: int, _retries:
 
     Retries automatically on HTTP 429 (rate limit) with exponential backoff.
     Respects the ``Retry-After`` response header when present.
+    Converts socket/urllib timeout errors to subprocess.TimeoutExpired so all
+    callers can catch a single exception type.
     """
     import time as _time
+    import socket as _socket
     data = json.dumps(body).encode("utf-8")
     last_exc: Exception = RuntimeError("no attempts made")
     for attempt in range(_retries + 1):
@@ -210,6 +213,15 @@ def _http_post_json(url: str, headers: dict, body: dict, timeout: int, _retries:
         try:
             with urllib.request.urlopen(req, timeout=timeout) as resp:
                 return json.loads(resp.read().decode("utf-8"))
+        except (_socket.timeout, TimeoutError) as exc:
+            # urllib raises socket.timeout (alias for TimeoutError) on socket-level timeout;
+            # convert to subprocess.TimeoutExpired so callers have one exception to catch.
+            raise subprocess.TimeoutExpired([], timeout) from exc
+        except urllib.error.URLError as exc:
+            if isinstance(exc.reason, (_socket.timeout, TimeoutError)):
+                raise subprocess.TimeoutExpired([], timeout) from exc
+            last_exc = exc
+            raise
         except urllib.error.HTTPError as exc:
             last_exc = exc
             if exc.code == 429 and attempt < _retries:
@@ -329,12 +341,14 @@ def _ask_ollama(prompt: str, timeout: int) -> str:
 
     Uses ``think: false`` to suppress extended-thinking tokens (qwen3 family).
     Falls back gracefully if the server is not running.
+    The caller is responsible for applying OLLAMA_MIN_TIMEOUT when appropriate
+    (ask_llm_with_history does this for multi-turn chat; system_chat passes a
+    strict 45 s timeout intentionally).
 
     Install: curl -fsSL https://ollama.ai/install.sh | sh && ollama pull qwen2:0.5b
     Config:  OLLAMA_URL=http://127.0.0.1:11434  OLLAMA_MODEL=qwen2:0.5b
     GPU:     Set HSA_OVERRIDE_GFX_VERSION in Ollama service for AMD iGPU (Radeon 890M gfx1150).
     """
-    effective_timeout = max(timeout, OLLAMA_MIN_TIMEOUT)
     url = f"{OLLAMA_URL.rstrip('/')}/api/chat"
     headers = {"Content-Type": "application/json"}
     body: dict = {
@@ -347,7 +361,7 @@ def _ask_ollama(prompt: str, timeout: int) -> str:
             "temperature": _effective_temperature(),
         },
     }
-    result = _http_post_json(url, headers, body, effective_timeout)
+    result = _http_post_json(url, headers, body, timeout)
     return result["message"]["content"].strip()  # _ask_ollama return
 
 
@@ -407,16 +421,23 @@ def _ask_with_fallback(prompt: str, timeout: int, *, raise_on_fail: bool = False
     """Shared try-primary → try-named-fallback → try-local-fallback logic.
 
     Called by both ask_llm() and ask_llm_or_raise().
-    use_case: "chat" | "system" — checked for per-function override first.
+    use_case: "chat" | "system" | "voice" — checked for per-function override first.
+    For Ollama, applies OLLAMA_MIN_TIMEOUT floor only when use_case != "system" so
+    system_chat's strict 45 s timeout is respected.
     """
     # Per-function override wins over global LLM_PROVIDER
     per_func = get_per_func_provider(use_case)
     provider = per_func if per_func else LLM_PROVIDER.lower()
     fn = _DISPATCH.get(provider, _ask_taris)
 
+    # Apply Ollama minimum timeout floor for chat/voice but NOT for system_chat
+    effective_timeout = timeout
+    if provider == "ollama" and use_case != "system":
+        effective_timeout = max(timeout, OLLAMA_MIN_TIMEOUT)
+
     primary_error: Optional[Exception] = None
     try:
-        return fn(prompt, timeout)
+        return fn(prompt, effective_timeout)
     except subprocess.TimeoutExpired:
         log.warning(f"[LLM] {provider} timed out ({timeout}s)")
         primary_error = subprocess.TimeoutExpired([], timeout)
