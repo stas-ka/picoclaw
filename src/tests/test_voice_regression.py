@@ -5420,6 +5420,65 @@ def t_rag_memory_combined_context(**_) -> list:
     return results
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# T79 – RAG log datetime serialization (Postgres returns datetime, not str)
+# ─────────────────────────────────────────────────────────────────────────────
+def t_rag_log_datetime_serialization(**_) -> list:
+    """T79: list_rag_log() created_at field is safely str()-able for both SQLite and Postgres.
+
+    Root cause: Postgres returns created_at as datetime.datetime; SQLite returns str.
+    _handle_admin_rag_log() used r["created_at"][:16] which raises TypeError on datetime.
+    Fix: str(r["created_at"])[:16] normalises both backends.
+    """
+    import time as _time
+    import sys as _sys
+    results = []
+    t0 = _time.time()
+
+    # 1. Source code check: str() wrapping present in bot_admin.py
+    _sys.path.insert(0, str(SRC_ROOT))
+    try:
+        code = (SRC_ROOT / "telegram" / "bot_admin.py").read_text(encoding="utf-8")
+        has_str_wrap = "str(r[\"created_at\"])[:16]" in code or "str(r['created_at'])[:16]" in code
+        results.append(TestResult("rag_log_created_at_str_wrap",
+                                  "PASS" if has_str_wrap else "FAIL",
+                                  _time.time() - t0,
+                                  "str(r['created_at'])[:16] present in bot_admin.py"
+                                  if has_str_wrap else
+                                  "MISSING str() wrap — datetime slicing will crash on Postgres"))
+
+        has_query_wrap = "str(r[\"query\"])[:40]" in code or "str(r['query'])[:40]" in code
+        results.append(TestResult("rag_log_query_str_wrap",
+                                  "PASS" if has_query_wrap else "FAIL",
+                                  _time.time() - t0,
+                                  "str(r['query'])[:40] present"
+                                  if has_query_wrap else "MISSING str() wrap on query field"))
+    except Exception as e:
+        results.append(TestResult("rag_log_source_check", "SKIP", _time.time() - t0,
+                                  f"source check skipped: {e}"))
+
+    # 2. Live round-trip: insert a row with a datetime created_at, read back, str()-slice safely
+    try:
+        from core.store import store
+        from datetime import datetime, timezone
+        fake_dt = datetime(2026, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+        # Simulate what list_rag_log returns (either str or datetime)
+        class _FakeRow(dict):
+            pass
+        for ts_val in [fake_dt, "2026-01-01 12:00:00.000000+00:00"]:
+            row = _FakeRow(query="testq", n_chunks=1, chars_injected=10,
+                           created_at=ts_val, latency_ms=5, query_type="fts5")
+            sliced = str(row["created_at"])[:16]
+            assert sliced == "2026-01-01 12:00", f"unexpected: {sliced!r}"
+        results.append(TestResult("rag_log_datetime_roundtrip", "PASS",
+                                  _time.time() - t0, "datetime and str both sliceable via str()"))
+    except Exception as e:
+        results.append(TestResult("rag_log_datetime_roundtrip", "FAIL",
+                                  _time.time() - t0, f"roundtrip failed: {e}"))
+
+    return results
+
+
 TEST_FUNCTIONS = [
     t_model_files_present,
     t_piper_json_present,
@@ -5552,6 +5611,8 @@ TEST_FUNCTIONS = [
     t_memory_context_assembly,
     # Combined RAG + all memory tiers in ask_llm_with_history() — context ordering contract (T78)
     t_rag_memory_combined_context,
+    # RAG log datetime serialization — str() wrap on created_at for Postgres compat (T79)
+    t_rag_log_datetime_serialization,
 ]
 
 

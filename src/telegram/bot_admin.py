@@ -1173,7 +1173,11 @@ def _finish_admin_rag_set(chat_id: int, text: str) -> None:
 def _handle_admin_rag_log(chat_id: int) -> None:
     """Show the 20 most recent RAG activity log entries."""
     from core.store import store as _store
-    rows = _store.list_rag_log(limit=20)
+    try:
+        rows = _store.list_rag_log(limit=20)
+    except Exception as e:
+        bot.send_message(chat_id, f"❌ RAG log unavailable: {e}")
+        return
     if not rows:
         text = _t(chat_id, "admin_rag_log_title") + "\n" + _t(chat_id, "admin_rag_log_empty")
     else:
@@ -1182,10 +1186,10 @@ def _handle_admin_rag_log(chat_id: int) -> None:
             lines.append(
                 _t(chat_id, "admin_rag_log_row").format(
                     i=i,
-                    query=r["query"][:40],
+                    query=str(r["query"])[:40],
                     n_chunks=r["n_chunks"],
                     chars=r["chars_injected"],
-                    ts=r["created_at"][:16],
+                    ts=str(r["created_at"])[:16],
                 )
             )
         text = "\n".join(lines)

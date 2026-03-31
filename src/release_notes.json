@@ -1,5 +1,14 @@
 [
   {
+    "version": "2026.3.47",
+    "date": "2026-03-31",
+    "changes": [
+      "Fix: RAG View Log crashed with no effect on Postgres targets (datetime[:16] TypeError)",
+      "Fix: str() wrap on created_at and query fields in _handle_admin_rag_log for SQLite+Postgres compat",
+      "Test: T79 regression test for RAG log datetime serialization"
+    ]
+  },
+  {
     "version": "2026.3.46",
     "date": "2026-03-31",
     "changes": [
