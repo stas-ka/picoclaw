@@ -1361,10 +1361,15 @@ def main() -> None:
         log.info("[VoiceOpt] persistent_piper enabled — starting Piper keepalive")
         threading.Thread(target=_start_persistent_piper, daemon=True).start()
 
-    # Preload faster-whisper model if it will be used — eliminates first-call cold-load
-    if STT_PROVIDER == "faster_whisper" or _st._voice_opts.get("faster_whisper_stt"):
-        log.info("[FasterWhisper] preloading model in background thread")
-        threading.Thread(target=_fw_preload, daemon=True).start()
+    # NOTE: FasterWhisper preloading is intentionally DISABLED in the Telegram bot process.
+    # Preloading imports transformers→torch which pulls in 1+ GB of CUDA libraries,
+    # causing VmRSS to reach 1GB and VmPeak to 6GB on x86_64 machines with CUDA installed.
+    # The first voice message will have a ~1-2s model-load delay — acceptable.
+    # Voice assistant process (voice_assistant.py) may still preload independently.
+    #
+    # if STT_PROVIDER == "faster_whisper" or _st._voice_opts.get("faster_whisper_stt"):
+    #     log.info("[FasterWhisper] preloading model in background thread")
+    #     threading.Thread(target=_fw_preload, daemon=True).start()
 
     # ── Startup tasks ─────────────────────────────────────────────────────
     _st.load_conversation_history()
@@ -1386,10 +1391,13 @@ def main() -> None:
     signal.signal(signal.SIGTERM, _on_stop)
     signal.signal(signal.SIGINT,  _on_stop)
 
-    # timeout > long_polling_timeout: HTTP socket waits longer than Telegram holds the connection
-    # long_polling_timeout=55: Telegram holds connection 55s (was 20s) → fewer reconnects → better responsiveness
-    # interval=1: 1s backoff between attempts when errors occur → prevents CPU tight-loop on network issues
-    bot.infinity_polling(timeout=90, long_polling_timeout=55, interval=1)
+    # timeout > long_polling_timeout: HTTP socket timeout must exceed Telegram hold time.
+    # long_polling_timeout=20: Telegram holds the connection 20s → well within NAT router's
+    #   typical 30-60s idle TCP timeout → prevents RemoteDisconnected errors.
+    #   Previously 55s caused ~70 RemoteDisconnected/hour on SintAItion (NAT kills idle TCP).
+    # timeout=30: fail fast on total network loss (was 90s → missed 90s of updates on loss).
+    # interval=0: reconnect immediately after any error (was 1s pause).
+    bot.infinity_polling(timeout=30, long_polling_timeout=20, interval=0)
 
 
 if __name__ == "__main__":

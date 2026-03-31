@@ -5,14 +5,18 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=stas
 WorkingDirectory=/home/stas/.taris
 ExecStart=/usr/bin/python3 /home/stas/.taris/telegram_menu_bot.py
 Restart=on-failure
-RestartSec=15
-TimeoutStopSec=25
+RestartSec=10
+TimeoutStopSec=30
+# Restart if process uses more than 600 MB RSS (guards against CUDA/model memory leaks)
+MemoryMax=600M
+MemoryHigh=500M
+# Give Python time to free memory on shutdown before SIGKILL
+KillMode=mixed
+KillSignal=SIGTERM
 Environment=PYTHONUNBUFFERED=1
-Environment=HOME=/home/stas
 EnvironmentFile=/home/stas/.taris/bot.env
 Environment=TARIS_BIN=/usr/bin/picoclaw
 Environment=DIGEST_SCRIPT=/home/stas/.taris/gmail_digest.py
