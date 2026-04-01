@@ -1,6 +1,6 @@
 # Taris — Deployment, File Layout & Configuration
 
-**Version:** `2026.3.30+3`  
+**Version:** `2026.4.1`  
 → Architecture index: [architecture.md](../architecture.md)
 
 ---
@@ -410,6 +410,10 @@ It contains symlinks into `src/` and a `.taris/` data directory:
 | `RAG_TOP_K` | `3` | `RAG_TOP_K` | Max document chunks injected per LLM request |
 | `RAG_CHUNK_SIZE` | `512` | `RAG_CHUNK_SIZE` | Characters per text chunk when indexing documents |
 | `RAG_FLAG_FILE` | `~/.taris/rag_disabled` | — | Flag file; presence=RAG OFF (runtime toggle, no restart needed) |
+| `MCP_SERVER_ENABLED` | `true` | `MCP_SERVER_ENABLED` | Enable `/mcp/search` endpoint (Phase D) |
+| `MCP_REMOTE_URL` | `""` | `MCP_REMOTE_URL` | External MCP RAG server URL; empty = disabled |
+| `MCP_TIMEOUT` | `15` | `MCP_TIMEOUT` | HTTP timeout (s) for remote MCP calls |
+| `MCP_REMOTE_TOP_K` | `3` | `MCP_REMOTE_TOP_K` | Max chunks to request from remote MCP server |
 
 ### `voice_assistant.py` CONFIG
 

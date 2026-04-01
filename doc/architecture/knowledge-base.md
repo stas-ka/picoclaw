@@ -1,6 +1,6 @@
 # Taris — Knowledge Base Architecture
 
-**Version:** `2026.3.32`  
+**Version:** `2026.4.1`  
 → Architecture index: [architecture.md](../architecture.md)
 
 ## When to read this file
@@ -38,6 +38,8 @@ Text extraction:
     │
     ▼
 Chunking: split at RAG_CHUNK_SIZE (512 chars, configurable) with sentence boundaries
+             Quality filter: fragments shorter than _MIN_CHUNK_CHARS (20) are skipped;
+             n_skipped, n_embedded, quality_pct stored in document metadata (v2026.4.1)
     │
     ▼
 Deduplication: SHA256(content) → skip if doc_hash already in store
@@ -45,11 +47,11 @@ Deduplication: SHA256(content) → skip if doc_hash already in store
     │
     ▼
 Indexing:
-  PicoClaw:  store_sqlite.index_document(chunks)
+  FTS5_ONLY:  store_sqlite.index_document(chunks)
                → INSERT INTO fts_documents (BM25 FTS5 auto-indexed)
   OpenClaw:  store_postgres.index_document(chunks)
                → INSERT INTO document_chunks + pgvector embedding
-               → all-MiniLM-L6-v2 (384-dim) via sentence-transformers
+               → all-MiniLM-L6-v2 (384-dim) via fastembed (EmbeddingService)
     │
     ▼
 Stored in: documents + document_chunks tables
@@ -70,6 +72,12 @@ bot_rag.retrieve_context(chat_id, query, top_k, max_chars)
   hardware tier: detect_rag_capability() → FTS5_ONLY | HYBRID | FULL
   FTS5_ONLY:  store.search_fts() → BM25 results
   HYBRID/FULL: FTS5 + store.search_similar() → reciprocal_rank_fusion(k=60)
+    │
+    ▼ (if MCP_REMOTE_URL set — Phase D)
+bot_mcp_client.query_remote(query, chat_id, top_k) → remote chunks
+  circuit breaker: 3 failures → 5 min cooldown → half-open probe
+  merged via reciprocal_rank_fusion() alongside local results
+  strategy string extended to "fts5+mcp" or "hybrid+mcp"
     │
     ▼
 Top-K chunks → prepended as "[KNOWLEDGE FROM USER DOCUMENTS]\n{chunks}\n[END KNOWLEDGE]"
@@ -113,8 +121,13 @@ Admin can list all docs, toggle shared flag, delete any doc.
 | `RAG_ENABLED` | `true` | Master on/off |
 | `RAG_TOP_K` | `3` | Chunks returned per query (overridable per-user via `user_prefs`) |
 | `RAG_CHUNK_SIZE` | `512` | Chars per chunk at indexing |
+| `_MIN_CHUNK_CHARS` | `20` | Minimum chars for a chunk to be indexed (`features/bot_documents.py`) |
 | `RAG_FLAG_FILE` | `~/.taris/rag_disabled` | Presence = RAG off (runtime toggle, no restart) |
-| `EMBED_MODEL` | `all-MiniLM-L6-v2` | OpenClaw embedding model |
+| `EMBED_MODEL` | `all-MiniLM-L6-v2` | OpenClaw embedding model (via `fastembed`) |
+| `MCP_SERVER_ENABLED` | `true` | Enable `/mcp/search` REST endpoint |
+| `MCP_REMOTE_URL` | `""` | External MCP RAG server URL; empty = Phase D client disabled |
+| `MCP_TIMEOUT` | `15` | HTTP timeout (s) for remote MCP calls |
+| `MCP_REMOTE_TOP_K` | `3` | Chunks to request from remote MCP server |
 
 Runtime override: Admin Panel → 🔍 RAG / Knowledge Base → writes `rag_settings.json`.  
 Per-user override: Profile → ⚙️ RAG Settings → stored in `user_prefs` table (`rag_top_k`, `rag_chunk_size`).  
@@ -124,14 +137,14 @@ Per-user override: Profile → ⚙️ RAG Settings → stored in `user_prefs` ta
 
 ## RAG Intelligence Layer (`core/bot_rag.py`)
 
-New module added in v2026.3.32 — adaptive routing + fusion.
+New module added in v2026.3.32 — adaptive routing + fusion. MCP integration in v2026.4.1.
 
 | Function | Returns | Description |
 |---|---|---|
 | `classify_query(text, has_documents)` | `"simple"` \| `"factual"` \| `"contextual"` | Heuristic routing — no LLM call |
 | `detect_rag_capability()` | `RAGCapability` enum | RAM + vector-store detection (cached) |
 | `reciprocal_rank_fusion(fts5, vector, k=60)` | merged list | Interleaves + deduplicates by `id`; adds `rrf_score` |
-| `retrieve_context(chat_id, query, top_k, max_chars)` | `(chunks, assembled, strategy)` | Unified entry — auto-selects FTS5/hybrid by tier |
+| `retrieve_context(chat_id, query, top_k, max_chars)` | `(chunks, assembled, strategy)` | Unified entry — auto-selects FTS5/hybrid by tier; merges MCP remote chunks if enabled |
 
 Hardware tier → strategy mapping:
 
@@ -140,6 +153,26 @@ Hardware tier → strategy mapping:
 | `FTS5_ONLY` | RAM < 4 GB or no vector search | BM25 search only |
 | `HYBRID` | 4–8 GB RAM + vectors available | BM25 + cosine + RRF |
 | `FULL` | ≥ 8 GB RAM + vectors | BM25 + cosine + RRF + reranking |
+
+When `MCP_REMOTE_URL` is set and circuit breaker is closed, strategy string is extended with `+mcp` (e.g. `"hybrid+mcp"`).
+
+---
+
+## MCP Client (`core/bot_mcp_client.py`) *(v2026.4.1)*
+
+Phase D — Remote RAG integration. Queries an external MCP-compatible RAG server and merges results into the local RRF pipeline.
+
+| Function | Returns | Description |
+|---|---|---|
+| `query_remote(query, chat_id, top_k)` | `list[dict]` | POST to `MCP_REMOTE_URL/search`; returns chunk dicts `{text, score, source}` |
+| `circuit_status()` | `dict` | Returns CB state: `{state, failures, last_failure, reset_at}` |
+| `_cb_is_open()` | `bool` | True = circuit open (failing fast); False = allow requests |
+| `_cb_record_failure()` | — | Increments failure counter; opens CB after `_CB_THRESHOLD=3` |
+| `_cb_record_success()` | — | Resets failure counter; closes CB |
+
+Circuit breaker: 3 consecutive failures → open for `_CB_RESET_SEC=300 s` → half-open probe → close on success.  
+Auth: `TARIS_API_TOKEN` sent as `Bearer` token in `Authorization` header.  
+Transport: stdlib `urllib.request` (no SDK dependency).
 
 ---
 
@@ -188,8 +221,11 @@ Currently calendar data is only available when the user explicitly opens the cal
 | classify_query + RRF fusion | ✅ Implemented (v2026.3.32) | — |
 | RAG monitoring dashboard | ✅ Implemented (v2026.3.32) | — |
 | Per-user RAG settings | ✅ Implemented (v2026.3.32) | — |
+| Chunk quality filter + embed stats in metadata | ✅ Implemented (v2026.4.1) | — |
+| MCP server `/mcp/search` + remote MCP client | ✅ Implemented (v2026.4.1) | — |
 | Notes indexed as KB | ⏳ Planned | [TODO.md §10](../TODO.md) |
 | Calendar context injection | ⏳ Planned | [TODO.md §10](../TODO.md) |
 | Contacts lookup in conversation | ⏳ Planned | [TODO.md §4](../TODO.md) |
 | Knowledge base UI (browse, edit) | ⏳ Planned | [TODO.md §10](../TODO.md) |
 | sqlite-vec HNSW for PicoClaw | ⏳ Planned | [TODO.md §25.6](../TODO.md) |
+| Admin Panel UI for MCP endpoint URL config | ⏳ Planned | [TODO.md §4.2](../TODO.md) |

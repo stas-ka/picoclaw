@@ -3,7 +3,7 @@
 **Architecture:** 20-module split — Telegram core (v2026.3.19) + shared LLM/auth + Web UI layer (v2026.3.28)  
 **Entry point (Telegram):** `src/telegram_menu_bot.py` (~280 lines — handlers + `main()`)  
 **Entry point (Web):** `src/bot_web.py` — FastAPI application, all HTTP routes  
-**Version:** 2026.3.32
+**Version:** 2026.4.1
 
 Use this map to locate any function by module. Modules are organized into packages under `src/`:
 
@@ -157,18 +157,35 @@ Imports: `bot_config` (incl. `TARIS_DIR`), `store_base`.
 
 ---
 
-## core/bot_rag.py — RAG Intelligence Layer *(v2026.3.32)*
+## core/bot_rag.py — RAG Intelligence Layer *(v2026.4.1)*
 
-Imports: `bot_config`, `core.store`.
+Imports: `bot_config`, `core.store`, `core.bot_mcp_client`.
 
 | Function | Returns | Purpose |
 |---|---|---|
 | `classify_query(text, has_documents)` | `"simple"\|"factual"\|"contextual"` | Heuristic — no LLM. Simple=short/greeting, factual=knowledge+docs, contextual=fallback |
 | `detect_rag_capability()` | `RAGCapability` enum | Checks RAM (psutil) + vector availability; cached after first call |
 | `reciprocal_rank_fusion(fts5_results, vector_results, k=60)` | merged list | Deduplicates by `id`, scores with 1/(rank+k), sorts descending |
-| `retrieve_context(chat_id, query, top_k, max_chars)` | `(chunks, assembled, strategy)` | Unified entry point: auto-selects FTS5_ONLY / HYBRID / FULL strategy |
+| `retrieve_context(chat_id, query, top_k, max_chars)` | `(chunks, assembled, strategy)` | Unified entry point: auto-selects FTS5_ONLY / HYBRID / FULL; merges MCP remote chunks via RRF if `MCP_REMOTE_URL` set |
 
 `RAGCapability` enum values: `FTS5_ONLY` (< 4 GB RAM), `HYBRID` (4-8 GB), `FULL` (≥ 8 GB)
+Strategy string extended with `+mcp` when remote chunks merged (e.g. `"hybrid+mcp"`).
+
+---
+
+## core/bot_mcp_client.py — Remote MCP RAG Client *(v2026.4.1)*
+
+Imports: `bot_config`, stdlib `urllib.request`, `json`.
+
+| Function | Returns | Purpose |
+|---|---|---|
+| `query_remote(query, chat_id, top_k)` | `list[dict]` | POST to `MCP_REMOTE_URL/search`; returns chunk dicts `{text, score, source}`; skips if CB open |
+| `circuit_status()` | `dict` | Returns CB health: `{state, failures, last_failure, reset_at}` |
+| `_cb_is_open()` | `bool` | True = circuit open (fail fast, skip remote); checks `_CB_RESET_SEC=300` cooldown |
+| `_cb_record_failure()` | — | Increments `_cb_failures`; opens CB after `_CB_THRESHOLD=3` |
+| `_cb_record_success()` | — | Resets `_cb_failures` to 0, closes CB |
+
+Auth: `TARIS_API_TOKEN` as `Bearer` header. No external SDK required (stdlib only).
 
 ---
 
@@ -945,6 +962,7 @@ Imports: all `bot_*` modules. Entry point for web channel. ~2000 lines, 41 route
 | `POST` | `/admin/user/{user_id}/approve` | Approve pending web user |
 | `POST` | `/admin/user/{user_id}/block` | Block web user |
 | `GET` | `/screen/{screen_id}` | Dynamic Screen DSL renderer — serve YAML screen by ID (v2026.3.43) |
+| `POST` | `/mcp/search` | MCP-compatible RAG search; Bearer-token auth; returns RRF-ranked chunks (v2026.4.1) |
 
 ---
 
