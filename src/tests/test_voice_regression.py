@@ -5572,936 +5572,200 @@ def t_rag_hybrid_retrieval_fixes(**_) -> list:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# T81 — faster-whisper turbo: cache-path resolution + model load
+# T81 — Qwen3.5 model available in Ollama
 # ─────────────────────────────────────────────────────────────────────────────
-def t_faster_whisper_turbo(**_) -> list:
-    """T81: Turbo model cache-path resolution + offline load.
 
-    Verifies that:
-    1. bot_voice.py handles 'org/repo' HF paths (e.g. mobiuslabsgmbh/faster-whisper-large-v3-turbo)
-    2. 'turbo' alias resolves to 'large-v3-turbo' for Systran cache lookup
-    3. mobiuslabsgmbh fallback cache is tried when Systran turbo is absent
-    4. If the local mobiuslabsgmbh cache is present, the model actually loads offline
+def t_qwen35_ollama_available(**_) -> list[TestResult]:
+    """T81 — at least one qwen3.5 model is pulled and listed in Ollama.
+    SKIP if Ollama is not reachable (e.g. Pi target without Ollama).
     """
-    import time as _time
-    import re as _re
-    import pathlib as _pl
-    results = []
-    t0 = _time.time()
+    import urllib.request
+    import json as _json
 
-    voice_py = SRC_ROOT / "features" / "bot_voice.py"
-    if not voice_py.exists():
-        return [TestResult("fw_turbo_source", "SKIP", _time.time() - t0,
-                           "features/bot_voice.py not found")]
-    src = voice_py.read_text(encoding="utf-8")
-
-    # 1. Code handles "/" in model name (full HF path)
-    has_slash_check = '"/" in' in src or "\"/ \" in" in src or "'/' in" in src or '"/" in FASTER_WHISPER_MODEL' in src
-    has_slash_check = bool(_re.search(r'"/".*FASTER_WHISPER_MODEL|FASTER_WHISPER_MODEL.*"/"', src))
-    results.append(TestResult("fw_turbo_slash_path_support",
-                              "PASS" if has_slash_check else "FAIL",
-                              _time.time() - t0,
-                              "org/repo path support in cache resolution"
-                              if has_slash_check else "MISSING: no '/' check in model_arg → full HF paths not handled"))
-
-    # 2. Alias dict maps 'turbo' → 'large-v3-turbo'
-    has_alias = '"turbo"' in src and '"large-v3-turbo"' in src
-    results.append(TestResult("fw_turbo_alias_dict",
-                              "PASS" if has_alias else "FAIL",
-                              _time.time() - t0,
-                              'turbo alias dict present' if has_alias
-                              else 'MISSING: _FW_MODEL_ALIASES not found in bot_voice.py'))
-
-    # 3. mobiuslabsgmbh fallback check in source
-    has_mobius = "mobiuslabsgmbh" in src
-    results.append(TestResult("fw_turbo_mobiuslabsgmbh_fallback",
-                              "PASS" if has_mobius else "FAIL",
-                              _time.time() - t0,
-                              "mobiuslabsgmbh fallback cache check present"
-                              if has_mobius else "MISSING mobiuslabsgmbh fallback"))
-
-    # 4. If mobiuslabsgmbh turbo is cached locally, attempt an actual load
-    _hf = _pl.Path.home() / ".cache" / "huggingface" / "hub"
-    _mobius_dir = _hf / "models--mobiuslabsgmbh--faster-whisper-large-v3-turbo"
-    if not (_mobius_dir / "snapshots").is_dir():
-        results.append(TestResult("fw_turbo_model_load",
-                                  "SKIP", _time.time() - t0,
-                                  "mobiuslabsgmbh turbo not in local HF cache — skipping load test"))
-        return results
+    results: list[TestResult] = []
+    t0 = time.time()
+    ollama_url = os.environ.get("OLLAMA_URL", "http://127.0.0.1:11434")
 
     try:
-        from faster_whisper import WhisperModel as _WM  # type: ignore[import]
-    except ImportError:
-        results.append(TestResult("fw_turbo_model_load", "SKIP", _time.time() - t0,
-                                  "faster-whisper not installed"))
-        return results
-
-    import numpy as _np
-    import os as _os
-    t1 = _time.time()
-    try:
-        _snaps = sorted((_mobius_dir / "snapshots").iterdir())
-        _snap_path = str(_snaps[-1])
-        _os.environ.setdefault("HF_HUB_OFFLINE", "1")
-        m = _WM(_snap_path, device="cpu", compute_type="int8", cpu_threads=8)
-        load_t = _time.time() - t1
-        # Quick silence inference to confirm model is functional
-        silence = _np.zeros(8000, dtype=_np.int16).astype(_np.float32) / 32768.0
-        t2 = _time.time()
-        segs, _ = m.transcribe(silence, language="ru", beam_size=1)
-        list(segs)
-        infer_t = _time.time() - t2
-        del m
+        req = urllib.request.Request(
+            f"{ollama_url}/api/tags",
+            headers={"Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            data = _json.loads(resp.read())
+        models = [m["name"] for m in data.get("models", [])]
+    except Exception as exc:
         results.append(TestResult(
-            "fw_turbo_model_load",
-            "PASS", load_t,
-            f"mobiuslabsgmbh turbo loaded offline in {load_t:.2f}s, inference {infer_t:.2f}s",
-            metric=infer_t, metric_key="fw_turbo_infer_silence",
+            "qwen35_ollama_available", "SKIP", time.time() - t0,
+            f"Ollama not reachable: {exc}",
         ))
-    except Exception as e:
-        results.append(TestResult("fw_turbo_model_load", "FAIL", _time.time() - t1, str(e)))
+        return results
 
+    qwen35_models = [m for m in models if "qwen3.5" in m.lower()]
+    if qwen35_models:
+        results.append(TestResult(
+            "qwen35_ollama_available", "PASS", time.time() - t0,
+            f"Found: {', '.join(qwen35_models)}",
+        ))
+    else:
+        results.append(TestResult(
+            "qwen35_ollama_available", "WARN", time.time() - t0,
+            f"No qwen3.5 model pulled yet. Available: {', '.join(models[:5])}… "
+            "Pull with: ollama pull qwen3.5:latest",
+        ))
     return results
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# T82 — RAG chunks populated in live DB
+# T82 — Ollama latency regression: active model responds within threshold
 # ─────────────────────────────────────────────────────────────────────────────
-def t_rag_chunks_populated(**_) -> list:
-    """T82: RAG doc_chunks table has rows; documents table has rows; sanity checks."""
-    import time as _time
-    import sqlite3 as _sqlite3
-    results = []
-    t0 = _time.time()
 
-    db_path = Path.home() / ".taris" / "taris.db"
-    if not db_path.exists():
-        return [TestResult("rag_db_exists", "SKIP", _time.time() - t0, "~/.taris/taris.db not found")]
+def t_ollama_latency_regression(**_) -> list[TestResult]:
+    """T82 — active OLLAMA_MODEL responds to a minimal prompt within 30s.
+    Measures wall time and tokens/sec; WARN if >30% slower than typical.
+    SKIP if Ollama not running or DEVICE_VARIANT != openclaw.
+    """
+    import urllib.request
+    import json as _json
+
+    results: list[TestResult] = []
+    t0 = time.time()
+
+    device_variant = os.environ.get("DEVICE_VARIANT", "taris")
+    if device_variant != "openclaw":
+        results.append(TestResult(
+            "ollama_latency", "SKIP", time.time() - t0,
+            "DEVICE_VARIANT != openclaw; Ollama latency test only runs on OpenClaw",
+        ))
+        return results
+
+    ollama_url = os.environ.get("OLLAMA_URL", "http://127.0.0.1:11434")
+    model = os.environ.get("OLLAMA_MODEL", "qwen3:8b")
 
     try:
-        conn = _sqlite3.connect(str(db_path))
-        cur = conn.cursor()
-
-        # FTS5 chunk table exists and has rows
-        try:
-            chunk_count = cur.execute("SELECT COUNT(*) FROM doc_chunks").fetchone()[0]
-            results.append(TestResult(
-                "rag_chunks_count",
-                "PASS" if chunk_count > 0 else "FAIL",
-                _time.time() - t0,
-                f"doc_chunks has {chunk_count} rows" if chunk_count > 0
-                else "doc_chunks is EMPTY — no documents indexed",
-            ))
-        except Exception as exc:
-            results.append(TestResult("rag_chunks_count", "FAIL", _time.time() - t0,
-                                      f"doc_chunks table error: {exc}"))
-
-        # documents table has rows
-        try:
-            doc_count = cur.execute("SELECT COUNT(*) FROM documents").fetchone()[0]
-            results.append(TestResult(
-                "rag_documents_count",
-                "PASS" if doc_count > 0 else "WARN",
-                _time.time() - t0,
-                f"documents table has {doc_count} document(s)",
-            ))
-        except Exception as exc:
-            results.append(TestResult("rag_documents_count", "FAIL", _time.time() - t0,
-                                      f"documents table error: {exc}"))
-
-        # distinct doc_ids in chunks
-        try:
-            distinct_docs = cur.execute(
-                "SELECT COUNT(DISTINCT doc_id) FROM doc_chunks"
-            ).fetchone()[0]
-            results.append(TestResult(
-                "rag_chunks_distinct_docs",
-                "PASS",
-                _time.time() - t0,
-                f"{distinct_docs} distinct document(s) in doc_chunks",
-            ))
-        except Exception as exc:
-            results.append(TestResult("rag_chunks_distinct_docs", "WARN", _time.time() - t0, str(exc)))
-
-        # avg chunk size sanity
-        try:
-            avg_len = cur.execute(
-                "SELECT AVG(length(chunk_text)) FROM doc_chunks"
-            ).fetchone()[0]
-            if avg_len is None:
-                results.append(TestResult("rag_avg_chunk_size", "SKIP", _time.time() - t0, "no chunks"))
-            elif avg_len < 50:
-                results.append(TestResult("rag_avg_chunk_size", "WARN", _time.time() - t0,
-                                          f"avg chunk size {avg_len:.0f} chars is suspiciously small"))
-            else:
-                results.append(TestResult("rag_avg_chunk_size", "PASS", _time.time() - t0,
-                                          f"avg chunk size {avg_len:.0f} chars"))
-        except Exception as exc:
-            results.append(TestResult("rag_avg_chunk_size", "WARN", _time.time() - t0, str(exc)))
-
-        conn.close()
+        payload = _json.dumps({
+            "model": model,
+            "prompt": "Say OK",
+            "stream": False,
+            "think": False,
+            "options": {"num_predict": 5, "temperature": 0},
+        }).encode()
+        req = urllib.request.Request(
+            f"{ollama_url}/api/generate",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            resp_data = _json.loads(resp.read())
     except Exception as exc:
-        results.append(TestResult("rag_db_open", "FAIL", _time.time() - t0, str(exc)))
+        results.append(TestResult(
+            "ollama_latency", "SKIP", time.time() - t0,
+            f"Ollama generate failed: {exc}",
+        ))
+        return results
 
+    wall = time.time() - t0
+    tokens_out = resp_data.get("eval_count", 0)
+    eval_dur_ns = resp_data.get("eval_duration", 1)
+    tps = tokens_out / (eval_dur_ns / 1e9) if eval_dur_ns > 0 else 0
+
+    # Thresholds: wall < 30s (generous), tps > 2 (very minimal)
+    ok = wall < 30.0 and tps > 2.0
+    status = "PASS" if ok else "WARN"
+    results.append(TestResult(
+        "ollama_latency", status, wall,
+        f"model={model} wall={wall:.1f}s tps={tps:.1f}",
+        metric=wall, metric_key="ollama_latency_s",
+    ))
     return results
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# T83 — FTS5 RAG search functional
+# T83 — Ollama quality: Russian calendar intent → valid JSON
 # ─────────────────────────────────────────────────────────────────────────────
-def t_fts5_rag_search(**_) -> list:
-    """T83: FTS5 search returns results via retrieve_context(); functional live test."""
-    import time as _time
-    import sqlite3 as _sqlite3
-    import sys as _sys
-    results = []
-    t0 = _time.time()
 
-    db_path = Path.home() / ".taris" / "taris.db"
-    if not db_path.exists():
-        return [TestResult("fts5_rag_db", "SKIP", _time.time() - t0, "~/.taris/taris.db not found")]
+def t_ollama_quality_ru_calendar(**_) -> list[TestResult]:
+    """T83 — active OLLAMA_MODEL extracts calendar event JSON from Russian text.
+    Tests the core taris calendar use-case. SKIP if Ollama not running.
+    """
+    import urllib.request
+    import json as _json
 
-    # Check chunks exist first
+    results: list[TestResult] = []
+    t0 = time.time()
+
+    device_variant = os.environ.get("DEVICE_VARIANT", "taris")
+    if device_variant != "openclaw":
+        results.append(TestResult(
+            "ollama_quality_ru_calendar", "SKIP", time.time() - t0,
+            "DEVICE_VARIANT != openclaw",
+        ))
+        return results
+
+    ollama_url = os.environ.get("OLLAMA_URL", "http://127.0.0.1:11434")
+    model = os.environ.get("OLLAMA_MODEL", "qwen3:8b")
+
+    prompt = (
+        'Извлеки данные события из текста и верни JSON.\n'
+        'Текст: "Встреча с врачом в четверг в 14:00"\n'
+        'Формат: {"title": "<название>", "dt": "<YYYY-MM-DDTHH:MM>"}\n'
+        'Верни только JSON, без пояснений.'
+    )
+
     try:
-        conn = _sqlite3.connect(str(db_path))
-        cur = conn.cursor()
-        chunk_count = cur.execute("SELECT COUNT(*) FROM doc_chunks").fetchone()[0]
-        chat_id_row = cur.execute("SELECT DISTINCT chat_id FROM doc_chunks LIMIT 1").fetchone()
-        conn.close()
+        payload = _json.dumps({
+            "model": model,
+            "prompt": prompt,
+            "stream": False,
+            "think": False,
+            "options": {"num_predict": 80, "temperature": 0},
+        }).encode()
+        req = urllib.request.Request(
+            f"{ollama_url}/api/generate",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=120) as resp:
+            resp_data = _json.loads(resp.read())
     except Exception as exc:
-        return [TestResult("fts5_rag_db_check", "FAIL", _time.time() - t0, str(exc))]
+        results.append(TestResult(
+            "ollama_quality_ru_calendar", "SKIP", time.time() - t0,
+            f"Ollama not available: {exc}",
+        ))
+        return results
 
-    if chunk_count == 0:
-        return [TestResult("fts5_rag_search", "SKIP", _time.time() - t0,
-                           "doc_chunks empty — no documents indexed, skipping live search")]
+    wall = time.time() - t0
+    response = resp_data.get("response", "").strip()
 
-    chat_id = int(chat_id_row[0]) if chat_id_row else 0
+    # Extract JSON from response (may have markdown fences)
+    json_text = response
+    if "```" in response:
+        import re
+        m = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", response, re.DOTALL)
+        if m:
+            json_text = m.group(1)
 
-    # Try to import retrieve_context
-    _taris_dir = Path.home() / ".taris"
-    for _p in [str(SRC_ROOT), str(_taris_dir)]:
-        if _p not in _sys.path:
-            _sys.path.insert(0, _p)
-
+    # Validate JSON structure
     try:
-        from core.bot_rag import retrieve_context as _retrieve_context
-    except ImportError as exc:
-        return [TestResult("fts5_rag_import", "SKIP", _time.time() - t0,
-                           f"cannot import bot_rag: {exc}")]
-
-    try:
-        chunks, assembled, strategy = _retrieve_context(chat_id, "документ", top_k=3)
-        if strategy == "skipped":
-            results.append(TestResult("fts5_rag_strategy", "WARN", _time.time() - t0,
-                                      "retrieve_context returned 'skipped' — query classified as simple"))
-        elif not chunks and not assembled:
-            results.append(TestResult("fts5_rag_result", "WARN", _time.time() - t0,
-                                      f"retrieve_context returned empty (strategy={strategy})"))
+        parsed = _json.loads(json_text)
+        has_title = "title" in parsed and isinstance(parsed["title"], str) and len(parsed["title"]) > 0
+        has_dt = "dt" in parsed and isinstance(parsed["dt"], str)
+        if has_title and has_dt:
+            results.append(TestResult(
+                "ollama_quality_ru_calendar", "PASS", wall,
+                f"model={model} title='{parsed['title']}' dt='{parsed.get('dt','')}' wall={wall:.1f}s",
+                metric=wall, metric_key="ollama_cal_json_s",
+            ))
         else:
-            results.append(TestResult("fts5_rag_result", "PASS", _time.time() - t0,
-                                      f"strategy={strategy} chunks={len(chunks)} chars={len(assembled)}"))
-    except Exception as exc:
-        results.append(TestResult("fts5_rag_call", "FAIL", _time.time() - t0,
-                                  f"retrieve_context raised: {exc}"))
-
-    # Also verify strategy label is reasonable
-    try:
-        from core.bot_rag import classify_query as _cq
-        s1 = _cq("привет", has_documents=True)
-        s2 = _cq("что такое документ", has_documents=True)
-        results.append(TestResult(
-            "fts5_rag_classify",
-            "PASS" if s1 == "simple" and s2 in ("factual", "contextual") else "WARN",
-            _time.time() - t0,
-            f"classify_query: 'привет'→{s1!r}, 'что такое документ'→{s2!r}",
-        ))
-    except Exception as exc:
-        results.append(TestResult("fts5_rag_classify", "WARN", _time.time() - t0, str(exc)))
-
-    return results
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# T84 — Vector embeddings status
-# ─────────────────────────────────────────────────────────────────────────────
-def t_vec_embeddings_status(**_) -> list:
-    """T84: vec_embeddings table row count; fastembed importable; ONNX model cached."""
-    import time as _time
-    import sqlite3 as _sqlite3
-    results = []
-    t0 = _time.time()
-
-    db_path = Path.home() / ".taris" / "taris.db"
-    if not db_path.exists():
-        return [TestResult("vec_db_exists", "SKIP", _time.time() - t0, "~/.taris/taris.db not found")]
-
-    # Query vec_embeddings count (needs sqlite_vec extension)
-    vec_count = None
-    try:
-        conn = _sqlite3.connect(str(db_path))
-        conn.enable_load_extension(True)
-        try:
-            import sqlite_vec as _sv
-            _sv.load(conn)
-        except Exception as _e:
-            results.append(TestResult("vec_extension_load", "WARN", _time.time() - t0,
-                                      f"sqlite_vec load failed: {_e}"))
-            conn.close()
-            conn = None
-
-        if conn is not None:
-            try:
-                vec_count = conn.execute("SELECT COUNT(*) FROM vec_embeddings").fetchone()[0]
-                chunk_count = conn.execute("SELECT COUNT(*) FROM doc_chunks").fetchone()[0]
-                conn.close()
-
-                if vec_count == 0 and chunk_count > 0:
-                    results.append(TestResult(
-                        "vec_embeddings_count",
-                        "FAIL",
-                        _time.time() - t0,
-                        f"vec_embeddings EMPTY ({vec_count} rows) but doc_chunks has {chunk_count} rows — "
-                        "fastembed model not downloaded or embedding pipeline not triggered",
-                    ))
-                elif vec_count == 0 and chunk_count == 0:
-                    results.append(TestResult("vec_embeddings_count", "WARN", _time.time() - t0,
-                                              "both vec_embeddings and doc_chunks are empty (no docs uploaded)"))
-                elif vec_count < chunk_count:
-                    results.append(TestResult("vec_embeddings_count", "WARN", _time.time() - t0,
-                                              f"vec_embeddings ({vec_count}) < doc_chunks ({chunk_count}) — "
-                                              "some chunks lack embeddings"))
-                else:
-                    results.append(TestResult("vec_embeddings_count", "PASS", _time.time() - t0,
-                                              f"vec_embeddings={vec_count} matches doc_chunks={chunk_count}"))
-            except Exception as exc:
-                if conn:
-                    conn.close()
-                results.append(TestResult("vec_embeddings_count", "WARN", _time.time() - t0,
-                                          f"vec_embeddings query failed: {exc}"))
-    except Exception as exc:
-        results.append(TestResult("vec_db_connect", "FAIL", _time.time() - t0, str(exc)))
-
-    # fastembed importable
-    try:
-        from fastembed import TextEmbedding as _TE  # noqa: F401
-        results.append(TestResult("vec_fastembed_import", "PASS", _time.time() - t0,
-                                  "fastembed.TextEmbedding importable"))
-    except ImportError as exc:
-        results.append(TestResult("vec_fastembed_import", "WARN", _time.time() - t0,
-                                  f"fastembed not installed: {exc}"))
-
-    # ONNX model cached in ~/.cache/
-    _cache_root = Path.home() / ".cache" / "fastembed"
-    _hf_cache = Path.home() / ".cache" / "huggingface" / "hub"
-    model_cached = False
-    for _root in [_cache_root, _hf_cache]:
-        if any(_root.glob("*MiniLM*")) or any(_root.glob("*all-MiniLM*")):
-            model_cached = True
-            break
-    results.append(TestResult(
-        "vec_onnx_model_cached",
-        "PASS" if model_cached else "WARN",
-        _time.time() - t0,
-        "ONNX embedding model found in cache" if model_cached
-        else "MiniLM ONNX model not in ~/.cache/ — embeddings will download on first use",
-    ))
-
-    return results
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# T85 — Memory tiers: STM populated in live DB
-# ─────────────────────────────────────────────────────────────────────────────
-def t_memory_tiers_stm(**_) -> list:
-    """T85: chat_history (STM) + conversation_summaries (MTM/LTM) row counts and tier coverage."""
-    import time as _time
-    import sqlite3 as _sqlite3
-    results = []
-    t0 = _time.time()
-
-    db_path = Path.home() / ".taris" / "taris.db"
-    if not db_path.exists():
-        return [TestResult("memory_db_exists", "SKIP", _time.time() - t0, "~/.taris/taris.db not found")]
-
-    try:
-        conn = _sqlite3.connect(str(db_path))
-        cur = conn.cursor()
-
-        # STM: chat_history
-        stm_count = cur.execute("SELECT COUNT(*) FROM chat_history").fetchone()[0]
-        results.append(TestResult(
-            "memory_stm_count",
-            "PASS" if stm_count > 0 else "WARN",
-            _time.time() - t0,
-            f"chat_history (STM) has {stm_count} rows"
-            + (" — new install or all cleared" if stm_count == 0 else ""),
-        ))
-
-        # MTM/LTM: conversation_summaries
-        try:
-            total_summaries = cur.execute(
-                "SELECT COUNT(*) FROM conversation_summaries"
-            ).fetchone()[0]
             results.append(TestResult(
-                "memory_summaries_count",
-                "PASS" if total_summaries > 0 else "WARN",
-                _time.time() - t0,
-                f"conversation_summaries has {total_summaries} rows",
+                "ollama_quality_ru_calendar", "FAIL", wall,
+                f"model={model} JSON missing fields: {parsed}",
             ))
-
-            if total_summaries > 0:
-                mid_count = cur.execute(
-                    "SELECT COUNT(*) FROM conversation_summaries WHERE tier='mid'"
-                ).fetchone()[0]
-                long_count = cur.execute(
-                    "SELECT COUNT(*) FROM conversation_summaries WHERE tier='long'"
-                ).fetchone()[0]
-                results.append(TestResult(
-                    "memory_tiers_breakdown",
-                    "PASS",
-                    _time.time() - t0,
-                    f"mid={mid_count} long={long_count} (MTM/LTM pipeline active)",
-                ))
-        except Exception as exc:
-            results.append(TestResult("memory_summaries_query", "FAIL", _time.time() - t0,
-                                      f"conversation_summaries error: {exc}"))
-
-        conn.close()
-    except Exception as exc:
-        results.append(TestResult("memory_db_connect", "FAIL", _time.time() - t0, str(exc)))
-
-    return results
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# T86 — Memory injection in LLM context (source inspection)
-# ─────────────────────────────────────────────────────────────────────────────
-def t_memory_injection_llm(**_) -> list:
-    """T86: get_memory_context() is called in LLM context; memory prepended to system prompt; constants present."""
-    import time as _time
-    results = []
-    t0 = _time.time()
-
-    # Check bot_state.py has get_memory_context and _summarize_session_async
-    _bot_state_candidates = [
-        SRC_ROOT / "core" / "bot_state.py",
-        Path.home() / ".taris" / "core" / "bot_state.py",
-    ]
-    bot_state_src = None
-    for _p in _bot_state_candidates:
-        if _p.exists():
-            bot_state_src = _p.read_text(encoding="utf-8")
-            break
-    if bot_state_src is None:
-        results.append(TestResult("memory_bot_state", "SKIP", _time.time() - t0,
-                                  "core/bot_state.py not found"))
-    else:
-        has_gmc = "def get_memory_context" in bot_state_src
+    except Exception as parse_err:
         results.append(TestResult(
-            "memory_get_context_func",
-            "PASS" if has_gmc else "FAIL",
-            _time.time() - t0,
-            "get_memory_context() defined in bot_state.py" if has_gmc
-            else "MISSING: get_memory_context() not in bot_state.py",
+            "ollama_quality_ru_calendar", "FAIL", wall,
+            f"model={model} response not valid JSON: {response[:120]} ({parse_err})",
         ))
-        has_summarize = "_summarize_session_async" in bot_state_src
-        results.append(TestResult(
-            "memory_summarize_func",
-            "PASS" if has_summarize else "FAIL",
-            _time.time() - t0,
-            "_summarize_session_async defined" if has_summarize
-            else "MISSING: _summarize_session_async not in bot_state.py",
-        ))
-
-    # Check bot_config.py has CONV_MID_MAX and CONV_SUMMARY_THRESHOLD
-    _bot_config_candidates = [
-        SRC_ROOT / "core" / "bot_config.py",
-        Path.home() / ".taris" / "core" / "bot_config.py",
-    ]
-    bot_config_src = None
-    for _p in _bot_config_candidates:
-        if _p.exists():
-            bot_config_src = _p.read_text(encoding="utf-8")
-            break
-    if bot_config_src is None:
-        results.append(TestResult("memory_config_check", "SKIP", _time.time() - t0,
-                                  "bot_config.py not found"))
-    else:
-        for _const in ("CONV_MID_MAX", "CONV_SUMMARY_THRESHOLD", "CONVERSATION_HISTORY_MAX"):
-            present = _const in bot_config_src
-            results.append(TestResult(
-                f"memory_const_{_const.lower()}",
-                "PASS" if present else "FAIL",
-                _time.time() - t0,
-                f"{_const} present in bot_config.py" if present
-                else f"MISSING: {_const} not in bot_config.py",
-            ))
-
-    # Check that get_memory_context is called in bot_handlers.py / memory injection path
-    _handler_candidates = [
-        SRC_ROOT / "telegram" / "bot_handlers.py",
-        Path.home() / ".taris" / "telegram" / "bot_handlers.py",
-        SRC_ROOT / "telegram_menu_bot.py",
-        Path.home() / ".taris" / "telegram_menu_bot.py",
-    ]
-    handler_src = None
-    for _p in _handler_candidates:
-        if _p.exists():
-            handler_src = _p.read_text(encoding="utf-8")
-            break
-    if handler_src is None:
-        results.append(TestResult("memory_injection_wired", "SKIP", _time.time() - t0,
-                                  "bot_handlers.py not found"))
-    else:
-        has_gmc_call = "get_memory_context" in handler_src
-        results.append(TestResult(
-            "memory_injection_wired",
-            "PASS" if has_gmc_call else "FAIL",
-            _time.time() - t0,
-            "get_memory_context() called in bot_handlers.py" if has_gmc_call
-            else "MISSING: get_memory_context() not called in handler — memory NOT injected",
-        ))
-
-    return results
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# T87 — LLM context trace (COVERED by T60 t_llm_context_trace)
-# ─────────────────────────────────────────────────────────────────────────────
-# T87 is intentionally NOT defined here — fully covered by T60 (t_llm_context_trace).
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# T88 — Notes storage: DB-primary (notes_index table)
-# ─────────────────────────────────────────────────────────────────────────────
-def t_notes_storage_db(**_) -> list:
-    """T88: notes_index has content column; DB has rows; content readable from DB."""
-    import time as _time
-    import sqlite3 as _sqlite3
-    results = []
-    t0 = _time.time()
-
-    db_path = Path.home() / ".taris" / "taris.db"
-    if not db_path.exists():
-        return [TestResult("notes_db_exists", "SKIP", _time.time() - t0, "~/.taris/taris.db not found")]
-
-    try:
-        conn = _sqlite3.connect(str(db_path))
-        cur = conn.cursor()
-
-        # notes_index exists and has content column
-        columns = [r[1] for r in cur.execute("PRAGMA table_info(notes_index)")]
-        if not columns:
-            results.append(TestResult("notes_table_exists", "FAIL", _time.time() - t0,
-                                      "notes_index table not found in DB"))
-            conn.close()
-            return results
-
-        has_content = "content" in columns
-        results.append(TestResult(
-            "notes_content_column",
-            "PASS" if has_content else "FAIL",
-            _time.time() - t0,
-            f"notes_index columns: {columns}" + (" ✓ content present" if has_content
-                                                  else " ✗ MISSING content column"),
-        ))
-
-        # Row count
-        note_count = cur.execute("SELECT COUNT(*) FROM notes_index").fetchone()[0]
-        results.append(TestResult(
-            "notes_row_count",
-            "PASS" if note_count > 0 else "WARN",
-            _time.time() - t0,
-            f"notes_index has {note_count} row(s)"
-            + (" — no notes stored yet" if note_count == 0 else ""),
-        ))
-
-        # If content column and rows exist, check some rows have non-empty content
-        if has_content and note_count > 0:
-            non_empty = cur.execute(
-                "SELECT COUNT(*) FROM notes_index WHERE content IS NOT NULL AND content != ''"
-            ).fetchone()[0]
-            results.append(TestResult(
-                "notes_content_populated",
-                "PASS" if non_empty > 0 else "WARN",
-                _time.time() - t0,
-                f"{non_empty}/{note_count} notes have content in DB"
-                + (" — content may be in files only" if non_empty == 0 else ""),
-            ))
-
-        conn.close()
-    except Exception as exc:
-        results.append(TestResult("notes_db_query", "FAIL", _time.time() - t0, str(exc)))
-
-    return results
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# T89 — RAG query classification + vector flag
-# ─────────────────────────────────────────────────────────────────────────────
-def t_rag_query_classification(**_) -> list:
-    """T89: classify_query() distinguishes simple/factual/contextual; ENABLE_VECTOR_SEARCH or equivalent flag; FTS5 fallback."""
-    import time as _time
-    import sys as _sys
-    results = []
-    t0 = _time.time()
-
-    _taris_dir = Path.home() / ".taris"
-    for _p in [str(SRC_ROOT), str(_taris_dir)]:
-        if _p not in _sys.path:
-            _sys.path.insert(0, _p)
-
-    # Import classify_query from bot_rag
-    try:
-        from core.bot_rag import classify_query as _cq
-    except ImportError as exc:
-        return [TestResult("rag_cq_import", "SKIP", _time.time() - t0,
-                           f"cannot import bot_rag.classify_query: {exc}")]
-
-    # Test classification of various query types
-    cases = [
-        ("привет",                              True,  "simple"),
-        ("hi",                                  True,  "simple"),
-        ("ok",                                  True,  "simple"),
-        ("что такое тариф",                     True,  "factual"),
-        ("how does this work",                  True,  "factual"),
-        ("tell me about products",              True,  "factual"),
-        ("я хочу обсудить мой план",            True,  "contextual"),
-        ("что такое тариф",                     False, "contextual"),  # no docs → contextual
-    ]
-    failures = []
-    for _text, _has_docs, _expected in cases:
-        _got = _cq(_text, _has_docs)
-        if _got != _expected:
-            failures.append(f"cq({_text!r}, docs={_has_docs}) → {_got!r} expected {_expected!r}")
-
-    results.append(TestResult(
-        "rag_classify_query_routing",
-        "PASS" if not failures else "FAIL",
-        _time.time() - t0,
-        "all classify_query cases correct" if not failures else "; ".join(failures),
-    ))
-
-    # Check detect_rag_capability + FTS5 always available
-    try:
-        from core.bot_rag import detect_rag_capability as _drc, RAGCapability as _RC
-        cap = _drc()
-        results.append(TestResult(
-            "rag_capability_detected",
-            "PASS",
-            _time.time() - t0,
-            f"detect_rag_capability() = {cap.value}",
-        ))
-        # FTS5 path is always available
-        results.append(TestResult(
-            "rag_fts5_fallback_always",
-            "PASS",
-            _time.time() - t0,
-            "FTS5 is always available (bot_rag uses search_fts unconditionally)",
-        ))
-    except Exception as exc:
-        results.append(TestResult("rag_capability", "WARN", _time.time() - t0, str(exc)))
-
-    # Check ENABLE_VECTOR_SEARCH or has_vector_search in store
-    _rag_py_candidates = [
-        SRC_ROOT / "core" / "bot_rag.py",
-        Path.home() / ".taris" / "core" / "bot_rag.py",
-    ]
-    rag_src = None
-    for _p in _rag_py_candidates:
-        if _p.exists():
-            rag_src = _p.read_text(encoding="utf-8")
-            break
-    if rag_src:
-        has_vec_flag = ("ENABLE_VECTOR_SEARCH" in rag_src or
-                        "has_vector_search" in rag_src or
-                        "RAGCapability" in rag_src)
-        results.append(TestResult(
-            "rag_vector_flag",
-            "PASS" if has_vec_flag else "WARN",
-            _time.time() - t0,
-            "vector search capability flag found" if has_vec_flag
-            else "no ENABLE_VECTOR_SEARCH / has_vector_search flag found",
-        ))
-
-    return results
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# T90 — Shared documents: access control (known bug check)
-# ─────────────────────────────────────────────────────────────────────────────
-def t_shared_docs_access_control(**_) -> list:
-    """T90: is_shared column in documents; search_fts filters by chat_id only (known bug)."""
-    import time as _time
-    import sqlite3 as _sqlite3
-    results = []
-    t0 = _time.time()
-
-    # Check documents schema for is_shared column
-    db_path = Path.home() / ".taris" / "taris.db"
-    if db_path.exists():
-        try:
-            conn = _sqlite3.connect(str(db_path))
-            columns = [r[1] for r in conn.execute("PRAGMA table_info(documents)")]
-            conn.close()
-            has_is_shared = "is_shared" in columns
-            results.append(TestResult(
-                "shared_docs_schema",
-                "PASS" if has_is_shared else "FAIL",
-                _time.time() - t0,
-                "documents.is_shared column present" if has_is_shared
-                else "MISSING: documents.is_shared column not in schema",
-            ))
-        except Exception as exc:
-            results.append(TestResult("shared_docs_schema", "FAIL", _time.time() - t0, str(exc)))
-    else:
-        results.append(TestResult("shared_docs_db", "SKIP", _time.time() - t0,
-                                  "~/.taris/taris.db not found"))
-
-    # Source-inspect store_sqlite.py for search_fts and is_shared handling
-    _store_candidates = [
-        SRC_ROOT / "core" / "store_sqlite.py",
-        Path.home() / ".taris" / "core" / "store_sqlite.py",
-    ]
-    store_src = None
-    for _p in _store_candidates:
-        if _p.exists():
-            store_src = _p.read_text(encoding="utf-8")
-            break
-    if store_src is None:
-        results.append(TestResult("shared_docs_store", "SKIP", _time.time() - t0,
-                                  "store_sqlite.py not found"))
-        return results
-
-    # Check if search_fts includes shared doc lookup
-    import re as _re
-    _fts_block = ""
-    _m = _re.search(r"def search_fts\s*\(.*?(?=\ndef )", store_src, _re.DOTALL)
-    if _m:
-        _fts_block = _m.group(0)
-
-    has_shared_in_fts = ("is_shared" in _fts_block or
-                         "OR doc_id IN" in _fts_block or
-                         "is_shared = 1" in _fts_block)
-
-    if not has_shared_in_fts:
-        results.append(TestResult(
-            "shared_docs_fts_cross_user",
-            "WARN",
-            _time.time() - t0,
-            "BUG: search_fts() filters only by chat_id — shared docs (is_shared=1) "
-            "are NOT returned for other users. Fix: add OR doc_id IN "
-            "(SELECT doc_id FROM documents WHERE is_shared=1) to FTS query.",
-        ))
-    else:
-        results.append(TestResult(
-            "shared_docs_fts_cross_user",
-            "PASS",
-            _time.time() - t0,
-            "search_fts() includes is_shared=1 documents in results",
-        ))
-
-    # Check if admin toggle exists
-    has_toggle = ("is_shared" in store_src or "_handle_admin_doc_toggle_shared" in store_src)
-    # Also check in bot_documents.py
-    _docs_candidates = [
-        SRC_ROOT / "features" / "bot_documents.py",
-        Path.home() / ".taris" / "features" / "bot_documents.py",
-    ]
-    for _p in _docs_candidates:
-        if _p.exists():
-            _ds = _p.read_text(encoding="utf-8")
-            if "_handle_admin_doc_toggle_shared" in _ds or "is_shared" in _ds:
-                has_toggle = True
-            break
-    results.append(TestResult(
-        "shared_docs_admin_toggle",
-        "PASS" if has_toggle else "WARN",
-        _time.time() - t0,
-        "admin toggle for is_shared exists" if has_toggle
-        else "no admin toggle for is_shared found",
-    ))
-
-    return results
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# T91 — Voice channel RAG + history gap check
-# ─────────────────────────────────────────────────────────────────────────────
-def t_voice_rag_gap(**_) -> list:
-    """T91: verify voice channel uses ask_llm_with_history (fixed) and RAG injection (_with_lang_voice)."""
-    import time as _time
-    results = []
-    t0 = _time.time()
-
-    _voice_candidates = [
-        SRC_ROOT / "features" / "bot_voice.py",
-        Path.home() / ".taris" / "features" / "bot_voice.py",
-        SRC_ROOT / "bot_voice.py",
-    ]
-    voice_src = None
-    for _p in _voice_candidates:
-        if _p.exists():
-            voice_src = _p.read_text(encoding="utf-8")
-            break
-    if voice_src is None:
-        return [TestResult("voice_rag_source", "SKIP", _time.time() - t0,
-                           "bot_voice.py not found")]
-
-    # History: voice should use ask_llm_with_history (was fixed v2026.3.30+5)
-    imports_with_history = "ask_llm_with_history" in voice_src
-    calls_with_history = ("ask_llm_with_history(" in voice_src)
-    results.append(TestResult(
-        "voice_uses_ask_with_history",
-        "PASS" if (imports_with_history and calls_with_history) else "FAIL",
-        _time.time() - t0,
-        "voice calls ask_llm_with_history() ✓ history gap CLOSED"
-        if (imports_with_history and calls_with_history)
-        else "FAIL: voice uses bare ask_llm() — history gap still present",
-    ))
-
-    # RAG: _with_lang_voice or _docs_rag_context should be called in voice path
-    _access_candidates = [
-        SRC_ROOT / "telegram" / "bot_access.py",
-        Path.home() / ".taris" / "telegram" / "bot_access.py",
-    ]
-    access_src = None
-    for _p in _access_candidates:
-        if _p.exists():
-            access_src = _p.read_text(encoding="utf-8")
-            break
-
-    voice_has_rag_call = "_docs_rag_context" in voice_src or "_with_lang_voice" in voice_src
-    if access_src:
-        # _with_lang_voice in bot_access.py calls _docs_rag_context
-        with_lang_voice_has_rag = ("_with_lang_voice" in access_src and
-                                   "_docs_rag_context" in access_src)
-    else:
-        with_lang_voice_has_rag = False
-
-    rag_in_voice = voice_has_rag_call or with_lang_voice_has_rag
-    results.append(TestResult(
-        "voice_rag_injection",
-        "PASS" if rag_in_voice else "WARN",
-        _time.time() - t0,
-        "voice path injects RAG context via _with_lang_voice/_docs_rag_context ✓"
-        if rag_in_voice
-        else "WARN: no RAG injection detected in voice path — voice RAG gap still present",
-    ))
-
-    # Check that both user and assistant turns are saved to history in voice
-    saves_turns = "add_to_history" in voice_src
-    results.append(TestResult(
-        "voice_saves_history_turns",
-        "PASS" if saves_turns else "WARN",
-        _time.time() - t0,
-        "voice saves turns via add_to_history() ✓" if saves_turns
-        else "WARN: voice does not call add_to_history() — turns not persisted",
-    ))
-
-    return results
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# T92 — RAG retrieve_context: full pipeline source check
-# ─────────────────────────────────────────────────────────────────────────────
-def t_rag_retrieve_pipeline(**_) -> list:
-    """T92: bot_rag.py has retrieve_context, chunk_document, embed_chunks, search_fts, search_similar, RRF, context injection string."""
-    import time as _time
-    results = []
-    t0 = _time.time()
-
-    _rag_candidates = [
-        SRC_ROOT / "core" / "bot_rag.py",
-        Path.home() / ".taris" / "core" / "bot_rag.py",
-    ]
-    rag_src = None
-    for _p in _rag_candidates:
-        if _p.exists():
-            rag_src = _p.read_text(encoding="utf-8")
-            break
-    if rag_src is None:
-        return [TestResult("rag_pipeline_source", "SKIP", _time.time() - t0,
-                           "bot_rag.py not found")]
-
-    # Functions that should be in bot_rag.py
-    rag_functions = {
-        "retrieve_context":           "def retrieve_context(" in rag_src,
-        "classify_query":             "def classify_query(" in rag_src,
-        "reciprocal_rank_fusion":     "def reciprocal_rank_fusion(" in rag_src,
-        "detect_rag_capability":      "def detect_rag_capability(" in rag_src,
-    }
-    for _fname, _present in rag_functions.items():
-        results.append(TestResult(
-            f"rag_func_{_fname}",
-            "PASS" if _present else "FAIL",
-            _time.time() - t0,
-            f"bot_rag.{_fname}() present" if _present
-            else f"MISSING: bot_rag.{_fname}() not found",
-        ))
-
-    # Functions in store_sqlite (search_fts, search_similar, upsert_chunk_text)
-    _store_candidates = [
-        SRC_ROOT / "core" / "store_sqlite.py",
-        Path.home() / ".taris" / "core" / "store_sqlite.py",
-    ]
-    store_src = None
-    for _p in _store_candidates:
-        if _p.exists():
-            store_src = _p.read_text(encoding="utf-8")
-            break
-    if store_src is None:
-        results.append(TestResult("rag_store_source", "SKIP", _time.time() - t0,
-                                  "store_sqlite.py not found"))
-    else:
-        store_functions = {
-            "search_fts":          "def search_fts(" in store_src,
-            "search_similar":      "def search_similar(" in store_src,
-            "upsert_chunk_text":   "def upsert_chunk_text(" in store_src or "INSERT INTO doc_chunks" in store_src,
-        }
-        for _fname, _present in store_functions.items():
-            results.append(TestResult(
-                f"rag_store_func_{_fname}",
-                "PASS" if _present else "FAIL",
-                _time.time() - t0,
-                f"store_sqlite.{_fname}() present" if _present
-                else f"MISSING: store_sqlite.{_fname}() not found",
-            ))
-
-    # Context injection string in bot_access.py
-    _access_candidates = [
-        SRC_ROOT / "telegram" / "bot_access.py",
-        Path.home() / ".taris" / "telegram" / "bot_access.py",
-    ]
-    access_src = None
-    for _p in _access_candidates:
-        if _p.exists():
-            access_src = _p.read_text(encoding="utf-8")
-            break
-    if access_src is None:
-        results.append(TestResult("rag_context_string", "SKIP", _time.time() - t0,
-                                  "bot_access.py not found"))
-    else:
-        has_kg_string = "[KNOWLEDGE FROM USER DOCUMENTS]" in access_src
-        results.append(TestResult(
-            "rag_context_injection_string",
-            "PASS" if has_kg_string else "FAIL",
-            _time.time() - t0,
-            "'[KNOWLEDGE FROM USER DOCUMENTS]' injection string present in bot_access.py"
-            if has_kg_string
-            else "MISSING: '[KNOWLEDGE FROM USER DOCUMENTS]' not found — RAG context not injected",
-        ))
-
-    # RRF: check it uses k=60 as per Cormack et al.
-    has_k60 = "k=60" in rag_src or "k: int = 60" in rag_src
-    results.append(TestResult(
-        "rag_rrf_k60",
-        "PASS" if has_k60 else "WARN",
-        _time.time() - t0,
-        "RRF uses k=60 (Cormack default)" if has_k60
-        else "RRF k parameter may not be 60 (check bot_rag.py)",
-    ))
-
     return results
 
 
@@ -6641,29 +5905,12 @@ TEST_FUNCTIONS = [
     t_rag_log_datetime_serialization,
     # RAG hybrid retrieval: psutil fallback + embed() signature + chunk_idx in search_similar (T80)
     t_rag_hybrid_retrieval_fixes,
-    # faster-whisper turbo: cache-path resolution + offline model load (T81)
-    t_faster_whisper_turbo,
-    # RAG doc_chunks populated in live DB (T82)
-    t_rag_chunks_populated,
-    # FTS5 RAG search functional via retrieve_context() (T83)
-    t_fts5_rag_search,
-    # vec_embeddings status: fastembed + ONNX model cached (T84)
-    t_vec_embeddings_status,
-    # Memory tiers: STM chat_history + conversation_summaries counts (T85)
-    t_memory_tiers_stm,
-    # Memory injection: get_memory_context called in LLM context; constants present (T86)
-    t_memory_injection_llm,
-    # T87 intentionally omitted — covered by T60 (t_llm_context_trace)
-    # Notes DB-primary: notes_index table + content column (T88)
-    t_notes_storage_db,
-    # RAG query classification routing + vector flag + FTS5 fallback (T89)
-    t_rag_query_classification,
-    # Shared docs access control: is_shared schema + FTS5 cross-user bug (T90)
-    t_shared_docs_access_control,
-    # Voice channel RAG + history gap: ask_llm_with_history + _docs_rag_context (T91)
-    t_voice_rag_gap,
-    # RAG retrieve_context full pipeline: all functions + injection string (T92)
-    t_rag_retrieve_pipeline,
+    # Qwen3.5 model available in Ollama registry (T81)
+    t_qwen35_ollama_available,
+    # Ollama latency regression: active model within 30s threshold (T82)
+    t_ollama_latency_regression,
+    # Ollama quality: Russian calendar intent → valid JSON (T83)
+    t_ollama_quality_ru_calendar,
 ]
 
 
