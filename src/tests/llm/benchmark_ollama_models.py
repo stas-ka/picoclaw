@@ -46,19 +46,23 @@ CANDIDATE_MODELS = [
 ]
 
 # ---------------------------------------------------------------------------
-# Prompts for quality evaluation
+# Prompts for quality evaluation — organised by language
 # ---------------------------------------------------------------------------
 
 PROMPTS = {
+    # ── Speed ────────────────────────────────────────────────────────────────
     "latency": {
         "text": "Say OK",
+        "lang": None,
         "desc": "Minimal round-trip latency",
         "check": lambda r: "ok" in r.lower(),
         "options": {"num_predict": 10, "temperature": 0},
     },
+    # ── Russian ───────────────────────────────────────────────────────────────
     "ru_factual": {
         "text": "Скажи число Пи с точностью до 5 знаков после запятой. Только число, ничего больше.",
-        "desc": "Russian factual (Pi)",
+        "lang": "ru",
+        "desc": "RU factual (Pi)",
         "check": lambda r: "3.14159" in r.replace(",", "."),
         "options": {"num_predict": 30, "temperature": 0},
     },
@@ -69,7 +73,40 @@ PROMPTS = {
             'Формат: {"title": "<название>", "dt": "<YYYY-MM-DDTHH:MM>"}\n'
             'Верни только JSON, без пояснений.'
         ),
-        "desc": "Russian calendar intent → JSON",
+        "lang": "ru",
+        "desc": "RU calendar → JSON",
+        "check": lambda r: '"title"' in r and '"dt"' in r,
+        "options": {"num_predict": 60, "temperature": 0},
+    },
+    "ru_assistant": {
+        "text": (
+            "Ты — голосовой помощник Taris. Пользователь говорит: 'Включи напоминание на завтра в 9 утра.'\n"
+            "Ответь кратко и подтверди действие на русском языке (1-2 предложения)."
+        ),
+        "lang": "ru",
+        "desc": "RU assistant reply",
+        "check": lambda r: len(r.strip()) > 10 and any(
+            w in r.lower() for w in ["завтра", "9", "напомин", "установ", "ок", "хорошо", "понял"]
+        ),
+        "options": {"num_predict": 80, "temperature": 0.1},
+    },
+    # ── German ────────────────────────────────────────────────────────────────
+    "de_factual": {
+        "text": "Was ist der Wert von Pi auf 5 Dezimalstellen? Nur die Zahl.",
+        "lang": "de",
+        "desc": "DE factual (Pi)",
+        "check": lambda r: "3.14159" in r.replace(",", "."),
+        "options": {"num_predict": 30, "temperature": 0},
+    },
+    "de_calendar": {
+        "text": (
+            'Extrahiere die Ereignisdaten aus dem Text und gib JSON zurück.\n'
+            'Text: "Arzttermin am Donnerstag um 14:00 Uhr"\n'
+            'Format: {"title": "<Titel>", "dt": "<YYYY-MM-DDTHH:MM>"}\n'
+            'Nur JSON, keine Erklärung.'
+        ),
+        "lang": "de",
+        "desc": "DE calendar → JSON",
         "check": lambda r: '"title"' in r and '"dt"' in r,
         "options": {"num_predict": 60, "temperature": 0},
     },
@@ -78,9 +115,30 @@ PROMPTS = {
             "Wie spät ist es in Berlin, wenn es in Moskau 15:00 Uhr ist? "
             "Antworte kurz: nur die Uhrzeit."
         ),
-        "desc": "German time-zone reasoning",
+        "lang": "de",
+        "desc": "DE timezone reasoning",
         "check": lambda r: any(t in r for t in ["13:00", "14:00"]),
         "options": {"num_predict": 20, "temperature": 0},
+    },
+    # ── English ───────────────────────────────────────────────────────────────
+    "en_factual": {
+        "text": "What is the value of Pi to 5 decimal places? Just the number, nothing else.",
+        "lang": "en",
+        "desc": "EN factual (Pi)",
+        "check": lambda r: "3.14159" in r.replace(",", "."),
+        "options": {"num_predict": 30, "temperature": 0},
+    },
+    "en_calendar": {
+        "text": (
+            'Extract event data from text and return JSON.\n'
+            'Text: "Meeting with doctor on Thursday at 14:00"\n'
+            'Format: {"title": "<name>", "dt": "<YYYY-MM-DDTHH:MM>"}\n'
+            'Return only JSON, no explanation.'
+        ),
+        "lang": "en",
+        "desc": "EN calendar → JSON",
+        "check": lambda r: '"title"' in r and '"dt"' in r,
+        "options": {"num_predict": 60, "temperature": 0},
     },
     "en_code": {
         "text": (
@@ -88,21 +146,50 @@ PROMPTS = {
             "the sum of squares of even numbers in a list `nums`. "
             "Return ONLY the code, no explanation."
         ),
-        "desc": "English code generation",
+        "lang": "en",
+        "desc": "EN code generation",
         "check": lambda r: "sum(" in r and ("nums" in r or "num" in r),
         "options": {"num_predict": 60, "temperature": 0},
     },
-    "ru_assistant": {
+    # ── Slovenian ─────────────────────────────────────────────────────────────
+    "sl_factual": {
+        "text": "Koliko je vrednost Pi na 5 decimalnih mest? Samo število, nič drugega.",
+        "lang": "sl",
+        "desc": "SL factual (Pi)",
+        "check": lambda r: "3.14159" in r.replace(",", "."),
+        "options": {"num_predict": 30, "temperature": 0},
+    },
+    "sl_calendar": {
         "text": (
-            "Ты — голосовой помощник Taris. Пользователь говорит: 'Включи напоминание на завтра в 9 утра.'\n"
-            "Ответь кратко и подтверди действие на русском языке (1-2 предложения)."
+            'Izvleci podatke o dogodku iz besedila in vrni JSON.\n'
+            'Besedilo: "Sestanek z zdravnikom v četrtek ob 14:00"\n'
+            'Format: {"title": "<naziv>", "dt": "<YYYY-MM-DDTHH:MM>"}\n'
+            'Vrni samo JSON, brez razlage.'
         ),
-        "desc": "Russian assistant response quality",
+        "lang": "sl",
+        "desc": "SL calendar → JSON",
+        "check": lambda r: '"title"' in r and '"dt"' in r,
+        "options": {"num_predict": 60, "temperature": 0},
+    },
+    "sl_assistant": {
+        "text": (
+            "Ti si glasovni pomočnik Taris. Uporabnik pravi: 'Nastavi opomnik jutri ob 9 zjutraj.'\n"
+            "Odgovori kratko in potrdi dejanje v slovenščini (1-2 stavka)."
+        ),
+        "lang": "sl",
+        "desc": "SL assistant reply",
         "check": lambda r: len(r.strip()) > 10 and any(
-            w in r.lower() for w in ["завтра", "9", "напомин", "установ", "ок", "хорошо", "понял"]
+            w in r.lower() for w in ["jutri", "9", "opomn", "nastav", "v redu", "ok", "razumem"]
         ),
         "options": {"num_predict": 80, "temperature": 0.1},
     },
+}
+
+LANG_GROUPS = {
+    "ru": ["ru_factual", "ru_calendar", "ru_assistant"],
+    "de": ["de_factual", "de_calendar", "de_reasoning"],
+    "en": ["en_factual", "en_calendar", "en_code"],
+    "sl": ["sl_factual", "sl_calendar", "sl_assistant"],
 }
 
 # ---------------------------------------------------------------------------
@@ -286,6 +373,38 @@ def print_summary_table(results: list[ModelResult], prompt_keys: list[str]):
         print(row(*cells))
     print(sep)
 
+
+def print_lang_summary(results: list[ModelResult], langs: list[str]):
+    """Per-language quality matrix: models × languages."""
+    if len(langs) < 2:
+        return
+    print("\n=== Per-language quality score ===")
+    header = f"  {'Model':<24}" + "".join(f"  {lg.upper():>7}" for lg in langs) + "   Avg"
+    print(header)
+    print(f"  {'-' * (24 + 9 * len(langs) + 6)}")
+    for r in results:
+        if r.error:
+            continue
+        lang_scores = {}
+        for lang in langs:
+            keys = LANG_GROUPS.get(lang, [])
+            prs = [p for p in r.prompt_results if p.prompt_key in keys and not p.error]
+            if prs:
+                lang_scores[lang] = sum(1 for p in prs if p.passed) / len(prs)
+        row_s = f"  {r.model:<24}"
+        vals = []
+        for lang in langs:
+            sc = lang_scores.get(lang)
+            if sc is None:
+                row_s += "      n/a"
+            else:
+                row_s += f"  {sc:.0%}".rjust(8)
+                vals.append(sc)
+        if vals:
+            row_s += f"  {sum(vals)/len(vals):.0%}".rjust(6)
+        print(row_s)
+
+
 def print_detail_table(results: list[ModelResult], prompt_keys: list[str]):
     """Per-prompt latency breakdown."""
     print("\n=== Latency breakdown (TTFT / wall) ===")
@@ -346,12 +465,13 @@ def save_results(results: list[ModelResult], path: str):
 # ---------------------------------------------------------------------------
 
 def main():
-    parser = argparse.ArgumentParser(description="Ollama LLM model benchmark")
-    parser.add_argument("--model", help="Benchmark only this model (comma-separated for multiple)")
-    parser.add_argument("--save", metavar="PATH", help="Save results to this JSON file")
+    parser = argparse.ArgumentParser(description="Ollama LLM model benchmark — 4 languages")
+    parser.add_argument("--model",  help="Benchmark only this model (comma-separated for multiple)")
+    parser.add_argument("--lang",   help="Restrict to these language groups (comma-sep: ru,de,en,sl)")
+    parser.add_argument("--save",   metavar="PATH", help="Save results to this JSON file")
     parser.add_argument("--compare", metavar="PATH", help="Compare against baseline JSON")
-    parser.add_argument("--quick", action="store_true", help="Run only latency + ru_factual prompts")
-    parser.add_argument("--verbose", "-v", action="store_true", help="Show response text per prompt")
+    parser.add_argument("--quick",  action="store_true", help="Run only latency + ru_factual")
+    parser.add_argument("--verbose", "-v", action="store_true", help="Show response text")
     parser.add_argument("--prompt", help="Run only these prompts (comma-separated keys)")
     args = parser.parse_args()
 
@@ -363,8 +483,20 @@ def main():
         if not prompt_keys:
             print(f"Unknown prompt keys. Available: {', '.join(PROMPTS.keys())}")
             sys.exit(1)
+    elif args.lang:
+        langs_filter = [l.strip() for l in args.lang.split(",")]
+        prompt_keys = ["latency"]
+        for lg in langs_filter:
+            prompt_keys.extend(LANG_GROUPS.get(lg, []))
     else:
         prompt_keys = list(PROMPTS.keys())
+        langs_filter = list(LANG_GROUPS.keys())
+
+    # Determine active languages for summary
+    if not args.quick and not args.prompt:
+        langs_active = [lg for lg in LANG_GROUPS if any(k in prompt_keys for k in LANG_GROUPS[lg])]
+    else:
+        langs_active = []
 
     # Determine models to test
     available = _get_available_models()
@@ -379,9 +511,7 @@ def main():
         if missing:
             print(f"[WARN] Not found in Ollama: {', '.join(missing)}")
     else:
-        # Only benchmark candidates that are actually pulled
         models = [m for m in CANDIDATE_MODELS if m in available]
-        # Also include any qwen3.5 models not in CANDIDATE_MODELS
         for m in available:
             if "qwen3.5" in m and m not in models:
                 models.append(m)
@@ -390,12 +520,12 @@ def main():
         print("No models to benchmark (check ollama list)")
         sys.exit(1)
 
-    print(f"\n{'='*60}")
+    print(f"\n{'='*70}")
     print(f"Ollama LLM Benchmark — {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}")
-    print(f"Target: {OLLAMA_URL}")
-    print(f"Models: {', '.join(models)}")
+    print(f"Target:  {OLLAMA_URL}")
+    print(f"Models:  {', '.join(models)}")
     print(f"Prompts: {', '.join(prompt_keys)}")
-    print(f"{'='*60}")
+    print(f"{'='*70}")
 
     results = []
     for model in models:
@@ -403,10 +533,12 @@ def main():
         r = benchmark_model(model, prompt_keys, verbose=args.verbose)
         results.append(r)
 
-    # Summary
+    # Summary tables
     print_summary_table(results, prompt_keys)
     if not args.quick:
         print_detail_table(results, prompt_keys)
+    if langs_active:
+        print_lang_summary(results, langs_active)
 
     if args.compare:
         compare_with_baseline(results, args.compare)
@@ -419,7 +551,6 @@ def main():
         save_path = os.path.join(save_dir, f"llm_benchmark_{ts}.json")
     save_results(results, save_path)
 
-    # Print winner
     valid_results = [r for r in results if not r.error and r.avg_tps > 0]
     if valid_results:
         fastest = max(valid_results, key=lambda r: r.avg_tps)
@@ -429,3 +560,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

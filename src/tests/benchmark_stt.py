@@ -66,6 +66,18 @@ PIPER_MODEL_DE = _env("PIPER_MODEL_DE", "")
 
 SAMPLE_RATE = 16000
 
+def _find_espeak() -> tuple[str, str]:
+    """Return (espeak_bin, espeak_data) — system binary preferred over Piper-bundled."""
+    system_bin  = "/usr/bin/espeak-ng"
+    system_data = "/usr/lib/x86_64-linux-gnu/espeak-ng-data"
+    piper_bin   = os.environ.get("ESPEAK_BIN", os.path.expanduser("~/.taris/piper/espeak-ng"))
+    piper_data  = os.environ.get("ESPEAK_DATA", os.path.expanduser("~/.taris/piper/espeak-ng-data"))
+    if os.path.exists(system_bin) and os.path.isdir(system_data):
+        return system_bin, system_data
+    return piper_bin, piper_data
+
+ESPEAK_BIN, ESPEAK_DATA = _find_espeak()
+
 # Candidate models: ordered small→large
 CANDIDATE_MODELS = [
     "tiny",
@@ -74,7 +86,16 @@ CANDIDATE_MODELS = [
     "mobiuslabsgmbh/faster-whisper-large-v3-turbo",
 ]
 
-# Test sentences with known WER reference (Russian focus, bot's primary language)
+# Whisper language codes + espeak voice names
+LANG_META = {
+    "ru": {"espeak": "ru",    "label": "Russian"},
+    "de": {"espeak": "de",    "label": "German"},
+    "en": {"espeak": "en-us", "label": "English"},
+    "sl": {"espeak": "sl",    "label": "Slovenian"},
+}
+
+# Test sentences per language — (spoken_text, reference_for_WER)
+# Reference is lowercased, punctuation-free (how Whisper tends to output)
 TEST_SENTENCES = {
     "ru": [
         ("добавь событие встреча с врачом в четверг в четырнадцать часов",
@@ -88,15 +109,33 @@ TEST_SENTENCES = {
     ],
     "de": [
         ("füge einen Termin für Donnerstag um vierzehn Uhr hinzu",
-         "füge einen Termin für Donnerstag um vierzehn Uhr hinzu"),
+         "füge einen termin für donnerstag um vierzehn uhr hinzu"),
         ("zeig mir meine Aufgaben für heute bitte",
-         "zeig mir meine Aufgaben für heute bitte"),
+         "zeig mir meine aufgaben für heute bitte"),
+        ("wie ist das Wetter in Berlin gerade",
+         "wie ist das wetter in berlin gerade"),
+        ("stelle eine Erinnerung für morgen früh um acht Uhr",
+         "stelle eine erinnerung für morgen früh um acht uhr"),
     ],
     "en": [
         ("add a meeting with the doctor on Thursday at two pm",
          "add a meeting with the doctor on thursday at two pm"),
         ("show me my tasks for today please",
          "show me my tasks for today please"),
+        ("what is the weather like in Berlin right now",
+         "what is the weather like in berlin right now"),
+        ("set a reminder for tomorrow morning at eight",
+         "set a reminder for tomorrow morning at eight"),
+    ],
+    "sl": [
+        ("dodaj sestanek z zdravnikom v četrtek ob štirinajstih",
+         "dodaj sestanek z zdravnikom v četrtek ob štirinajstih"),
+        ("pokaži mi moje naloge za danes prosim",
+         "pokaži mi moje naloge za danes prosim"),
+        ("kakšno je vreme v berlinu",
+         "kakšno je vreme v berlinu"),
+        ("nastavi opomnik jutri zjutraj ob osmih",
+         "nastavi opomnik jutri zjutraj ob osmih"),
     ],
 }
 
@@ -153,10 +192,43 @@ def _tts_piper(text: str, lang: str) -> bytes | None:
         return None
 
 
-def _tts_fallback(text: str) -> bytes:
-    """Generate 2s silence as a fallback (for load-time benchmark only)."""
-    import numpy as np
-    return (np.zeros(SAMPLE_RATE * 2, dtype=np.int16)).tobytes()
+def _tts_espeak(text: str, lang: str) -> bytes | None:
+    """Generate speech via bundled espeak-ng. Fallback for languages without Piper model."""
+    espeak = Path(ESPEAK_BIN)
+    if not espeak.exists():
+        return None
+    espeak_lang = LANG_META.get(lang, {}).get("espeak", lang)
+    env = {**os.environ, "ESPEAK_DATA_PATH": ESPEAK_DATA}
+    try:
+        proc = subprocess.run(
+            [str(espeak), "-v", espeak_lang, "-s", "140", "-a", "180", "--stdout"],
+            input=text.encode("utf-8"),
+            capture_output=True, timeout=30, env=env,
+        )
+        if proc.returncode != 0 or len(proc.stdout) < 200:
+            return None
+        # espeak outputs WAV — convert to 16kHz s16le PCM
+        cmd = [
+            "ffmpeg", "-y", "-i", "pipe:0",
+            "-ar", str(SAMPLE_RATE), "-ac", "1", "-f", "s16le",
+            "-loglevel", "error", "pipe:1",
+        ]
+        result = subprocess.run(cmd, input=proc.stdout, capture_output=True, timeout=30)
+        return result.stdout if result.returncode == 0 and result.stdout else None
+    except Exception:
+        return None
+
+
+
+def _tts_audio(text: str, lang: str) -> tuple[bytes | None, str]:
+    """Generate speech. Returns (pcm_bytes, source) where source is 'piper' or 'espeak'."""
+    pcm = _tts_piper(text, lang)
+    if pcm:
+        return pcm, "piper"
+    pcm = _tts_espeak(text, lang)
+    if pcm:
+        return pcm, "espeak"
+    return None, "none"
 
 
 def _ogg_to_pcm(ogg_path: str) -> tuple[bytes, float]:
@@ -246,12 +318,16 @@ def benchmark_model(
         return result
 
     wers, rtfs, lats = [], [], []
+    tts_source = None
     for i, (text, ref) in enumerate(sentences):
-        # Generate audio
-        pcm = _tts_piper(text, lang)
+        # Generate audio via Piper (preferred) or espeak-ng fallback
+        pcm, src = _tts_audio(text, lang)
+        if tts_source is None:
+            tts_source = src
         if pcm is None:
-            pcm = _tts_fallback(text)
-            ref = None  # can't compute WER on silence
+            import numpy as np
+            pcm = np.zeros(SAMPLE_RATE * 2, dtype=np.int16).tobytes()
+            ref = None  # no WER without real audio
 
         audio_np = np.frombuffer(pcm, dtype=np.int16).astype(np.float32) / 32768.0
         duration = len(pcm) / (SAMPLE_RATE * 2)
@@ -293,7 +369,8 @@ def benchmark_model(
     result["avg_wer"]      = round(sum(wers) / len(wers), 3) if wers else None
     result["avg_rtf"]      = round(sum(rtfs) / len(rtfs), 3) if rtfs else 0
     result["avg_latency_s"] = round(sum(lats) / len(lats), 3) if lats else 0
-    del model  # release VRAM
+    result["tts_source"]   = tts_source or "none"
+    del model  # release RAM
     return result
 
 
@@ -301,44 +378,78 @@ def benchmark_model(
 # Reporting
 # ---------------------------------------------------------------------------
 def print_results(all_results: list[dict], langs: list[str]) -> None:
-    print(f"\n{'='*90}")
-    print(f"{'Model':<48} {'Compute':<9} {'Load':>6} {'Lat':>6} {'RTF':>6} {'WER':>6}  Verdict")
-    print("-" * 90)
-    for r in all_results:
-        if r.get("error"):
-            print(f"  {r['model']:<46} {'':9} ERROR: {r['error'][:40]}")
+    # Per-lang table
+    for lang in langs:
+        lang_results = [r for r in all_results if r.get("lang") == lang]
+        if not lang_results:
             continue
-        wer_str  = f"{r['avg_wer']:.0%}" if r['avg_wer'] is not None else "  n/a"
-        rtf_ok   = r['avg_rtf'] < 1.0   # faster than real-time
-        wer_ok   = r['avg_wer'] is not None and r['avg_wer'] < 0.20
-        verdict  = ("✅ fast+accurate" if rtf_ok and wer_ok
-                    else "⚠️  slow" if not rtf_ok and wer_ok
-                    else "⚠️  inaccurate" if rtf_ok and not wer_ok
-                    else "⚠️  slow+inaccurate" if not rtf_ok
-                    else "—")
-        label = r['model'].replace("mobiuslabsgmbh/", "")
-        print(f"  {label:<46} {r['compute_type']:<9} {r['load_s']:>5.1f}s {r['avg_latency_s']:>5.2f}s "
-              f"{r['avg_rtf']:>5.2f} {wer_str:>6}  {verdict}")
+        label = LANG_META.get(lang, {}).get("label", lang.upper())
+        tts = lang_results[0].get("tts_source", "?") if lang_results else "?"
+        print(f"\n{'='*90}")
+        print(f"  {label} ({lang.upper()})  — TTS source: {tts}")
+        print(f"  {'Model':<42} {'Compute':<8} {'Load':>6} {'Lat':>6} {'RTF':>6} {'WER':>6}  Verdict")
+        print(f"  {'-'*88}")
+        for r in lang_results:
+            if r.get("error"):
+                print(f"  {r['model'].replace('mobiuslabsgmbh/',''):<40}  ERROR: {r['error'][:40]}")
+                continue
+            wer_str = f"{r['avg_wer']:.0%}" if r['avg_wer'] is not None else "  n/a"
+            rtf_ok  = r['avg_rtf'] < 1.0
+            wer_ok  = r['avg_wer'] is not None and r['avg_wer'] < 0.20
+            verdict = ("✅ fast+accurate" if rtf_ok and wer_ok
+                       else "⚠️  slow"        if not rtf_ok and wer_ok
+                       else "⚠️  inaccurate"  if rtf_ok and not wer_ok
+                       else "⚠️  slow+inaccurate")
+            label_m = r['model'].replace("mobiuslabsgmbh/", "")
+            print(f"  {label_m:<42} {r['compute_type']:<8} {r['load_s']:>5.1f}s "
+                  f"{r['avg_latency_s']:>5.2f}s {r['avg_rtf']:>5.2f} {wer_str:>6}  {verdict}")
+
+    # Cross-language summary matrix: models × languages
+    models_seen   = list(dict.fromkeys(r['model']  for r in all_results))
+    computes_seen = list(dict.fromkeys(r['compute_type'] for r in all_results))
+    if len(langs) > 1:
+        print(f"\n{'='*90}")
+        print("  Cross-language WER matrix")
+        header = f"  {'Model':<38}"
+        for lang in langs:
+            header += f"  {lang.upper():>7}"
+        header += "  Avg"
+        print(header)
+        print(f"  {'-'*86}")
+        for model_id in models_seen:
+            for compute in computes_seen:
+                subset = [r for r in all_results if r['model'] == model_id and r['compute_type'] == compute]
+                if not subset:
+                    continue
+                label_m = model_id.replace("mobiuslabsgmbh/", "")
+                row_s = f"  {label_m+' '+compute:<38}"
+                wers = []
+                for lang in langs:
+                    lr = next((r for r in subset if r['lang'] == lang), None)
+                    if lr and lr.get('avg_wer') is not None:
+                        row_s += f"  {lr['avg_wer']:.0%}".rjust(8)
+                        wers.append(lr['avg_wer'])
+                    else:
+                        row_s += "      n/a"
+                if wers:
+                    avg = sum(wers) / len(wers)
+                    row_s += f"  {avg:.0%}".rjust(5)
+                print(row_s)
+
+    # Overall recommendation (per language independently)
+    print(f"\n{'='*90}")
+    for lang in langs:
+        lang_results = [r for r in all_results if r.get("lang") == lang and not r.get("error") and r.get("avg_rtf", 0) > 0]
+        if not lang_results:
+            continue
+        fast_accurate = [r for r in lang_results if r['avg_rtf'] < 1.0 and (r.get('avg_wer') or 1) < 0.20]
+        best_wer   = min(lang_results, key=lambda r: r.get('avg_wer') or 1)
+        best_speed = min(lang_results, key=lambda r: r['avg_rtf'])
+        rec = min(fast_accurate, key=lambda r: r.get('avg_wer') or 1) if fast_accurate else best_wer
+        lang_label = LANG_META.get(lang, {}).get("label", lang.upper())
+        print(f"  {lang_label:<12} ✅ {rec['model'].replace('mobiuslabsgmbh/',''):<30}"
+              f"  WER {rec.get('avg_wer') or 0:.0%}  RTF {rec['avg_rtf']:.2f}")
     print("=" * 90)
-
-    # Recommendation
-    valid = [r for r in all_results if not r.get("error") and r["avg_rtf"] > 0]
-    if not valid:
-        return
-    fast_and_accurate = [r for r in valid
-                         if r["avg_rtf"] < 1.0 and (r["avg_wer"] or 1) < 0.20]
-    best_wer   = min(valid, key=lambda r: r["avg_wer"] or 1)
-    best_speed = min(valid, key=lambda r: r["avg_rtf"])
-    recommend  = min(fast_and_accurate, key=lambda r: r["avg_wer"] or 1) if fast_and_accurate \
-                 else best_wer
-
-    print(f"\n🎯 Best WER:      {best_wer['model'].replace('mobiuslabsgmbh/','')} "
-          f"({best_wer['avg_wer']:.0%} WER)")
-    print(f"⚡ Fastest:       {best_speed['model'].replace('mobiuslabsgmbh/','')} "
-          f"(RTF {best_speed['avg_rtf']:.2f})")
-    print(f"✅ Recommended:   {recommend['model'].replace('mobiuslabsgmbh/','')} "
-          f"— {recommend['avg_wer']:.0%} WER, RTF {recommend['avg_rtf']:.2f}, "
-          f"load {recommend['load_s']:.1f}s")
 
 
 # ---------------------------------------------------------------------------
@@ -347,7 +458,8 @@ def print_results(all_results: list[dict], langs: list[str]) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description="faster-whisper model benchmark")
     parser.add_argument("--model",   nargs="+", help="Model IDs to benchmark (default: all cached)")
-    parser.add_argument("--lang",    nargs="+", default=["ru"], help="Languages (ru de en)")
+    parser.add_argument("--lang",    nargs="+", default=["ru", "de", "en", "sl"],
+                        help="Languages to test (default: ru de en sl)")
     parser.add_argument("--compute", nargs="+", default=["int8"], help="Compute types (int8 float32)")
     parser.add_argument("--audio",   help="OGG file to transcribe (overrides TTS generation)")
     parser.add_argument("--text",    help="Reference text for --audio")
@@ -372,10 +484,13 @@ def main() -> None:
 
     # Check Piper availability
     piper_ok = Path(PIPER_BIN).exists()
+    espeak_ok = Path(ESPEAK_BIN).exists()
     if not piper_ok:
-        print(f"   [WARN] Piper not found at {PIPER_BIN} — using silence (no WER)")
+        print(f"   [WARN] Piper not found at {PIPER_BIN}")
     else:
-        print(f"   Piper:    {PIPER_BIN}")
+        print(f"   Piper:    {PIPER_BIN}  (RU voice active)")
+    if espeak_ok:
+        print(f"   Espeak:   {ESPEAK_BIN}  (DE/EN/SL fallback)")
 
     all_results = []
 
