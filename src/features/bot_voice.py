@@ -412,7 +412,9 @@ def _stt_faster_whisper(raw_pcm: bytes, sample_rate: int, lang: str = "ru") -> O
         lang:        Language code: 'ru', 'en', 'de'.
 
     Config (bot.env):
-        FASTER_WHISPER_MODEL   — model size: tiny/base/small/medium (default: base)
+        FASTER_WHISPER_MODEL   — model size: tiny/base/small/medium/large-v3-turbo/turbo
+                                  or full HF path: mobiuslabsgmbh/faster-whisper-large-v3-turbo
+                                  (default: base)
         FASTER_WHISPER_DEVICE  — cpu / cuda (default: cpu)
         FASTER_WHISPER_COMPUTE — int8 / float16 / float32 (default: int8)
     """
@@ -439,10 +441,26 @@ def _stt_faster_whisper(raw_pcm: bytes, sample_rate: int, lang: str = "ru") -> O
                 f"threads={_cpu_threads}"
             )
             # Prefer local HuggingFace cache path to avoid any network/auth requests.
-            # faster-whisper caches as models--Systran--faster-whisper-<size>
+            # Supports short names (base, small, turbo), long names (large-v3-turbo),
+            # and full HF org/repo paths (mobiuslabsgmbh/faster-whisper-large-v3-turbo).
+            #
+            # Short-name aliases used for cache-dir resolution only (not passed to WhisperModel):
+            _FW_MODEL_ALIASES: dict = {"turbo": "large-v3-turbo", "large": "large-v3"}
             model_arg = FASTER_WHISPER_MODEL
             _hf_cache = Path.home() / ".cache" / "huggingface" / "hub"
-            _model_dir = _hf_cache / f"models--Systran--faster-whisper-{FASTER_WHISPER_MODEL}"
+
+            if "/" in FASTER_WHISPER_MODEL:
+                # Full HF path: "org/repo-name" → cache dir "models--org--repo-name"
+                _org, _repo = FASTER_WHISPER_MODEL.split("/", 1)
+                _model_dir = _hf_cache / f"models--{_org}--{_repo}"
+            else:
+                # Short/long name via Systran namespace; resolve alias for cache dir only
+                _resolved = _FW_MODEL_ALIASES.get(FASTER_WHISPER_MODEL, FASTER_WHISPER_MODEL)
+                _model_dir = _hf_cache / f"models--Systran--faster-whisper-{_resolved}"
+                # Fallback: mobiuslabsgmbh hosts the turbo variant and may be pre-cached
+                if not (_model_dir / "snapshots").is_dir() and "turbo" in _resolved:
+                    _model_dir = _hf_cache / f"models--mobiuslabsgmbh--faster-whisper-{_resolved}"
+
             _snapshots = _model_dir / "snapshots"
             if _snapshots.is_dir():
                 _snaps = sorted(_snapshots.iterdir())

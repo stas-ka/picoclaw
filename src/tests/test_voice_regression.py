@@ -5571,6 +5571,99 @@ def t_rag_hybrid_retrieval_fixes(**_) -> list:
     return results
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# T81 — faster-whisper turbo: cache-path resolution + model load
+# ─────────────────────────────────────────────────────────────────────────────
+def t_faster_whisper_turbo(**_) -> list:
+    """T81: Turbo model cache-path resolution + offline load.
+
+    Verifies that:
+    1. bot_voice.py handles 'org/repo' HF paths (e.g. mobiuslabsgmbh/faster-whisper-large-v3-turbo)
+    2. 'turbo' alias resolves to 'large-v3-turbo' for Systran cache lookup
+    3. mobiuslabsgmbh fallback cache is tried when Systran turbo is absent
+    4. If the local mobiuslabsgmbh cache is present, the model actually loads offline
+    """
+    import time as _time
+    import re as _re
+    import pathlib as _pl
+    results = []
+    t0 = _time.time()
+
+    voice_py = SRC_ROOT / "features" / "bot_voice.py"
+    if not voice_py.exists():
+        return [TestResult("fw_turbo_source", "SKIP", _time.time() - t0,
+                           "features/bot_voice.py not found")]
+    src = voice_py.read_text(encoding="utf-8")
+
+    # 1. Code handles "/" in model name (full HF path)
+    has_slash_check = '"/" in' in src or "\"/ \" in" in src or "'/' in" in src or '"/" in FASTER_WHISPER_MODEL' in src
+    has_slash_check = bool(_re.search(r'"/".*FASTER_WHISPER_MODEL|FASTER_WHISPER_MODEL.*"/"', src))
+    results.append(TestResult("fw_turbo_slash_path_support",
+                              "PASS" if has_slash_check else "FAIL",
+                              _time.time() - t0,
+                              "org/repo path support in cache resolution"
+                              if has_slash_check else "MISSING: no '/' check in model_arg → full HF paths not handled"))
+
+    # 2. Alias dict maps 'turbo' → 'large-v3-turbo'
+    has_alias = '"turbo"' in src and '"large-v3-turbo"' in src
+    results.append(TestResult("fw_turbo_alias_dict",
+                              "PASS" if has_alias else "FAIL",
+                              _time.time() - t0,
+                              'turbo alias dict present' if has_alias
+                              else 'MISSING: _FW_MODEL_ALIASES not found in bot_voice.py'))
+
+    # 3. mobiuslabsgmbh fallback check in source
+    has_mobius = "mobiuslabsgmbh" in src
+    results.append(TestResult("fw_turbo_mobiuslabsgmbh_fallback",
+                              "PASS" if has_mobius else "FAIL",
+                              _time.time() - t0,
+                              "mobiuslabsgmbh fallback cache check present"
+                              if has_mobius else "MISSING mobiuslabsgmbh fallback"))
+
+    # 4. If mobiuslabsgmbh turbo is cached locally, attempt an actual load
+    _hf = _pl.Path.home() / ".cache" / "huggingface" / "hub"
+    _mobius_dir = _hf / "models--mobiuslabsgmbh--faster-whisper-large-v3-turbo"
+    if not (_mobius_dir / "snapshots").is_dir():
+        results.append(TestResult("fw_turbo_model_load",
+                                  "SKIP", _time.time() - t0,
+                                  "mobiuslabsgmbh turbo not in local HF cache — skipping load test"))
+        return results
+
+    try:
+        from faster_whisper import WhisperModel as _WM  # type: ignore[import]
+    except ImportError:
+        results.append(TestResult("fw_turbo_model_load", "SKIP", _time.time() - t0,
+                                  "faster-whisper not installed"))
+        return results
+
+    import numpy as _np
+    import os as _os
+    t1 = _time.time()
+    try:
+        _snaps = sorted((_mobius_dir / "snapshots").iterdir())
+        _snap_path = str(_snaps[-1])
+        _os.environ.setdefault("HF_HUB_OFFLINE", "1")
+        m = _WM(_snap_path, device="cpu", compute_type="int8", cpu_threads=8)
+        load_t = _time.time() - t1
+        # Quick silence inference to confirm model is functional
+        silence = _np.zeros(8000, dtype=_np.int16).astype(_np.float32) / 32768.0
+        t2 = _time.time()
+        segs, _ = m.transcribe(silence, language="ru", beam_size=1)
+        list(segs)
+        infer_t = _time.time() - t2
+        del m
+        results.append(TestResult(
+            "fw_turbo_model_load",
+            "PASS", load_t,
+            f"mobiuslabsgmbh turbo loaded offline in {load_t:.2f}s, inference {infer_t:.2f}s",
+            metric=infer_t, metric_key="fw_turbo_infer_silence",
+        ))
+    except Exception as e:
+        results.append(TestResult("fw_turbo_model_load", "FAIL", _time.time() - t1, str(e)))
+
+    return results
+
+
 TEST_FUNCTIONS = [
     t_model_files_present,
     t_piper_json_present,
@@ -5707,6 +5800,8 @@ TEST_FUNCTIONS = [
     t_rag_log_datetime_serialization,
     # RAG hybrid retrieval: psutil fallback + embed() signature + chunk_idx in search_similar (T80)
     t_rag_hybrid_retrieval_fixes,
+    # faster-whisper turbo: cache-path resolution + offline model load (T81)
+    t_faster_whisper_turbo,
 ]
 
 
