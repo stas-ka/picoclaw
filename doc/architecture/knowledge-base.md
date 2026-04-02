@@ -1,6 +1,6 @@
 # Taris — Knowledge Base Architecture
 
-**Version:** `2026.4.1`  
+**Version:** `2026.4.2`  
 → Architecture index: [architecture.md](../architecture.md)
 
 ## When to read this file
@@ -93,12 +93,65 @@ Logged to rag_log with latency_ms + query_type
 
 | Table | Backend | Key columns | Purpose |
 |---|---|---|---|
-| `documents` | Both | `doc_id, chat_id, filename, doc_hash, n_chunks, shared` | Document registry |
-| `document_chunks` | Both | `chunk_id, doc_id, chunk_text, chunk_index` | Chunk content |
-| `fts_documents` | SQLite | `doc_id, chunk_text` (FTS5 virtual) | BM25 full-text search |
+| `documents` | Both | `doc_id, chat_id, title, file_path, doc_type, doc_hash, is_shared, metadata` | Document registry |
+| `doc_chunks` | SQLite | `doc_id, chunk_idx, chat_id, chunk_text` (FTS5 virtual) | BM25 full-text search |
+| `vec_embeddings` | SQLite (sqlite-vec) | `doc_id, chunk_idx, chat_id, chunk_text, embedding FLOAT[384]` | Cosine vector search (vec0 virtual table) |
+| `vec_rowid_map` | SQLite | `doc_id, chunk_idx → vec_rowid` | Rowid tracker for vec0 DELETE workaround |
 | `document_embeddings` | Postgres | `chunk_id, embedding vector(384)` | pgvector cosine search |
 
 → Full schema: [data-layer.md](data-layer.md)
+
+---
+
+## vec0 DELETE Workaround (v2026.4.2)
+
+`sqlite-vec` `vec0` virtual tables do **not** support `DELETE WHERE` on auxiliary columns (e.g. `WHERE doc_id = ?`). Only rowid-based deletion works.
+
+| Component | File | Mechanism |
+|---|---|---|
+| `vec_rowid_map` table | `store_sqlite.py` `_VEC_ROWID_MAP_SQL` | Regular SQLite table tracking `(doc_id, chunk_idx) → vec_rowid` |
+| `upsert_embedding()` | `store_sqlite.py` | Looks up old rowid → DELETE by rowid → INSERT → store new rowid |
+| `delete_embeddings(doc_id)` | `store_sqlite.py` | Fetches all rowids for doc_id from map → DELETE by rowid each |
+| `search_similar()` | `store_sqlite.py` | Fetches 3× top_k, deduplicates (doc_id, chunk_idx) in Python |
+
+> **Never** call `DELETE FROM vec_embeddings WHERE doc_id = ?` directly — it silently does nothing.
+
+---
+
+## System Knowledge Base Docs (v2026.4.2)
+
+Shared system documents are loaded at bot startup via a background thread.
+
+| Tag | Title | Source file | Audience |
+|---|---|---|---|
+| `taris_user_guide` | 📖 Taris — User Guide | `doc/howto_bot.md` | All users |
+| `taris_admin_guide` | 🔧 Taris — Admin & Technical Guide | `README.md` + `doc/architecture/overview.md` | Admins |
+
+- `SYSTEM_CHAT_ID = 0`, `is_shared = 1` → visible in all users' RAG context
+- Stable `doc_id` via `uuid.uuid5(NAMESPACE_DNS, f"taris.system.{tag}")` — idempotent
+- Hash-based skip: if `doc_hash` matches `documents.doc_hash`, reload is skipped
+- Source files deployed to `~/.taris/` on each target (README.md, doc/howto_bot.md, doc/architecture/overview.md)
+- Loader: `setup/load_system_docs.py` · Auto-loader thread: `telegram_menu_bot.py` `_ensure_system_docs()`
+- Force refresh: `python3 setup/load_system_docs.py --force`
+
+---
+
+## Re-Embedding Migration
+
+`setup/migrate_reembed.py` — run once after any deployment to embed chunks without vectors.
+
+```bash
+# All users
+python3 setup/migrate_reembed.py
+
+# Single user
+python3 setup/migrate_reembed.py --chat-id 994963580
+
+# Dry run (count only)
+python3 setup/migrate_reembed.py --dry-run
+```
+
+Uses `store.get_chunks_without_embeddings()` (works for SQLiteStore; PostgresStore requires Postgres schema).
 
 ---
 
@@ -144,7 +197,7 @@ New module added in v2026.3.32 — adaptive routing + fusion. MCP integration in
 | `classify_query(text, has_documents)` | `"simple"` \| `"factual"` \| `"contextual"` | Heuristic routing — no LLM call |
 | `detect_rag_capability()` | `RAGCapability` enum | RAM + vector-store detection (cached) |
 | `reciprocal_rank_fusion(fts5, vector, k=60)` | merged list | Interleaves + deduplicates by `id`; adds `rrf_score` |
-| `retrieve_context(chat_id, query, top_k, max_chars)` | `(chunks, assembled, strategy)` | Unified entry — auto-selects FTS5/hybrid by tier; merges MCP remote chunks if enabled |
+| `retrieve_context(chat_id, query, top_k, max_chars)` | `(chunks, assembled, strategy, trace)` | Unified entry — auto-selects FTS5/hybrid by tier; merges MCP remote chunks if enabled; returns trace dict `{n_fts5, n_vector, n_mcp, latency_ms, cap}` |
 
 Hardware tier → strategy mapping:
 
@@ -223,6 +276,11 @@ Currently calendar data is only available when the user explicitly opens the cal
 | Per-user RAG settings | ✅ Implemented (v2026.3.32) | — |
 | Chunk quality filter + embed stats in metadata | ✅ Implemented (v2026.4.1) | — |
 | MCP server `/mcp/search` + remote MCP client | ✅ Implemented (v2026.4.1) | — |
+| **Critical bug fixes** (upsert_embedding args, RRF chunk_idx, vec0 DELETE via rowid map) | ✅ Fixed (v2026.4.2) | — |
+| **Shared docs in FTS + vector search** (`is_shared=1` honoured in all search paths) | ✅ Implemented (v2026.4.2) | — |
+| **RAG tracing** (`retrieve_context` 4-tuple with `trace` dict; n_fts5/n_vector/n_mcp in rag_log) | ✅ Implemented (v2026.4.2) | — |
+| **System KB docs** (README + howto + overview as shared docs; auto-loaded at startup) | ✅ Implemented (v2026.4.2) | — |
+| **Re-embedding migration** (`setup/migrate_reembed.py` — store API, `--dry-run`, `--chat-id`) | ✅ Implemented (v2026.4.2) | — |
 | Notes indexed as KB | ⏳ Planned | [TODO.md §10](../TODO.md) |
 | Calendar context injection | ⏳ Planned | [TODO.md §10](../TODO.md) |
 | Contacts lookup in conversation | ⏳ Planned | [TODO.md §4](../TODO.md) |
