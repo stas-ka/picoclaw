@@ -6123,7 +6123,7 @@ def t_system_docs_structure(**_) -> list[TestResult]:
         code = migrator.read_text()
         for check, desc in [
             ("def _migrate", "_migrate() main function"),
-            ("LEFT JOIN vec_embeddings", "finds chunks without embeddings via LEFT JOIN"),
+            ("get_chunks_without_embeddings", "uses store API to find unembedded chunks"),
             ("store.upsert_embedding", "calls upsert_embedding for each chunk"),
             ("--dry-run", "--dry-run CLI flag"),
         ]:
