@@ -555,22 +555,22 @@ class SQLiteStore:
             (doc_id, chunk_idx),
         ).fetchone()
         old_rowid = old[0] if old else None
-        # vec0 DELETE only works inside an explicit transaction (BEGIN...COMMIT)
-        db.execute("BEGIN")
-        if old_rowid is not None:
-            try:
-                db.execute("DELETE FROM vec_embeddings WHERE rowid = ?", (old_rowid,))
-            except Exception:
-                pass
-        cur = db.execute(
-            "INSERT INTO vec_embeddings "
-            "(doc_id, chunk_idx, chat_id, chunk_text, embedding) "
-            "VALUES (?, ?, ?, ?, ?)",
-            (doc_id, chunk_idx, chat_id, chunk_text, vec_blob),
-        )
-        vec_rowid = cur.lastrowid
-        db.commit()
-        # Update rowid_map in a separate commit (regular table, no vec0 quirks)
+        # vec0 DELETE only works inside a committed transaction.
+        # Use `with db:` which handles nested transactions correctly in Python 3.12.
+        with db:
+            if old_rowid is not None:
+                try:
+                    db.execute("DELETE FROM vec_embeddings WHERE rowid = ?", (old_rowid,))
+                except Exception:
+                    pass
+            cur = db.execute(
+                "INSERT INTO vec_embeddings "
+                "(doc_id, chunk_idx, chat_id, chunk_text, embedding) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (doc_id, chunk_idx, chat_id, chunk_text, vec_blob),
+            )
+            vec_rowid = cur.lastrowid
+        # Update rowid_map outside the vec0 transaction (regular table)
         if vec_rowid:
             db.execute(
                 "INSERT OR REPLACE INTO vec_rowid_map (doc_id, chunk_idx, vec_rowid)"
@@ -621,9 +621,9 @@ class SQLiteStore:
         db = self._db()
         # Ensure rowid map exists
         db.execute(_VEC_ROWID_MAP_SQL)
-        # Collect rowids via rowid_map (fast) AND via aux-column scan (catches orphans).
+        # Collect rowids via rowid_map AND via aux-column scan (catches orphans not in map).
         # SELECT by aux column works on vec0; DELETE with WHERE aux does not.
-        # DELETE by rowid ONLY works inside an explicit transaction (BEGIN...COMMIT).
+        # vec0 DELETE by rowid only works inside a committed transaction — use `with db:`.
         mapped_rowids = {row[0] for row in db.execute(
             "SELECT vec_rowid FROM vec_rowid_map WHERE doc_id = ?", (doc_id,)
         ).fetchall()}
@@ -635,13 +635,12 @@ class SQLiteStore:
             scanned_rowids = set()
         all_rowids = mapped_rowids | scanned_rowids
         if all_rowids:
-            db.execute("BEGIN")
-            for rid in all_rowids:
-                try:
-                    db.execute("DELETE FROM vec_embeddings WHERE rowid = ?", (rid,))
-                except Exception:
-                    pass
-            db.commit()
+            with db:
+                for rid in all_rowids:
+                    try:
+                        db.execute("DELETE FROM vec_embeddings WHERE rowid = ?", (rid,))
+                    except Exception:
+                        pass
         db.execute("DELETE FROM vec_rowid_map WHERE doc_id = ?", (doc_id,))
         db.commit()
 
