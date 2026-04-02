@@ -1388,6 +1388,15 @@ def main() -> None:
     _cal_reschedule_all()
     threading.Thread(target=_cal_morning_briefing_loop, daemon=True).start()
 
+    # Auto-load system KB docs (user guide + admin guide) in background
+    def _ensure_system_docs() -> None:
+        try:
+            from setup.load_system_docs import _load_docs
+            _load_docs(force=False)
+        except Exception as exc:
+            log.debug("[SystemDocs] auto-load skipped: %s", exc)
+    threading.Thread(target=_ensure_system_docs, daemon=True).start()
+
     log.info("Polling Telegram…")
 
     # Graceful shutdown: stop polling before process exits so Telegram drops

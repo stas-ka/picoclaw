@@ -201,21 +201,27 @@ def _docs_rag_context(chat_id: int, query: str) -> str:
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as _pool:
             _fut = _pool.submit(retrieve_context, chat_id, query, top_k, 2000)
             try:
-                chunks, assembled, strategy = _fut.result(timeout=rag_timeout)
+                chunks, assembled, strategy, trace = _fut.result(timeout=rag_timeout)
             except concurrent.futures.TimeoutError:
                 log.warning("[RAG] timeout (%.0fs) chat_id=%s", rag_timeout, chat_id)
                 return ""
 
-        latency_ms = int((time.monotonic() - t0) * 1000)
+        latency_ms = trace.get("latency_ms", int((time.monotonic() - t0) * 1000))
 
         if strategy == "skipped" or not assembled:
             return ""
 
-        log.debug("[RAG] strategy=%s chunks=%d chars=%d latency=%dms",
-                  strategy, len(chunks), len(assembled), latency_ms)
+        log.info("[RAG] strategy=%s fts5=%d vec=%d mcp=%d chunks=%d chars=%d latency=%dms",
+                 strategy, trace.get("n_fts5", 0), trace.get("n_vector", 0),
+                 trace.get("n_mcp", 0), len(chunks), len(assembled), latency_ms)
         try:
-            store.log_rag_activity(chat_id, query, len(chunks), len(assembled),
-                                   latency_ms=latency_ms, query_type=strategy)
+            store.log_rag_activity(
+                chat_id, query, len(chunks), len(assembled),
+                latency_ms=latency_ms, query_type=strategy,
+                n_fts5=trace.get("n_fts5", 0),
+                n_vector=trace.get("n_vector", 0),
+                n_mcp=trace.get("n_mcp", 0),
+            )
         except Exception:
             pass
         return f"[KNOWLEDGE FROM USER DOCUMENTS]\n{assembled}\n[END KNOWLEDGE]\n\n"

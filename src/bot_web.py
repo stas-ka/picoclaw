@@ -2927,7 +2927,7 @@ async def mcp_search(request: Request):
 
     try:
         from core.bot_rag import retrieve_context
-        chunks, _, strategy = retrieve_context(chat_id, query, top_k=top_k)
+        chunks, _, strategy, trace = retrieve_context(chat_id, query, top_k=top_k)
         result_chunks = [
             {
                 "doc_id":     c.get("doc_id", ""),

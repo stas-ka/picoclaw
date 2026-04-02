@@ -175,6 +175,10 @@ pscp -pw "%HOSTPWD%" src\tests\voice\*.ogg              stas@OpenClawPI:/home/st
 | T84 | `upload_stats_metadata` | Phase C: `_chunk_text()` filters chunks shorter than `_MIN_CHUNK_CHARS`; `_store_text_chunks()` returns `(n_chunks, n_embedded)`; `_process_doc_file()` stores `quality_pct`, `n_embedded`, `n_skipped` in metadata; `_handle_doc_detail()` shows embed count and quality; `docs_doc_embeds`/`docs_doc_quality` strings present in all 3 languages. | After editing `bot_documents.py` chunking, embedding, or doc detail view |
 | T85 | `embeddings_import_fix` | `bot_embeddings.py` uses `from core.bot_config import` (not `from src.core.bot_config`) — production deploy fix. `EmbeddingService` importable. | After editing `bot_embeddings.py` or moving it between packages |
 | T86 | `mcp_phase_d_structure` | Phase D: `MCP_SERVER_ENABLED`/`MCP_REMOTE_URL`/`MCP_TIMEOUT`/`MCP_REMOTE_TOP_K` in `bot_config.py`; `/mcp/search` endpoint registered in `bot_web.py` with Bearer-token auth + `retrieve_context()` call; `bot_mcp_client.py` has `query_remote()`, `circuit_status()`, circuit-breaker constants, stdlib HTTP client; `bot_rag.py` merges remote MCP chunks into RRF with `+mcp` strategy tag. | After editing any MCP Phase D code: `bot_mcp_client.py`, `/mcp/search` endpoint, MCP config constants |
+| T87 | `embedding_pipeline_fix` | `_store_text_chunks()` passes `chunks[idx]` as chunk_text to `upsert_embedding()` (was missing — vectors silently never stored); `search_fts()` and `search_similar()` SELECT includes `chunk_idx` (was missing — RRF fusion broken). | After editing `bot_documents.py` embed loop, `store_sqlite.py` search methods |
+| T88 | `shared_docs_search` | `search_fts()` and `search_similar()` include `is_shared=1` docs from all users; `_get_shared_doc_ids()` helper present; `list_documents()` returns own + shared docs. | After editing `store_sqlite.py` search or document listing methods |
+| T89 | `rag_trace_fields` | `retrieve_context()` returns 4-tuple `(chunks, text, strategy, trace)`; trace has `n_fts5`/`n_vector`/`n_mcp`/`latency_ms`; `bot_access.py` unpacks 4-tuple + passes trace to `log_rag_activity()`; `rag_log` auto-migrated with `n_fts5`/`n_vector`/`n_mcp` columns. | After editing `bot_rag.py` retrieve_context(), `bot_access.py` RAG context path, or `store_sqlite.py` rag_log |
+| T90 | `system_docs_structure` | `src/setup/load_system_docs.py` exists with `_load_docs()`, `_ingest()`, `_chunk()`, system tags, `is_shared=1`; `src/setup/migrate_reembed.py` exists with `_migrate()`, LEFT JOIN logic, `--dry-run`; `telegram_menu_bot.py` starts `_ensure_system_docs` thread at startup. | After editing system docs loader, migration script, or startup logic |
 
 ### 2.6 When specific tests are mandatory
 
@@ -207,6 +211,10 @@ pscp -pw "%HOSTPWD%" src\tests\voice\*.ogg              stas@OpenClawPI:/home/st
 | After editing `bot_documents.py` chunking, embedding, or doc detail view | T84 (`--test t_upload_stats_metadata`) |
 | After editing `bot_embeddings.py` or changing its import paths | T85 (`--test t_embeddings_import_fix`) |
 | After editing any MCP Phase D code (`bot_mcp_client.py`, `/mcp/search`, MCP constants) | T86 (`--test t_mcp_phase_d_structure`) |
+| After editing `bot_documents.py` embed loop or `store_sqlite.py` search methods | T87 (`--test t_embedding_pipeline_fix`) |
+| After editing `store_sqlite.py` search or document listing | T88 (`--test t_shared_docs_search`) |
+| After editing `bot_rag.py` retrieve_context, `bot_access.py` RAG path, or `rag_log` schema | T89 (`--test t_rag_trace_fields`) |
+| After editing system docs loader, migration script, or startup sequence | T90 (`--test t_system_docs_structure`) |
 | After any deploy or openclaw-gateway config change | T44 (`--test t_openclaw_gateway_telegram_disabled`) |
 | After changing `TARIS_BIN` in bot.env or deploying to a new Pi with picoclaw | T45 (`--test t_taris_bin_configured`) |
 | After changing `_VOICE_OPTS_DEFAULTS` or adding a new DEVICE_VARIANT | T46 (`--test t_vosk_fallback_openclaw_default`) |

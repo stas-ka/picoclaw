@@ -120,7 +120,7 @@ def _store_text_chunks(doc_id: str, chat_id: int, chunks: list[str]) -> tuple[in
                 vecs = svc.embed_batch(chunks)
                 if vecs:
                     for idx, vec in enumerate(vecs):
-                        store.upsert_embedding(doc_id, idx, chat_id, vec)
+                        store.upsert_embedding(doc_id, idx, chat_id, chunks[idx], vec)
                     n_embedded = len(vecs)
                     log.debug("[Docs] stored %d embeddings for doc %s", n_embedded, doc_id)
         except Exception as exc:

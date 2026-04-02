@@ -467,7 +467,8 @@ class SQLiteStore:
 
     def list_documents(self, chat_id: int) -> list[dict]:
         rows = self._db().execute(
-            "SELECT * FROM documents WHERE chat_id = ? ORDER BY created_at DESC",
+            "SELECT * FROM documents WHERE chat_id = ? OR is_shared = 1"
+            " ORDER BY created_at DESC",
             (chat_id,),
         ).fetchall()
         result = []
@@ -553,16 +554,31 @@ class SQLiteStore:
             )
         import struct
         vec_blob = struct.pack(f"{len(embedding)}f", *embedding)
-        rows = self._db().execute(
-            """SELECT doc_id, chunk_text, distance
-               FROM vec_embeddings
-               WHERE chat_id = ?
-                 AND embedding MATCH ?
-               ORDER BY distance
-               LIMIT ?""",
-            (chat_id, vec_blob, top_k),
-        ).fetchall()
-        return [dict(r) for r in rows]
+        # Include own docs + shared docs
+        shared_ids = self._get_shared_doc_ids()
+        if shared_ids:
+            placeholders = ",".join("?" * len(shared_ids))
+            rows = self._db().execute(
+                f"SELECT doc_id, chunk_idx, chunk_text, distance"
+                f" FROM vec_embeddings"
+                f" WHERE (chat_id = ? OR doc_id IN ({placeholders}))"
+                f"   AND embedding MATCH ?"
+                f" ORDER BY distance"
+                f" LIMIT ?",
+                [chat_id] + shared_ids + [vec_blob, top_k],
+            ).fetchall()
+        else:
+            rows = self._db().execute(
+                """SELECT doc_id, chunk_idx, chunk_text, distance
+                   FROM vec_embeddings
+                   WHERE chat_id = ?
+                     AND embedding MATCH ?
+                   ORDER BY distance
+                   LIMIT ?""",
+                (chat_id, vec_blob, top_k),
+            ).fetchall()
+        return [{"doc_id": r[0], "chunk_idx": int(r[1] or 0),
+                 "chunk_text": r[2], "distance": r[3]} for r in rows]
 
     def delete_embeddings(self, doc_id: str) -> None:
         if not self._has_vec:
@@ -594,13 +610,13 @@ class SQLiteStore:
 
     def search_fts(self, query: str, chat_id: int,
                    top_k: int = 5) -> list[dict]:
-        """BM25 full-text search across user's document chunks.
+        """BM25 full-text search across user's document chunks (own + shared).
 
         Sanitises the query to bare words (removes FTS5 special chars) so
         arbitrary user input cannot cause a parse error.
         Uses OR semantics so partial matches work — FTS5 default AND requires
         all words in one chunk which is too strict for natural language queries.
-        Returns [{doc_id, chunk_text, score}] ordered best-first.
+        Returns [{doc_id, chunk_idx, chunk_text, score}] ordered best-first.
         """
         import re
         tokens = re.findall(r"\w+", query, re.UNICODE)
@@ -611,18 +627,41 @@ class SQLiteStore:
         # OR joining: any chunk matching at least one keyword is a candidate;
         # BM25 rank naturally promotes chunks with more/rarer keyword hits
         safe_q = " OR ".join(meaningful)
+        # Include own docs + shared docs from any user
+        shared_ids = self._get_shared_doc_ids()
         try:
-            rows = self._db().execute(
-                "SELECT doc_id, chunk_text, rank"
-                " FROM doc_chunks"
-                " WHERE doc_chunks MATCH ? AND chat_id = ?"
-                " ORDER BY rank LIMIT ?",
-                (safe_q, str(chat_id), top_k),
-            ).fetchall()
-            return [{"doc_id": r[0], "chunk_text": r[1], "score": r[2]}
+            if shared_ids:
+                placeholders = ",".join("?" * len(shared_ids))
+                rows = self._db().execute(
+                    f"SELECT doc_id, chunk_idx, chunk_text, rank"
+                    f" FROM doc_chunks"
+                    f" WHERE doc_chunks MATCH ? AND (chat_id = ? OR doc_id IN ({placeholders}))"
+                    f" ORDER BY rank LIMIT ?",
+                    [safe_q, str(chat_id)] + shared_ids + [top_k],
+                ).fetchall()
+            else:
+                rows = self._db().execute(
+                    "SELECT doc_id, chunk_idx, chunk_text, rank"
+                    " FROM doc_chunks"
+                    " WHERE doc_chunks MATCH ? AND chat_id = ?"
+                    " ORDER BY rank LIMIT ?",
+                    (safe_q, str(chat_id), top_k),
+                ).fetchall()
+            return [{"doc_id": r[0], "chunk_idx": int(r[1] or 0),
+                     "chunk_text": r[2], "score": r[3]}
                     for r in rows]
         except Exception as exc:
             log.warning("[Store] FTS5 search error: %s", exc)
+            return []
+
+    def _get_shared_doc_ids(self) -> list[str]:
+        """Return list of doc_ids marked is_shared=1 (from any user)."""
+        try:
+            rows = self._db().execute(
+                "SELECT doc_id FROM documents WHERE is_shared = 1"
+            ).fetchall()
+            return [r[0] for r in rows]
+        except Exception:
             return []
 
     def delete_text_chunks(self, doc_id: str) -> None:
@@ -632,13 +671,25 @@ class SQLiteStore:
         db.commit()
 
     def log_rag_activity(self, chat_id: int, query: str, n_chunks: int, chars: int,
-                         latency_ms: int = 0, query_type: str = "contextual") -> None:
-        """Insert one RAG retrieval record into rag_log."""
+                         latency_ms: int = 0, query_type: str = "contextual",
+                         n_fts5: int = 0, n_vector: int = 0, n_mcp: int = 0) -> None:
+        """Insert one RAG retrieval record into rag_log.
+
+        n_fts5/n_vector/n_mcp track the component chunk counts for strategy analysis.
+        Columns are added automatically on first use if the DB is older.
+        """
         db = self._db()
+        # Ensure extended tracing columns exist (idempotent migration)
+        existing = {r[1] for r in db.execute("PRAGMA table_info(rag_log)").fetchall()}
+        for col in ("n_fts5", "n_vector", "n_mcp"):
+            if col not in existing:
+                db.execute(f"ALTER TABLE rag_log ADD COLUMN {col} INTEGER DEFAULT 0")
         db.execute(
-            "INSERT INTO rag_log(chat_id, query, query_type, n_chunks, chars_injected, latency_ms)"
-            " VALUES (?,?,?,?,?,?)",
-            (chat_id, query, query_type, n_chunks, chars, latency_ms),
+            "INSERT INTO rag_log(chat_id, query, query_type, n_chunks, chars_injected,"
+            " latency_ms, n_fts5, n_vector, n_mcp)"
+            " VALUES (?,?,?,?,?,?,?,?,?)",
+            (chat_id, query, query_type, n_chunks, chars, latency_ms,
+             n_fts5, n_vector, n_mcp),
         )
         db.commit()
 
@@ -646,7 +697,9 @@ class SQLiteStore:
         """Return up to *limit* most recent RAG log rows, newest first."""
         rows = self._db().execute(
             "SELECT id, chat_id, query, query_type, n_chunks, chars_injected,"
-            " latency_ms, created_at "
+            " latency_ms, COALESCE(n_fts5,0) as n_fts5,"
+            " COALESCE(n_vector,0) as n_vector, COALESCE(n_mcp,0) as n_mcp,"
+            " created_at "
             "FROM rag_log ORDER BY created_at DESC LIMIT ?",
             (limit,),
         ).fetchall()
@@ -658,7 +711,10 @@ class SQLiteStore:
         row = db.execute(
             "SELECT COUNT(*) as total, AVG(latency_ms) as avg_latency_ms,"
             " AVG(n_chunks) as avg_chunks, SUM(n_chunks) as total_chunks,"
-            " SUM(chars_injected) as total_chars"
+            " SUM(chars_injected) as total_chars,"
+            " SUM(COALESCE(n_fts5,0)) as total_fts5,"
+            " SUM(COALESCE(n_vector,0)) as total_vector,"
+            " SUM(COALESCE(n_mcp,0)) as total_mcp"
             " FROM rag_log"
         ).fetchone()
         top = db.execute(
@@ -674,6 +730,9 @@ class SQLiteStore:
             "avg_chunks": round(row["avg_chunks"] or 0, 1),
             "total_chunks": row["total_chunks"] or 0,
             "total_chars": row["total_chars"] or 0,
+            "total_fts5": row["total_fts5"] or 0,
+            "total_vector": row["total_vector"] or 0,
+            "total_mcp": row["total_mcp"] or 0,
             "top_queries": [dict(r) for r in top],
             "query_types": {r["query_type"]: r["cnt"] for r in types},
         }

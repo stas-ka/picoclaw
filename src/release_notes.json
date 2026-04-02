@@ -1,5 +1,20 @@
 [
   {
+    "version": "2026.4.2",
+    "date": "2026-04-02",
+    "changes": [
+      "Fix: _store_text_chunks() upsert_embedding missing chunk_text arg — vector embeddings were silently never stored",
+      "Fix: search_fts() and search_similar() now return chunk_idx — RRF fusion was collapsing all chunks to idx=0",
+      "Fix: shared documents (is_shared=1) now included in FTS and vector search for all users",
+      "Enhancement: retrieve_context() returns 4-tuple with trace dict (n_fts5, n_vector, n_mcp, latency_ms)",
+      "Enhancement: rag_log table gains n_fts5/n_vector/n_mcp columns via auto-migration; log_rag_activity logs component counts",
+      "Enhancement: RAG log now shows INFO-level per-query strategy breakdown (fts5/vector/mcp chunk counts)",
+      "New: src/setup/load_system_docs.py — loads README + howto_bot.md + architecture/overview.md as shared system KB (auto-loaded at startup)",
+      "New: src/setup/migrate_reembed.py — re-embeds all existing doc_chunks with no vectors (run once after deploy)",
+      "Tests T87-T90: embedding pipeline fix, shared-docs search, RAG trace fields, system docs structure"
+    ]
+  },
+  {
     "version": "2026.4.1",
     "date": "2026-04-01",
     "changes": [

@@ -183,14 +183,17 @@ def retrieve_context(
     query: str,
     top_k: int | None = None,
     max_chars: int = 2000,
-) -> tuple[list[dict], str, str]:
+) -> tuple[list[dict], str, str, dict]:
     """
     Unified RAG retrieval with adaptive routing + RRF fusion.
 
     Returns:
-        (chunks, assembled_text, strategy_used)
-        strategy_used: "skipped" | "fts5" | "hybrid" | "empty"
+        (chunks, assembled_text, strategy_used, trace)
+        strategy_used: "skipped" | "fts5" | "hybrid" | "hybrid+mcp" | "fts5+mcp" | "empty"
+        trace: {n_fts5, n_vector, n_mcp, latency_ms, cap} for monitoring
     """
+    _EMPTY: tuple[list[dict], str, str, dict] = ([], "", "skipped", {})
+
     if top_k is None:
         top_k = RAG_TOP_K
 
@@ -204,7 +207,7 @@ def retrieve_context(
 
     strategy = classify_query(query, has_docs)
     if strategy == "simple" or not has_docs:
-        return [], "", "skipped"
+        return [], "", "skipped", {"n_fts5": 0, "n_vector": 0, "n_mcp": 0, "latency_ms": 0}
 
     cap = detect_rag_capability()
     t0 = time.monotonic()
@@ -223,13 +226,15 @@ def retrieve_context(
             from core.bot_embeddings import EmbeddingService
             svc = EmbeddingService.get()
             if svc is not None:
-                vec = svc.embed(query)   # single string, not [query]
+                vec = svc.embed(query)
                 if vec:
                     vector_results = store.search_similar(vec, chat_id, top_k * 2) or []
         except Exception as exc:
             log.debug("[RAG] vector search failed (non-fatal): %s", exc)
 
     # 4. Fuse or return FTS5-only
+    n_fts5 = len(fts5_results)
+    n_vector = len(vector_results)
     if vector_results:
         chunks = reciprocal_rank_fusion(fts5_results, vector_results)[:top_k]
         used_strategy = "hybrid"
@@ -238,25 +243,31 @@ def retrieve_context(
         used_strategy = "fts5"
 
     # 5. Optional: merge remote MCP chunks (Phase D)
+    n_mcp = 0
     try:
         from core.bot_config import MCP_REMOTE_URL
         if MCP_REMOTE_URL:
             from core.bot_mcp_client import query_remote
             remote_chunks = query_remote(query, chat_id, top_k)
             if remote_chunks:
+                n_mcp = len(remote_chunks)
                 chunks = reciprocal_rank_fusion(chunks, remote_chunks)[:top_k]
                 used_strategy = used_strategy + "+mcp"
-                log.debug("[RAG] merged %d remote MCP chunks", len(remote_chunks))
+                log.debug("[RAG] merged %d remote MCP chunks", n_mcp)
     except Exception as exc:
         log.debug("[RAG] MCP merge skipped: %s", exc)
 
     elapsed_ms = int((time.monotonic() - t0) * 1000)
-    log.debug("[RAG] strategy=%s chunks=%d elapsed=%dms", used_strategy, len(chunks), elapsed_ms)
+    log.debug("[RAG] strategy=%s fts5=%d vec=%d mcp=%d final=%d elapsed=%dms",
+              used_strategy, n_fts5, n_vector, n_mcp, len(chunks), elapsed_ms)
+
+    trace = {"n_fts5": n_fts5, "n_vector": n_vector, "n_mcp": n_mcp,
+             "latency_ms": elapsed_ms, "cap": cap.value}
 
     if not chunks:
-        return [], "", "empty"
+        return [], "", "empty", trace
 
-    # 5. Assemble context text
+    # 6. Assemble context text
     parts = []
     total = 0
     for c in chunks:
@@ -271,4 +282,4 @@ def retrieve_context(
             break
 
     assembled = "\n---\n".join(parts)
-    return chunks, assembled, used_strategy
+    return chunks, assembled, used_strategy, trace

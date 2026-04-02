@@ -5947,6 +5947,205 @@ def t_mcp_phase_d_structure(**_) -> list[TestResult]:
     return results
 
 
+
+
+def t_embedding_pipeline_fix(**_) -> list[TestResult]:
+    """T87: _store_text_chunks() passes chunk_text to upsert_embedding (critical bug fix).
+
+    The call was: store.upsert_embedding(doc_id, idx, chat_id, vec)  ← wrong
+    Must be:      store.upsert_embedding(doc_id, idx, chat_id, chunks[idx], vec)
+    Also verifies search_fts and search_similar return chunk_idx in results.
+    """
+    results = []
+    SRC = Path(__file__).parent.parent
+
+    # Check 1: bot_documents.py has the correct upsert_embedding call
+    try:
+        code = (SRC / "features/bot_documents.py").read_text()
+        correct_call = "store.upsert_embedding(doc_id, idx, chat_id, chunks[idx], vec)"
+        wrong_call   = "store.upsert_embedding(doc_id, idx, chat_id, vec)"
+        results.append(TestResult(
+            "embed_correct_args", "PASS" if correct_call in code else "FAIL", 0.0,
+            "upsert_embedding passes chunks[idx] as chunk_text arg",
+        ))
+        results.append(TestResult(
+            "embed_no_wrong_call", "PASS" if wrong_call not in code else "FAIL", 0.0,
+            "Old wrong call (missing chunk_text) removed",
+        ))
+    except FileNotFoundError:
+        results.append(TestResult("embed_correct_args", "SKIP", 0.0, "bot_documents.py not found"))
+
+    # Check 2: search_fts returns chunk_idx in result dicts
+    try:
+        code = (SRC / "core/store_sqlite.py").read_text()
+        results.append(TestResult(
+            "fts_returns_chunk_idx",
+            "PASS" if '"chunk_idx"' in code and "chunk_idx" in code else "FAIL", 0.0,
+            "search_fts result dicts include chunk_idx",
+        ))
+        results.append(TestResult(
+            "fts_select_chunk_idx",
+            "PASS" if "SELECT doc_id, chunk_idx, chunk_text" in code else "FAIL", 0.0,
+            "search_fts SQL SELECT includes chunk_idx column",
+        ))
+    except FileNotFoundError:
+        results.append(TestResult("fts_returns_chunk_idx", "SKIP", 0.0, "store_sqlite.py not found"))
+
+    # Check 3: search_similar returns chunk_idx
+    try:
+        code = (SRC / "core/store_sqlite.py").read_text()
+        results.append(TestResult(
+            "vector_returns_chunk_idx",
+            "PASS" if "SELECT doc_id, chunk_idx, chunk_text, distance" in code else "FAIL", 0.0,
+            "search_similar SELECT includes chunk_idx + chunk_text",
+        ))
+    except FileNotFoundError:
+        results.append(TestResult("vector_returns_chunk_idx", "SKIP", 0.0, "store_sqlite.py not found"))
+
+    return results
+
+
+def t_shared_docs_search(**_) -> list[TestResult]:
+    """T88: shared documents (is_shared=1) are included in FTS and vector search."""
+    results = []
+    SRC = Path(__file__).parent.parent
+
+    try:
+        code = (SRC / "core/store_sqlite.py").read_text()
+        results.append(TestResult(
+            "fts_includes_shared",
+            "PASS" if "is_shared" in code and "_get_shared_doc_ids" in code else "FAIL", 0.0,
+            "_get_shared_doc_ids() helper + FTS shared-doc inclusion",
+        ))
+        results.append(TestResult(
+            "vector_includes_shared",
+            "PASS" if "OR doc_id IN" in code else "FAIL", 0.0,
+            "search_similar includes shared doc_ids",
+        ))
+        results.append(TestResult(
+            "list_docs_includes_shared",
+            "PASS" if "is_shared = 1" in code else "FAIL", 0.0,
+            "list_documents returns own + shared docs",
+        ))
+    except FileNotFoundError:
+        results.append(TestResult("fts_includes_shared", "SKIP", 0.0, "store_sqlite.py not found"))
+
+    return results
+
+
+def t_rag_trace_fields(**_) -> list[TestResult]:
+    """T89: retrieve_context() returns 4-tuple with trace dict (n_fts5/n_vector/n_mcp/latency_ms)."""
+    results = []
+    SRC = Path(__file__).parent.parent
+
+    try:
+        code = (SRC / "core/bot_rag.py").read_text()
+        # Function signature returns 4-tuple
+        results.append(TestResult(
+            "rag_4tuple_return",
+            "PASS" if "tuple[list[dict], str, str, dict]" in code else "FAIL", 0.0,
+            "retrieve_context signature declares 4-tuple return type",
+        ))
+        # Trace dict contains n_fts5, n_vector, n_mcp
+        for field in ("n_fts5", "n_vector", "n_mcp", "latency_ms"):
+            results.append(TestResult(
+                f"trace_has_{field}",
+                "PASS" if f'"{field}"' in code else "FAIL", 0.0,
+                f"trace dict has {field} key",
+            ))
+        # bot_access.py unpacks 4-tuple
+        access_code = (SRC / "telegram/bot_access.py").read_text()
+        results.append(TestResult(
+            "access_unpacks_trace",
+            "PASS" if "chunks, assembled, strategy, trace = _fut.result" in access_code else "FAIL", 0.0,
+            "bot_access.py unpacks 4-tuple + uses trace for logging",
+        ))
+        results.append(TestResult(
+            "access_logs_trace",
+            "PASS" if "n_fts5" in access_code and "n_vector" in access_code else "FAIL", 0.0,
+            "bot_access.py passes n_fts5/n_vector to log_rag_activity",
+        ))
+        # rag_log has extended columns
+        store_code = (SRC / "core/store_sqlite.py").read_text()
+        for col in ("n_fts5", "n_vector", "n_mcp"):
+            results.append(TestResult(
+                f"raglog_col_{col}",
+                "PASS" if col in store_code else "FAIL", 0.0,
+                f"rag_log {col} column in store_sqlite",
+            ))
+        results.append(TestResult(
+            "raglog_auto_migration",
+            "PASS" if "ALTER TABLE rag_log ADD COLUMN" in store_code else "FAIL", 0.0,
+            "log_rag_activity does auto-migration of old DBs",
+        ))
+    except FileNotFoundError as e:
+        results.append(TestResult("rag_4tuple_return", "SKIP", 0.0, f"file not found: {e}"))
+
+    return results
+
+
+def t_system_docs_structure(**_) -> list[TestResult]:
+    """T90: load_system_docs.py and migrate_reembed.py exist with correct structure."""
+    results = []
+    SRC = Path(__file__).parent.parent
+
+    # Check load_system_docs.py
+    loader = SRC / "setup/load_system_docs.py"
+    results.append(TestResult(
+        "loader_exists", "PASS" if loader.exists() else "FAIL", 0.0,
+        "src/setup/load_system_docs.py exists",
+    ))
+    if loader.exists():
+        code = loader.read_text()
+        for check, desc in [
+            ("SYSTEM_CHAT_ID = 0", "SYSTEM_CHAT_ID=0 constant"),
+            ("def _load_docs", "_load_docs() main entry function"),
+            ("def _ingest", "_ingest() per-document indexer"),
+            ("def _chunk", "_chunk() text splitter"),
+            ("taris_user_guide", "user guide tag defined"),
+            ("taris_admin_guide", "admin guide tag defined"),
+            ("is_shared=1", "documents marked is_shared"),
+            ("upsert_embedding(doc_id, idx, SYSTEM_CHAT_ID, chunks[idx], vec)",
+             "correct upsert_embedding call"),
+        ]:
+            results.append(TestResult(
+                f"loader_{check[:30].replace(' ', '_').replace('(', '').replace(')', '')}",
+                "PASS" if check in code else "FAIL", 0.0, desc,
+            ))
+
+    # Check migrate_reembed.py
+    migrator = SRC / "setup/migrate_reembed.py"
+    results.append(TestResult(
+        "migrator_exists", "PASS" if migrator.exists() else "FAIL", 0.0,
+        "src/setup/migrate_reembed.py exists",
+    ))
+    if migrator.exists():
+        code = migrator.read_text()
+        for check, desc in [
+            ("def _migrate", "_migrate() main function"),
+            ("LEFT JOIN vec_embeddings", "finds chunks without embeddings via LEFT JOIN"),
+            ("store.upsert_embedding", "calls upsert_embedding for each chunk"),
+            ("--dry-run", "--dry-run CLI flag"),
+        ]:
+            results.append(TestResult(
+                f"migrator_{check[:30].replace(' ', '_').replace('(', '').replace(')', '')}",
+                "PASS" if check in code else "FAIL", 0.0, desc,
+            ))
+
+    # Check telegram_menu_bot.py auto-loads system docs at startup
+    try:
+        bot_code = (SRC / "telegram_menu_bot.py").read_text()
+        results.append(TestResult(
+            "startup_system_docs_thread",
+            "PASS" if "_ensure_system_docs" in bot_code and "_load_docs" in bot_code else "FAIL", 0.0,
+            "telegram_menu_bot.py starts system docs loader thread at startup",
+        ))
+    except FileNotFoundError:
+        results.append(TestResult("startup_system_docs_thread", "SKIP", 0.0, "telegram_menu_bot.py not found"))
+
+    return results
+
+
 TEST_FUNCTIONS = [
     t_model_files_present,
     t_piper_json_present,
@@ -6095,6 +6294,14 @@ TEST_FUNCTIONS = [
     t_embeddings_import_fix,
     # Phase D: MCP server /mcp/search + client circuit breaker + bot_rag integration (T86)
     t_mcp_phase_d_structure,
+    # Fix: upsert_embedding correct args + search_fts/search_similar return chunk_idx (T87)
+    t_embedding_pipeline_fix,
+    # Fix: shared docs (is_shared=1) included in FTS + vector search (T88)
+    t_shared_docs_search,
+    # RAG tracing: retrieve_context returns 4-tuple with trace dict n_fts5/n_vector/n_mcp (T89)
+    t_rag_trace_fields,
+    # System KB docs loader + migration script structure (T90)
+    t_system_docs_structure,
 ]
 
 
