@@ -383,7 +383,7 @@ def _safe_edit(chat_id: int, msg_id: int, text: str, **kwargs) -> None:
             log.debug(f"_safe_edit: {e}")
 
 
-def _tg_send_with_retry(fn, *args, retries: int = 3, delay: float = 2.0, **kwargs):
+def _tg_send_with_retry(fn, *args, retries: int = 5, delay: float = 3.0, **kwargs):
     """Call a Telegram API function with up to ``retries`` attempts on network errors.
 
     Returns the result on success, or raises the last exception if all attempts fail.
@@ -404,9 +404,10 @@ def _tg_send_with_retry(fn, *args, retries: int = 3, delay: float = 2.0, **kwarg
                 "remotedisconnected", "read timed out", "socket", "eof",
             )):
                 if attempt < retries - 1:
+                    wait = min(delay * (2 ** attempt), 30.0)  # exponential, capped at 30s
                     log.warning("[TG] send attempt %d/%d failed: %s — retrying in %.0fs",
-                                attempt + 1, retries, e, delay)
-                    _time.sleep(delay * (attempt + 1))
+                                attempt + 1, retries, e, wait)
+                    _time.sleep(wait)
                 continue
             # Non-retriable error — raise immediately
             raise

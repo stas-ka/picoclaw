@@ -1350,7 +1350,9 @@ def _handle_voice_message(chat_id: int, voice_obj) -> None:
 
                 if ogg:
                     caption = _t(chat_id, "audio_caption") + _fmt_timing()
-                    bot.send_voice(chat_id, io.BytesIO(ogg), caption=caption)
+                    _tg_send_with_retry(
+                        bot.send_voice, chat_id, io.BytesIO(ogg), caption=caption,
+                    )
                     bot.delete_message(chat_id, tts_msg.message_id)
                     tts_msg = None
                 else:

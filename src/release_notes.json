@@ -1,5 +1,15 @@
 [
   {
+    "version": "2026.4.5",
+    "date": "2026-04-02",
+    "changes": [
+      "fix: docs_menu_title says click-to-manage instead of click-to-delete",
+      "fix: bot self-knowledge — security preamble now explicitly instructs LLM to answer capability questions using [BOT CAPABILITIES] block",
+      "fix: voice send_voice wrapped with _tg_send_with_retry for unstable internet robustness",
+      "fix: _tg_send_with_retry upgraded to 5 retries with exponential back-off (3s/6s/12s/24s/30s)"
+    ]
+  },
+  {
     "version": "2026.4.4",
     "date": "2026-04-02",
     "changes": [
