@@ -581,40 +581,29 @@ class SQLiteStore:
             )
         import struct
         vec_blob = struct.pack(f"{len(embedding)}f", *embedding)
-        # Fetch more than top_k to allow deduplication (duplicate rows can exist in vec0)
-        fetch_k = top_k * 3
-        # Include own docs + shared docs
-        shared_ids = self._get_shared_doc_ids()
-        if shared_ids:
-            placeholders = ",".join("?" * len(shared_ids))
-            rows = self._db().execute(
-                f"SELECT doc_id, chunk_idx, chunk_text, distance"
-                f" FROM vec_embeddings"
-                f" WHERE (chat_id = ? OR doc_id IN ({placeholders}))"
-                f"   AND embedding MATCH ?"
-                f" ORDER BY distance"
-                f" LIMIT ?",
-                [chat_id] + shared_ids + [vec_blob, fetch_k],
-            ).fetchall()
-        else:
-            rows = self._db().execute(
-                """SELECT doc_id, chunk_idx, chunk_text, distance
-                   FROM vec_embeddings
-                   WHERE chat_id = ?
-                     AND embedding MATCH ?
-                   ORDER BY distance
-                   LIMIT ?""",
-                (chat_id, vec_blob, fetch_k),
-            ).fetchall()
-        # Deduplicate by (doc_id, chunk_idx) — keep closest (first in distance order)
+        # sqlite-vec KNN does NOT support compound WHERE (OR/IN) — fetch broadly and filter in Python
+        fetch_k = max(top_k * 6, 30)  # fetch extra to survive filtering + dedup
+        shared_ids = set(self._get_shared_doc_ids())
+        # Unfiltered KNN — sqlite-vec requires simple single-column WHERE for KNN
+        rows = self._db().execute(
+            "SELECT doc_id, chunk_idx, chat_id, chunk_text, distance"
+            " FROM vec_embeddings"
+            " WHERE embedding MATCH ?"
+            "   AND k = ?",
+            (vec_blob, fetch_k),
+        ).fetchall()
+        # Filter by ownership (own chat_id or shared doc) and deduplicate
         seen: set[tuple] = set()
         result = []
         for r in rows:
+            row_chat_id = int(r[2] or 0)
+            if row_chat_id != chat_id and r[0] not in shared_ids:
+                continue
             key = (r[0], int(r[1] or 0))
             if key not in seen:
                 seen.add(key)
                 result.append({"doc_id": r[0], "chunk_idx": int(r[1] or 0),
-                                "chunk_text": r[2], "distance": r[3]})
+                                "chunk_text": r[3], "distance": r[4]})
             if len(result) >= top_k:
                 break
         return result
