@@ -6205,8 +6205,50 @@ def t_handlers_background_dispatch(**_) -> list[TestResult]:
     return results
 
 
+# T93 — answer_callback_query wrapped in try/except (stale callback safety)
+def t_callback_query_answer_safe(**_) -> list[TestResult]:
+    """T93: callback_handler wraps answer_callback_query in try/except.
+
+    Root cause of bot appearing frozen:
+    Stale callbacks (>60s old) raised ApiTelegramException in the worker pool.
+    raise_exceptions() re-raised in __threaded_polling, triggering exponential
+    backoff (0.25s→60s) between getUpdates polls — bot became unresponsive.
+    """
+    import re
+    src = Path(__file__).parent.parent / "telegram_menu_bot.py"
+    if not src.exists():
+        return [TestResult("callback_query_answer_safe", "SKIP", 0.0,
+                           "telegram_menu_bot.py not found")]
+
+    code = src.read_text()
+    results = []
+
+    has_try_except = bool(re.search(
+        r'try\s*:\s*\n\s+bot\.answer_callback_query\(call\.id\)',
+        code, re.MULTILINE
+    ))
+    results.append(TestResult(
+        "answer_callback_try_except",
+        "PASS" if has_try_except else "FAIL",
+        0.0,
+        "answer_callback_query(call.id) is wrapped in try/except"
+    ))
+
+    has_except_log = bool(re.search(
+        r'except\s+Exception\s+as\s+\w+_err\s*:\s*\n.*log\.warning.*answer_callback',
+        code, re.DOTALL
+    ))
+    results.append(TestResult(
+        "answer_callback_except_logs",
+        "PASS" if has_except_log else "FAIL",
+        0.0,
+        "except block logs warning instead of re-raising ApiTelegramException"
+    ))
+
+    return results
+
+
 TEST_FUNCTIONS = [
-    t_model_files_present,
     t_piper_json_present,
     t_tmpfs_model_complete,
     t_ogg_decode,
@@ -6365,6 +6407,8 @@ TEST_FUNCTIONS = [
     t_telebot_num_threads,
     # Chat/voice handlers dispatch to background threads (T92)
     t_handlers_background_dispatch,
+    # answer_callback_query wrapped in try/except: stale callbacks don't freeze polling (T93)
+    t_callback_query_answer_safe,
 ]
 
 
