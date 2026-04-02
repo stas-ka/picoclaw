@@ -1,6 +1,6 @@
 # Taris — Knowledge Base Architecture
 
-**Version:** `2026.4.2`  
+**Version:** `2026.4.9`  
 → Architecture index: [architecture.md](../architecture.md)
 
 ## When to read this file
@@ -277,10 +277,11 @@ Currently calendar data is only available when the user explicitly opens the cal
 | Chunk quality filter + embed stats in metadata | ✅ Implemented (v2026.4.1) | — |
 | MCP server `/mcp/search` + remote MCP client | ✅ Implemented (v2026.4.1) | — |
 | **Critical bug fixes** (upsert_embedding args, RRF chunk_idx, vec0 DELETE via rowid map) | ✅ Fixed (v2026.4.2) | — |
-| **Shared docs in FTS + vector search** (`is_shared=1` honoured in all search paths) | ✅ Implemented (v2026.4.2) | — |
+| **Shared docs in FTS + vector search** (`is_shared=1` honoured in all search paths) | ✅ Implemented (v2026.4.2, SQLite) · Fixed PostgreSQL (v2026.4.9) | — |
 | **RAG tracing** (`retrieve_context` 4-tuple with `trace` dict; n_fts5/n_vector/n_mcp in rag_log) | ✅ Implemented (v2026.4.2) | — |
 | **System KB docs** (README + howto + overview as shared docs; auto-loaded at startup) | ✅ Implemented (v2026.4.2) | — |
 | **Re-embedding migration** (`setup/migrate_reembed.py` — store API, `--dry-run`, `--chat-id`) | ✅ Implemented (v2026.4.2) | — |
+| **PostgreSQL `get_chunks_without_embeddings`** (was querying non-existent `doc_chunks`; now uses `vec_embeddings WHERE embedding IS NULL`) | ✅ Fixed (v2026.4.9) | — |
 | Notes indexed as KB | ⏳ Planned | [TODO.md §10](../TODO.md) |
 | Calendar context injection | ⏳ Planned | [TODO.md §10](../TODO.md) |
 | Contacts lookup in conversation | ⏳ Planned | [TODO.md §4](../TODO.md) |

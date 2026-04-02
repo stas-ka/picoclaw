@@ -1,6 +1,6 @@
 # Taris — Data Layer
 
-**Version:** `2026.3.32`  
+**Version:** `2026.4.9`  
 → Architecture index: [architecture.md](../architecture.md)
 
 ---
@@ -99,6 +99,8 @@ Runtime overrides: `core/rag_settings.py` reads `~/.taris/rag_settings.json` (se
 - Embedding model: `all-MiniLM-L6-v2` (384-dim), loaded by `core/bot_embeddings.py`  
 - Hybrid search: BM25 + cosine similarity combined  
 - Install: see `src/setup/setup_llm_openclaw.sh`
+- **Schema note**: PostgreSQL uses a single `vec_embeddings` table for both chunk text and embeddings (`chunk_text TEXT`, `embedding vector(384)`). There is **no** separate `doc_chunks` table (that is SQLite-only via FTS5 virtual table). `get_chunks_without_embeddings` queries `vec_embeddings WHERE embedding IS NULL`.
+- **Shared docs**: `list_documents`, `search_fts`, `search_similar` all include `OR is_shared = 1` to ensure system documents (`chat_id=0`) are visible to every user. Fixed in v2026.4.9.
 
 ---
 
