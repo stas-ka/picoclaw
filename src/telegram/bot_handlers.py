@@ -40,7 +40,7 @@ from telegram.bot_access import (
 from ui.screen_loader import load_screen
 from ui.render_telegram import render_screen
 from ui.bot_ui import UserContext
-from core.bot_llm import ask_llm as _ask_builtin_llm, ask_llm_or_raise as _ask_llm_strict
+from core.bot_llm import ask_llm as _ask_builtin_llm, ask_llm_or_raise as _ask_llm_strict, ask_llm_with_history as _ask_llm_with_history
 from telegram.bot_users import (
     _list_notes_for, _load_note_text, _save_note_file, _delete_note_file,
     _slug, _find_registration, _upsert_registration, _set_reg_lang,
@@ -682,6 +682,18 @@ def _extract_bash_cmd(raw: str) -> str:
     return text.strip()
 
 
+_SYSTEM_HISTORY_MAX = 20  # max entries (10 turns) per user
+
+
+def _save_system_history(chat_id: int, user_text: str, cmd: str) -> None:
+    """Append a user→command turn to the per-user system chat history (in-memory)."""
+    hist = _st._system_history.setdefault(chat_id, [])
+    hist.append({"role": "user",      "content": user_text})
+    hist.append({"role": "assistant", "content": cmd})
+    # Trim oldest entries to stay within limit (keep last N entries)
+    _st._system_history[chat_id] = hist[-_SYSTEM_HISTORY_MAX:]
+
+
 def _handle_system_message(chat_id: int, user_text: str) -> None:
     """Translate natural language → bash command → ask for confirmation.
     Admin-only: read/inspect commands.  Developer: adds service control and writes.
@@ -724,12 +736,15 @@ def _handle_system_message(chat_id: int, user_text: str) -> None:
         f"TTS: Piper | model: {_piper_model}\n"
         f"[END CONFIG]\n\n"
     )
-    prompt = f"{_SYSTEM_PROMPT}\n\n{_config_ctx}Task: {user_text}"
     msg = bot.send_message(chat_id, "⏳ Generating command…")
 
     def _run():
+        # Build multi-turn messages: system prompt + prior system-chat history + current request
+        sys_content = f"{_SYSTEM_PROMPT}\n\n{_config_ctx}"
+        hist = _st._system_history.get(chat_id, [])
+        messages = [{"role": "system", "content": sys_content}] + hist + [{"role": "user", "content": user_text}]
         try:
-            cmd_text = _ask_llm_strict(prompt, timeout=45, use_case="system")
+            cmd_text = _ask_llm_with_history(messages, timeout=45, use_case="system")
         except subprocess.TimeoutExpired:
             bot.edit_message_text("❌ LLM timed out (>45 s). Try again later.",
                                   chat_id, msg.message_id)
@@ -780,6 +795,8 @@ def _handle_system_message(chat_id: int, user_text: str) -> None:
         if _echo_m:
             answer = _echo_m.group(1).strip().strip("\"'")
             log.info(f"[SystemChat] knowledge answer (echo): {answer[:80]}")
+            # Save to system history so follow-up questions have context
+            _save_system_history(chat_id, user_text, cmd_clean)
             try:
                 bot.edit_message_text(
                     _t(chat_id, "system_answer", answer=answer),
@@ -811,6 +828,9 @@ def _handle_system_message(chat_id: int, user_text: str) -> None:
             )
             log.warning(f"[Security] admin attempted developer cmd: {cmd_clean!r}")
             return
+
+        # Save to system history — user request + proposed command
+        _save_system_history(chat_id, user_text, cmd_clean)
 
         cmd_hash = hashlib.md5(cmd_clean.encode()).hexdigest()[:8]
         _st._pending_cmd[chat_id] = cmd_clean

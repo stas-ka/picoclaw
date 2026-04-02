@@ -1,5 +1,14 @@
 [
   {
+    "version": "2026.4.8",
+    "date": "2026-04-02",
+    "changes": [
+      "feat: system chat now has conversation memory — follow-up requests like 'add --user flag' refer back to previous commands",
+      "fix: system chat history is kept separate from user chat history (in-memory, not written to DB)",
+      "fix: system history clears on menu exit for a fresh start next session"
+    ]
+  },
+  {
     "version": "2026.4.7",
     "date": "2026-04-02",
     "changes": [

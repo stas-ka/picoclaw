@@ -39,6 +39,10 @@ _user_mode: dict[int, str] = {}
 # Pending bash command awaiting user confirmation (system-chat flow)
 _pending_cmd: dict[int, str] = {}
 
+# Per-user system-chat conversation history (in-memory, NOT written to DB)
+# Kept separate from user chat history. Each entry: {"role": "user"|"assistant", "content": str}
+_system_history: dict[int, list] = {}
+
 # Per-user UI language ('ru' | 'en'), detected from Telegram language_code
 _user_lang: dict[int, str] = {}
 

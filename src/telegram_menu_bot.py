@@ -333,6 +333,7 @@ def callback_handler(call):
     if data == "menu":
         _st._user_mode.pop(cid, None)
         _st._pending_cmd.pop(cid, None)
+        _st._system_history.pop(cid, None)
         role = "admin" if _is_admin(cid) else "guest" if _is_guest(cid) else "user"
         ctx = UserContext(user_id=cid, chat_id=cid, lang=_lang(cid), role=role)
         screen = load_screen("screens/main_menu.yaml", ctx,
