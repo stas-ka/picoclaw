@@ -1,5 +1,14 @@
 [
   {
+    "version": "2026.4.6",
+    "date": "2026-04-02",
+    "changes": [
+      "fix: infinity_polling logger_level=DEBUG — suppress ReadTimeout spam in journal (SintAItion flaky network)",
+      "fix: outer while-True guard around infinity_polling for extra crash resilience",
+      "fix: timeout=25 (was 30) — recover from network drop 5s faster"
+    ]
+  },
+  {
     "version": "2026.4.5",
     "date": "2026-04-02",
     "changes": [

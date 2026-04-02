@@ -1412,9 +1412,21 @@ def main() -> None:
     # long_polling_timeout=20: Telegram holds the connection 20s → well within NAT router's
     #   typical 30-60s idle TCP timeout → prevents RemoteDisconnected errors.
     #   Previously 55s caused ~70 RemoteDisconnected/hour on SintAItion (NAT kills idle TCP).
-    # timeout=30: fail fast on total network loss (was 90s → missed 90s of updates on loss).
-    # interval=0: reconnect immediately after any error (was 1s pause).
-    bot.infinity_polling(timeout=30, long_polling_timeout=20, interval=0)
+    # timeout=25: fail fast on network loss (5s buffer over long_polling_timeout).
+    # logger_level=DEBUG: suppress telebot's ERROR-level ReadTimeout traceback spam —
+    #   reconnection is automatic; spamming ERROR fills journals on flaky connections.
+    # Outer loop: guards against the rare case where infinity_polling itself raises.
+    import logging as _logging
+    while True:
+        try:
+            bot.infinity_polling(
+                timeout=25, long_polling_timeout=20,
+                interval=0, logger_level=_logging.DEBUG,
+            )
+            break  # clean shutdown via _on_stop
+        except Exception as _poll_exc:
+            log.warning("[Bot] polling crashed: %s — restarting in 5s", _poll_exc)
+            import time as _t; _t.sleep(5)
 
 
 if __name__ == "__main__":
