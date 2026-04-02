@@ -1,5 +1,15 @@
 [
   {
+    "version": "2026.4.10",
+    "date": "2026-04-02",
+    "changes": [
+      "perf: increased TeleBot num_threads 2→16 — prevents menu callbacks queuing behind slow LLM/voice handlers (was: 1 LLM call blocks ALL menus for up to 60s)",
+      "perf: chat, system-chat and voice message handlers now dispatch to daemon threads — telebot worker thread freed immediately, menus always responsive",
+      "perf: added [PERF] timing logs in callback_handler — slow callbacks (>500ms) logged as WARNING, answer_callback_query delays (>300ms) flagged",
+      "perf: send_chat_action(typing) sent before dispatching LLM/voice work — user sees immediate feedback"
+    ]
+  },
+  {
     "version": "2026.4.9",
     "date": "2026-04-02",
     "changes": [

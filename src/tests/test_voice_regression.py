@@ -6146,6 +6146,65 @@ def t_system_docs_structure(**_) -> list[TestResult]:
     return results
 
 
+# T91 — TeleBot num_threads=16 prevents menu callback queuing behind LLM/voice handlers
+def t_telebot_num_threads(**_) -> list[TestResult]:
+    """T91: bot_instance.py uses num_threads=16 (not the default 2)."""
+    results = []
+    SRC = Path(__file__).parent.parent
+    bot_inst = SRC / "core/bot_instance.py"
+    if not bot_inst.exists():
+        return [TestResult("telebot_num_threads", "SKIP", 0.0, "bot_instance.py not found")]
+    code = bot_inst.read_text()
+    # Must have num_threads set to 16 (or higher), not the default 2
+    import re
+    m = re.search(r'num_threads\s*=\s*(\d+)', code)
+    if m:
+        n = int(m.group(1))
+        status = "PASS" if n >= 16 else "FAIL"
+        results.append(TestResult(
+            "telebot_num_threads_value",
+            status, 0.0,
+            f"num_threads={n} (need ≥16 to prevent menu queuing behind LLM calls)",
+        ))
+    else:
+        results.append(TestResult(
+            "telebot_num_threads_value", "FAIL", 0.0,
+            "num_threads not set in bot_instance.py — default is 2, menus queue behind LLM",
+        ))
+    return results
+
+
+# T92 — Chat/voice message handlers dispatch heavy work to background threads
+def t_handlers_background_dispatch(**_) -> list[TestResult]:
+    """T92: chat/system/voice handlers use threading.Thread to free telebot worker thread."""
+    results = []
+    SRC = Path(__file__).parent.parent
+    bot_code_path = SRC / "telegram_menu_bot.py"
+    if not bot_code_path.exists():
+        return [TestResult("handlers_dispatch", "SKIP", 0.0, "telegram_menu_bot.py not found")]
+    code = bot_code_path.read_text()
+
+    for name, pattern, desc in [
+        ("chat_handler_dispatch",
+         r'threading\.Thread\s*\(\s*target\s*=\s*_handle_chat_message',
+         "_handle_chat_message dispatched to daemon thread (not blocking worker)"),
+        ("system_handler_dispatch",
+         r'threading\.Thread\s*\(\s*target\s*=\s*_handle_system_message',
+         "_handle_system_message dispatched to daemon thread"),
+        ("voice_handler_dispatch",
+         r'threading\.Thread\s*\(\s*target\s*=\s*_handle_voice_message',
+         "_handle_voice_message dispatched to daemon thread"),
+        ("perf_timing_in_callback",
+         r'_cb_t0\s*=\s*_time\.perf_counter',
+         "[PERF] timing instrumentation in callback_handler"),
+    ]:
+        import re
+        ok = bool(re.search(pattern, code))
+        results.append(TestResult(name, "PASS" if ok else "FAIL", 0.0, desc))
+
+    return results
+
+
 TEST_FUNCTIONS = [
     t_model_files_present,
     t_piper_json_present,
@@ -6302,6 +6361,10 @@ TEST_FUNCTIONS = [
     t_rag_trace_fields,
     # System KB docs loader + migration script structure (T90)
     t_system_docs_structure,
+    # TeleBot num_threads=16: prevents menu queuing behind LLM/voice (T91)
+    t_telebot_num_threads,
+    # Chat/voice handlers dispatch to background threads (T92)
+    t_handlers_background_dispatch,
 ]
 
 

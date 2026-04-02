@@ -18,6 +18,7 @@ All business logic lives in the bot_* modules:
 import os
 import signal
 import threading
+import time as _time
 
 # ─── Core ────────────────────────────────────────────────────────────────────
 from core.bot_config import (
@@ -320,6 +321,7 @@ def cmd_status(message):
 
 @bot.callback_query_handler(func=lambda call: True)
 def callback_handler(call):
+    _cb_t0 = _time.perf_counter()
     cid  = call.message.chat.id
     if not _is_allowed(cid):
         bot.answer_callback_query(call.id, "⛔ Access denied")
@@ -327,7 +329,12 @@ def callback_handler(call):
 
     _set_lang(cid, call.from_user)
     data = call.data
+
+    _ack_t0 = _time.perf_counter()
     bot.answer_callback_query(call.id)   # dismiss spinner
+    _ack_ms = (_time.perf_counter() - _ack_t0) * 1000
+    if _ack_ms > 300:
+        log.warning("[PERF] answer_callback_query slow: %.0fms (data=%s)", _ack_ms, data)
 
     # ── Navigation ─────────────────────────────────────────────────────────
     if data == "menu":
@@ -988,6 +995,11 @@ def callback_handler(call):
     elif data.startswith("run:"):
         _execute_pending_cmd(cid)
 
+    _cb_ms = (_time.perf_counter() - _cb_t0) * 1000
+    if _cb_ms > 500:
+        log.warning("[PERF] callback slow: %.0fms (data=%s cid=%s)", _cb_ms, data, cid)
+    else:
+        log.debug("[PERF] callback: %.0fms (data=%s)", _cb_ms, data)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Text message router
@@ -1279,11 +1291,15 @@ def text_handler(message):
 
     # ── Chat modes ─────────────────────────────────────────────────────────
     if mode == "chat":
-        _handle_chat_message(cid, message.text)
+        bot.send_chat_action(cid, "typing")
+        threading.Thread(target=_handle_chat_message, args=(cid, message.text),
+                         daemon=True, name=f"chat-{cid}").start()
 
     elif mode == "system":
         if _is_admin(cid):           # defense-in-depth: guard even at routing level
-            _handle_system_message(cid, message.text)
+            bot.send_chat_action(cid, "typing")
+            threading.Thread(target=_handle_system_message, args=(cid, message.text),
+                             daemon=True, name=f"syschat-{cid}").start()
         else:
             _st._user_mode.pop(cid, None)
             bot.send_message(cid, _t(cid, "security_admin_only"),
@@ -1305,7 +1321,9 @@ def voice_handler(message):
     if _st._user_mode.get(cid) == "errp_collect" and cid in _st._pending_error_protocol:
         _errp_collect_voice(cid, message.voice)
         return
-    _handle_voice_message(cid, message.voice)
+    bot.send_chat_action(cid, "typing")
+    threading.Thread(target=_handle_voice_message, args=(cid, message.voice),
+                     daemon=True, name=f"voice-{cid}").start()
 
 
 # ─────────────────────────────────────────────────────────────────────────────

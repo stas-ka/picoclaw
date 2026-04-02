@@ -46,4 +46,11 @@ class _409Handler(telebot.ExceptionHandler):
         return False        # not handled; telebot logs and retries normally
 
 
-bot = telebot.TeleBot(BOT_TOKEN, parse_mode=None, exception_handler=_409Handler())
+bot = telebot.TeleBot(
+    BOT_TOKEN,
+    parse_mode=None,
+    exception_handler=_409Handler(),
+    # 16 worker threads: prevents menu callbacks from queuing behind slow LLM/STT handlers.
+    # Default is 2 — one LLM call (up to 60s) blocks ALL other callbacks when pool exhausted.
+    num_threads=16,
+)
