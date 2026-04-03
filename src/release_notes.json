@@ -1,5 +1,11 @@
 [
   {
+    "version": "2026.4.22",
+    "date":    "2026-04-03",
+    "title":   "Fix LLM silent fallback to Ollama caused by invalid model name in active_model.txt",
+    "notes":   "- Root cause: active_model.txt contained 'openai/gpt-4.1-mini' (invalid for OpenAI API) causing HTTP 400 and silent fallback to slow Ollama\n- Fix: reset active_model.txt to 'gpt-4o-mini' on SintAItion\n- get_active_model() now strips provider prefixes (e.g. 'openai/gpt-4o-mini' -> 'gpt-4o-mini') to prevent recurrence\n- Improved HTTP error logging: shows model name on 4xx errors so root cause is visible immediately"
+  },
+  {
     "version": "2026.4.21",
     "date":    "2026-04-03",
     "title":   "SintAItion: switch LLM primary to OpenAI (gpt-4o-mini), Ollama as fallback",

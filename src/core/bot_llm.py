@@ -105,11 +105,21 @@ def set_per_func_provider(use_case: str, provider: str) -> None:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def get_active_model() -> str:
-    """Return the admin-selected model name or empty string."""
+    """Return the admin-selected model name or empty string.
+
+    Strips provider prefixes (e.g. ``openai/gpt-4o-mini`` → ``gpt-4o-mini``)
+    that are valid in some UIs but cause HTTP 400 when passed to the API.
+    """
     try:
-        return Path(ACTIVE_MODEL_FILE).read_text(encoding="utf-8").strip()
+        raw = Path(ACTIVE_MODEL_FILE).read_text(encoding="utf-8").strip()
     except FileNotFoundError:
         return ""
+    # Strip "<provider>/" prefix written by some admin-UI paths
+    if "/" in raw:
+        _, _, rest = raw.partition("/")
+        log.debug(f"[LLM] active_model stripped provider prefix: '{raw}' → '{rest}'")
+        return rest
+    return raw
 
 
 def set_active_model(name: str) -> None:
@@ -646,7 +656,13 @@ def ask_llm_with_history(messages: list, timeout: int = 60, *, use_case: str = "
         log.error(f"[LLM] binary not found for provider '{provider}': {exc}")
         primary_error = exc
     except Exception as exc:
-        log.warning(f"[LLM] {provider} failed in history call: {exc}")
+        # For HTTPError include the status code to distinguish 400 (bad model name) from 5xx
+        code = getattr(exc, "code", None)
+        if code and code not in (429,):
+            model_hint = get_active_model() or OPENAI_MODEL
+            log.warning(f"[LLM] {provider} HTTP {code} in history call (model={model_hint}): {exc}")
+        else:
+            log.warning(f"[LLM] {provider} failed in history call: {exc}")
         primary_error = exc
 
     if (LLM_LOCAL_FALLBACK or os.path.exists(LLM_FALLBACK_FLAG_FILE)) and provider != "local":
