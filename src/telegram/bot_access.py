@@ -184,16 +184,25 @@ def _bot_config_block() -> str:
 
 
 def _calendar_context(chat_id: int) -> str:
-    """Return a compact [CALENDAR] block with upcoming events (next 14 days), or empty string."""
+    """Return a compact [CALENDAR] block with upcoming events (next 14 days), or empty string.
+
+    Uses _cal_load() which already handles PostgreSQL → SQLite → JSON file fallback.
+    """
     try:
-        from core.store import store
+        from features.bot_calendar import _cal_load
         from datetime import datetime, timedelta
-        now = datetime.now()
-        from_dt = now.isoformat(timespec="seconds")
-        to_dt   = (now + timedelta(days=14)).isoformat(timespec="seconds")
-        events  = store.load_events(chat_id, from_dt=from_dt, to_dt=to_dt)
-        if not events:
+        all_events = _cal_load(chat_id)
+        if not all_events:
             return ""
+        now    = datetime.now()
+        cutoff = now + timedelta(days=14)
+        events = [
+            e for e in all_events
+            if e.get("dt_iso") and now <= datetime.fromisoformat(e["dt_iso"]) <= cutoff
+        ]
+        if not events:
+            # Include recent past events if no upcoming ones
+            events = sorted(all_events, key=lambda e: e.get("dt_iso", ""), reverse=True)[:5]
         lines = ["[CALENDAR — upcoming events (next 14 days)]"]
         for ev in events[:20]:
             dt_str = ev.get("dt_iso", "")
@@ -209,22 +218,35 @@ def _calendar_context(chat_id: int) -> str:
 
 
 def _notes_context(chat_id: int) -> str:
-    """Return a [NOTES] block listing user's notes with content snippets, or empty string."""
+    """Return a [NOTES] block listing user's notes with content snippets, or empty string.
+
+    Tries configured store first, then falls back to SQLite for legacy data.
+    """
     try:
         from core.store import store
         notes = store.list_notes(chat_id)
         if not notes:
+            # Fallback: SQLite has legacy data (created before PostgreSQL backend was configured)
+            from core.bot_db import get_db
+            rows = get_db().execute(
+                "SELECT slug, title, content FROM notes_index "
+                "WHERE chat_id=? ORDER BY updated_at DESC LIMIT 10",
+                (chat_id,),
+            ).fetchall()
+            notes = [dict(r) for r in rows]
+        if not notes:
             return ""
         lines = ["[NOTES — personal notes]"]
         for note in notes[:10]:
-            title = note.get("title") or "(untitled)"
-            slug  = note.get("slug", "")
-            content = ""
-            try:
-                full = store.load_note(chat_id, slug)
-                content = (full.get("content") or "").strip()
-            except Exception:
-                pass
+            title   = note.get("title") or "(untitled)"
+            slug    = note.get("slug", "")
+            content = (note.get("content") or "").strip()
+            if not content and slug:
+                try:
+                    full    = store.load_note(chat_id, slug)
+                    content = (full.get("content") or "").strip()
+                except Exception:
+                    pass
             snippet = (content[:200] + "…") if len(content) > 200 else content
             if snippet:
                 lines.append(f"  • {title}: {snippet}")
@@ -237,10 +259,22 @@ def _notes_context(chat_id: int) -> str:
 
 
 def _contacts_context(chat_id: int) -> str:
-    """Return a compact [CONTACTS] block with user's contact list, or empty string."""
+    """Return a compact [CONTACTS] block with user's contact list, or empty string.
+
+    Tries configured store first, then falls back to SQLite for legacy data.
+    """
     try:
         from core.store import store
         contacts = store.list_contacts(chat_id)
+        if not contacts:
+            # Fallback: SQLite has legacy data
+            from core.bot_db import get_db
+            rows = get_db().execute(
+                "SELECT name, phone, email, notes FROM contacts "
+                "WHERE chat_id=? ORDER BY name COLLATE NOCASE",
+                (chat_id,),
+            ).fetchall()
+            contacts = [dict(r) for r in rows]
         if not contacts:
             return ""
         lines = ["[CONTACTS]"]
@@ -251,8 +285,8 @@ def _contacts_context(chat_id: int) -> str:
             if c.get("email"):
                 parts.append(c["email"])
             if c.get("notes"):
-                parts.append(f"({c['notes'][:80]})")
-            lines.append("  • " + "  ".join(parts))
+                parts.append(f"({str(c['notes'])[:80]})")
+            lines.append("  • " + "  ".join(p for p in parts if p))
         lines.append("[END CONTACTS]\n")
         return "\n".join(lines) + "\n"
     except Exception:
