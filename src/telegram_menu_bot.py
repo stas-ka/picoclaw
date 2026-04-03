@@ -31,6 +31,7 @@ import core.bot_state as _st
 
 from core.bot_instance import bot
 from core.bot_logger import configure_alert_handler, attach_alerts_to_main_log
+from core.bot_embeddings import EmbeddingService
 
 # ─── Shared utilities ─────────────────────────────────────────────────────────
 from telegram.bot_access import (
@@ -1412,6 +1413,16 @@ def main() -> None:
         threading.Thread(target=_fw_preload, daemon=True).start()
     elif DEVICE_VARIANT == "openclaw" and not FASTER_WHISPER_PRELOAD:
         log.info("[FasterWhisper] preload disabled (FASTER_WHISPER_PRELOAD=0) — lazy load on first voice message")
+
+    # Pre-warm embedding service so first RAG/chat call has no cold-start delay (~2s).
+    if DEVICE_VARIANT == "openclaw":
+        def _prewarm_embeddings():
+            svc = EmbeddingService.get()
+            if svc:
+                log.info("[Embeddings] pre-warmed at startup: backend=%s", svc.backend)
+            else:
+                log.debug("[Embeddings] pre-warm skipped (no embedding backend)")
+        threading.Thread(target=_prewarm_embeddings, daemon=True).start()
 
     # ── Startup tasks ─────────────────────────────────────────────────────
     _st.load_conversation_history()

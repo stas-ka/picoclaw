@@ -1,5 +1,11 @@
 [
   {
+    "version": "2026.4.20",
+    "date":    "2026-04-03",
+    "title":   "Perf: embedding pre-warm + fastembed ONNX + history cap",
+    "notes":   "- Pre-warm EmbeddingService at startup (background thread) — eliminates 2s cold-start delay on first chat/RAG call\n- fastembed ONNX model downloaded on SintAItion — 5x faster embedding inference vs sentence-transformers\n- CONVERSATION_HISTORY_MAX=8 on SintAItion (was 15) — reduces Ollama prefill tokens, saving ~7s per LLM call\n- Analysis: voice LLM was 20.4s (history=15 + personal context > 3000 tokens); now expected ~12s"
+  },
+  {
     "version": "2026.4.19",
     "date":    "2026-04-03",
     "title":   "STT optimizations: thread cap fix, timestamps off, VAD tuning",
