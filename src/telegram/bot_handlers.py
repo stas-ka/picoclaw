@@ -40,7 +40,7 @@ from telegram.bot_access import (
 from ui.screen_loader import load_screen
 from ui.render_telegram import render_screen
 from ui.bot_ui import UserContext
-from core.bot_llm import ask_llm as _ask_builtin_llm, ask_llm_or_raise as _ask_llm_strict, ask_llm_with_history as _ask_llm_with_history
+from core.bot_llm import ask_llm as _ask_builtin_llm, ask_llm_or_raise as _ask_llm_strict, ask_llm_with_history as _ask_llm_with_history, ask_llm_stream as _ask_llm_stream
 from telegram.bot_users import (
     _list_notes_for, _load_note_text, _save_note_file, _delete_note_file,
     _slug, _find_registration, _upsert_registration, _set_reg_lang,
@@ -948,10 +948,30 @@ def _handle_chat_message(chat_id: int, user_text: str) -> None:
         # Record the raw user text (without preamble) before calling the LLM
         add_to_history(chat_id, "user", user_text, call_id=call_id)
 
-        response = ask_llm_with_history(messages, timeout=60, use_case="chat")
-        reply    = response if response else "❌ No response from LLM."
+        # ── Streaming LLM response — edit message in real time ──
+        import time as _time
+        from core.bot_config import LLM_PROVIDER as _provider
+        buf = ""
+        last_edit = 0.0
+        EDIT_INTERVAL = 1.5  # seconds between Telegram edits (rate limit safe)
+        try:
+            for fragment in _ask_llm_stream(messages, timeout=120):
+                buf += fragment
+                now = _time.monotonic()
+                if now - last_edit >= EDIT_INTERVAL and len(buf) >= 20:
+                    try:
+                        bot.edit_message_text(
+                            _truncate(buf) + " ▌", chat_id, msg.message_id, parse_mode=None
+                        )
+                        last_edit = now
+                    except Exception:
+                        pass  # ignore rate-limit or minor edit errors
+        except Exception as _stream_err:
+            log.warning(f"[Chat] stream error: {_stream_err}")
+            if not buf:
+                buf = ask_llm_with_history(messages, timeout=120, use_case="chat")
 
-        # Record assistant turn
+        reply = buf if buf else "❌ No response from LLM."
         add_to_history(chat_id, "assistant", reply, call_id=call_id)
 
         # Log which history messages were included in this LLM call

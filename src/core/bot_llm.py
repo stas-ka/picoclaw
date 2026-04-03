@@ -28,6 +28,7 @@ from core.bot_config import (
     LLAMA_CPP_URL,
     LOCAL_MAX_TOKENS,
     LOCAL_TEMPERATURE,
+    OLLAMA_KEEP_ALIVE,
     OLLAMA_MIN_TIMEOUT,
     OLLAMA_NUM_CTX,
     OLLAMA_THINK,
@@ -357,6 +358,7 @@ def _ask_ollama(prompt: str, timeout: int) -> str:
         "messages": [{"role": "user", "content": prompt}],
         "stream": False,
         "think": OLLAMA_THINK,
+        "keep_alive": OLLAMA_KEEP_ALIVE,
         "options": {
             "num_predict": LOCAL_MAX_TOKENS,
             "temperature": _effective_temperature(),
@@ -621,6 +623,7 @@ def ask_llm_with_history(messages: list, timeout: int = 60, *, use_case: str = "
                 "messages": messages,
                 "stream": False,
                 "think": OLLAMA_THINK,
+                "keep_alive": OLLAMA_KEEP_ALIVE,
                 "options": {
                     "num_predict": LOCAL_MAX_TOKENS,
                     "temperature": _effective_temperature(),
@@ -676,3 +679,67 @@ def ask_llm_with_history(messages: list, timeout: int = 60, *, use_case: str = "
         log.error(f"[LLM] no-history fallback also failed: {exc3}")
 
     return ""
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Streaming entry point — Ollama only (other providers fall back to full call)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def ask_llm_stream(messages: list, timeout: int = 120):
+    """Yield LLM response text incrementally as chunks arrive (Ollama only).
+
+    Each yielded value is a small string fragment (1–10 tokens).
+    Falls back to a single-chunk yield from ask_llm_with_history() for
+    non-Ollama providers (OpenAI, etc.).
+
+    Usage in Telegram handler:
+        buf = ""
+        for chunk in ask_llm_stream(messages):
+            buf += chunk
+            # update display every N chars
+    """
+    if LLM_PROVIDER == "ollama":
+        try:
+            effective_timeout = max(timeout, OLLAMA_MIN_TIMEOUT)
+            url = f"{OLLAMA_URL.rstrip('/')}/api/chat"
+            body = {
+                "model": OLLAMA_MODEL,
+                "messages": messages,
+                "stream": True,
+                "think": OLLAMA_THINK,
+                "keep_alive": OLLAMA_KEEP_ALIVE,
+                "options": {
+                    "num_predict": LOCAL_MAX_TOKENS,
+                    "temperature": _effective_temperature(),
+                    **({"num_ctx": OLLAMA_NUM_CTX} if OLLAMA_NUM_CTX > 0 else {}),
+                },
+            }
+            data = json.dumps(body).encode()
+            req = urllib.request.Request(
+                url, data=data, headers={"Content-Type": "application/json"}
+            )
+            with urllib.request.urlopen(req, timeout=effective_timeout) as resp:
+                for raw_line in resp:
+                    line = raw_line.decode("utf-8").strip()
+                    if not line:
+                        continue
+                    try:
+                        chunk = json.loads(line)
+                    except Exception:
+                        continue
+                    # Skip think-mode reasoning tokens (role="think" in qwen3)
+                    if chunk.get("message", {}).get("role") == "think":
+                        continue
+                    fragment = chunk.get("message", {}).get("content", "")
+                    if fragment:
+                        yield fragment
+                    if chunk.get("done"):
+                        break
+            return
+        except Exception as exc:
+            log.warning(f"[LLM] stream failed ({exc}), falling back to full call")
+
+    # Non-Ollama or stream error: yield full response as single chunk
+    full = ask_llm_with_history(messages, timeout=timeout)
+    if full:
+        yield full

@@ -1,5 +1,11 @@
 [
   {
+    "version": "2026.4.18",
+    "date":    "2026-04-03",
+    "title":   "Full performance stack: streaming chat, keep_alive, token cap, system tuning",
+    "notes":   "- Perf: streaming LLM responses in Telegram chat (edits message every 1.5s, first text visible within 1-2s)\n- Perf: keep_alive passed in Ollama API body — model stays in VRAM 24h regardless of service setting\n- Perf: LOCAL_MAX_TOKENS=256 on SintAItion (was 512 default; cuts worst-case from 42s to 21s)\n- Perf: vm.swappiness=10 on SintAItion (reduces swap micro-stalls)\n- Perf: OLLAMA_NUM_PARALLEL=1 + OLLAMA_MAX_LOADED_MODELS=1 explicit in service\n- Perf: OLLAMA_KEEP_ALIVE=24h in service (overrides default 1h)\n- Add: ask_llm_stream() generator in bot_llm.py for incremental response delivery\n- Add: OLLAMA_KEEP_ALIVE config constant in bot_config.py"
+  },
+  {
     "version": "2026.4.17",
     "date":    "2026-04-03",
     "title":   "SintAItion LLM and STT performance tuning",
