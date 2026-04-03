@@ -95,9 +95,11 @@ Voice messages work in **all bot modes** — no separate Voice Session button is
 1. Open the bot in any mode (💬 **Chat**, 📝 **Notes**, 🗓 **Calendar**, etc.)
 2. In the Telegram input bar, hold the **🎤 microphone** button to record.
 3. Release to send the voice message.
-4. The bot transcribes your speech offline (Vosk), sends the text to the AI, and replies with both text and a Piper TTS voice note.
+4. The bot transcribes your speech offline, sends the text to the AI, and replies with both text and a Piper TTS voice note.
 
-> 🗣️ The STT model is selected automatically based on your Telegram language: Russian (`vosk-model-small-ru`) or German (`vosk-model-small-de`). For all other languages the Russian model is used.
+> 🗣️ **PicoClaw (Pi):** STT model selected by Telegram language — Russian (`vosk-model-small-ru`) or German (`vosk-model-small-de`).  
+> 🗣️ **OpenClaw (TariStation2 / SintAItion):** Uses **faster-whisper** (`small` model, int8) — more accurate than Vosk, all languages supported.  
+> ⏱️ On TariStation2, the first voice message after a bot restart may take **3–5 seconds longer** while the STT model loads. All subsequent messages are fast.
 
 ---
 
@@ -337,13 +339,24 @@ In the **Web Interface**, you can also manually change the language in ⚙️ Se
 
 ## Voice Requirements
 
-Voice recognition and speech synthesis run **fully offline** on the Pi — no cloud API needed.
+Voice recognition and speech synthesis run **fully offline** — no cloud API needed.
+
+### PicoClaw (Raspberry Pi)
 
 | Component | Details |
 |-----------|---------|
 | STT | Vosk `vosk-model-small-ru` (48 MB, Russian) + `vosk-model-small-de` (48 MB, German) |
 | TTS | Piper `ru_RU-irina-medium` (66 MB, Russian) + `de_DE-thorsten-medium.onnx` (65 MB, German) |
 | Audio HAT | Joy-IT RB-TalkingPI (for standalone voice assistant) |
+
+### OpenClaw (TariStation2 / SintAItion)
+
+| Component | Details |
+|-----------|---------|
+| STT | faster-whisper `small` model, int8 — RU 22% WER, DE 22% WER, EN 14% WER |
+| TTS | Piper `ru_RU-irina-medium` + `de_DE-thorsten-medium.onnx` (same as PicoClaw) |
+| Cold start | First voice message after restart: +3–5 s (STT model lazy-loads on TariStation2) |
+| SintAItion | STT model preloaded at startup — zero cold-start delay |
 
 ---
 
@@ -352,6 +365,8 @@ Voice recognition and speech synthesis run **fully offline** on the Pi — no cl
 | Problem | Likely cause | Fix |
 |---------|-------------|-----|
 | Bot doesn't respond | Service stopped | Admin: `sudo systemctl restart taris-telegram` |
+| First voice message very slow (+3–5 s) | STT model lazy-loading (TariStation2 only) | Normal on first message after restart; all subsequent messages are fast |
+| Menu buttons freeze / "query is too old" | Memory pressure (check swap with `free -m`) | Admin: verify `FASTER_WHISPER_PRELOAD=0` in bot.env; see admin guide |
 | Voice reply missing audio | Piper not installed | Run `setup_voice.sh` |
 | Mail digest fails | Gmail credentials expired | Check IMAP App Password in `bot.env` |
 | "Admins only" on System Chat | You are a guest user | Ask admin to upgrade your access |
