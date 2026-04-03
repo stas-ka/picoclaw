@@ -1,6 +1,6 @@
 # Taris — Deployment, File Layout & Configuration
 
-**Version:** `2026.4.1`  
+**Version:** `2026.4.24`  
 → Architecture index: [architecture.md](../architecture.md)
 
 ---
@@ -106,7 +106,16 @@ User (Telegram)
 | Host | Role | Deploy method | Web UI (local) | Web UI (public) | Telegram bot |
 |---|---|---|---|---|---|
 | **TariStation2** (local, `192.168.178.43`) | Engineering workstation | `cp src/... ~/.taris/...` + `systemctl --user restart taris-web` | `http://localhost:8080/` | `https://agents.sintaris.net/supertaris2/` | `@suppenclaw_bot` |
-| **TariStation1** / SintAItion (`192.168.178.154`) | Production workstation | `scp src/... stas@SintAItion:~/.taris/...` + SSH restart | `http://192.168.178.154:8080/` | `https://agents.sintaris.net/supertaris/` | `@supertaris_bot` |
+| **TariStation1** / SintAItion (`192.168.178.175`) | Production workstation | `scp src/... stas@SintAItion:~/.taris/...` + SSH restart | `http://192.168.178.175:8080/` | `https://agents.sintaris.net/supertaris/` | `@supertaris_bot` |
+
+**Remote access (SintAItion):**
+
+| Network | Address | How to use |
+|---|---|---|
+| Home LAN | `192.168.178.175` or `SintAItion` | Direct SSH/SCP |
+| Internet (Tailscale) | `100.112.120.3` | `source tools/use_tailscale.sh` → deploy as normal |
+
+> See [Admin Guide §13](../../doc/howto_admin.md#13-remote-access-from-internet) for full Tailscale setup and travel-laptop instructions.
 
 ### URL Routing Architecture (all 4 taris instances)
 

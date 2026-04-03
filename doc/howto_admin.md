@@ -1,6 +1,6 @@
 # Taris — Admin & Operator Guide
 
-**Version:** `2026.4.14`  
+**Version:** `2026.4.24`  
 **Applies to:** OpenClaw variant (`taris-openclaw` branch)  
 **Targets:** TariStation2 (engineering) · SintAItion / TariStation1 (production)  
 **User guide:** [howto_bot.md](howto_bot.md) · **Install guide:** [install-new-target.md](install-new-target.md)
@@ -18,6 +18,10 @@
 | Check swap | `swapon -s` |
 | Bot version | `grep BOT_VERSION ~/.taris/core/bot_config.py` |
 | Sync source → deploy | See §5 Deployment |
+| SSH to SintAItion (home) | `ssh stas@192.168.178.175` or `ssh stas@SintAItion` |
+| SSH to SintAItion (internet) | `ssh stas@100.112.120.3` (Tailscale) |
+| Switch to remote deploy mode | `source tools/use_tailscale.sh` |
+| Switch to LAN deploy mode | `source tools/use_lan.sh` |
 
 ---
 
@@ -38,7 +42,7 @@ Both targets run `DEVICE_VARIANT=openclaw` (`taris-openclaw` branch) but differ 
 | **GPU driver** | — | ROCm (via Ollama libs) |
 | **Storage** | SSD | SSD |
 | **Hostname** | `TariStation2` / `IniCoS-1` | `SintAItion` / `SintAItion.local` |
-| **Network** | LAN (home) | LAN + Tailscale |
+| **Network** | LAN (home) | LAN + Tailscale (`100.112.120.3`) |
 | **Services sharing host** | Ollama, Copilot CLI, Telegram Desktop, Firefox, n8n | Ollama only |
 
 ### Software Configuration Summary
@@ -433,6 +437,114 @@ See [howto_bot.md — Voice Settings](howto_bot.md) for the full list of toggles
 | Database connection errors | PostgreSQL not running | `systemctl status postgresql` |
 | STT cold-start delay (3–5s on first voice) | Expected on TariStation2 | Normal behavior with `FASTER_WHISPER_PRELOAD=0` |
 | High CPU on first voice message | FasterWhisper loading | Expected; subsequent messages use cached model |
+
+---
+
+---
+
+## 13. Remote Access from Internet
+
+### Overview
+
+| Target | Home (LAN) | Internet (Tailscale) |
+|---|---|---|
+| **SintAItion** | `ssh stas@192.168.178.175` or `ssh stas@SintAItion` | `ssh stas@100.112.120.3` |
+| **TariStation2** | local machine (`cp`, `systemctl --user`) | — (home-only machine) |
+| SSH password | `buerger` | `buerger` |
+
+> **Tailscale** creates an encrypted point-to-point tunnel. No port forwarding or VPN configuration needed. Works from any network including mobile hotspot.
+
+---
+
+### SintAItion — Tailscale Setup (done 2026-04-03)
+
+- **Tailscale IP:** `100.112.120.3`
+- **Tailscale hostname:** `sintaition`
+- **Account:** `stanislav.ulmer@`
+- `tailscaled` service: enabled + auto-starts on boot
+
+Verify connectivity:
+```bash
+ssh stas@100.112.120.3
+# or
+echo 'buerger' | sudo -S tailscale status
+```
+
+---
+
+### One-Time Setup — Travel Laptop
+
+Install Tailscale on your travel/development laptop:
+
+```bash
+# Linux / macOS
+curl -fsSL https://tailscale.com/install.sh | sh
+sudo tailscale up
+# → authorize in browser with stanislav.ulmer@ account
+```
+
+After authorization, verify:
+```bash
+ssh stas@100.112.120.3   # SintAItion reachable from anywhere
+```
+
+---
+
+### Deploying to SintAItion from Internet
+
+**Switch to Tailscale mode** (sets `OPENCLAW1_HOST=100.112.120.3`):
+
+```bash
+cd /path/to/sintaris-pl
+source tools/use_tailscale.sh
+```
+
+Then deploy as normal (all `sshpass`/`scp` commands use `OPENCLAW1_HOST`):
+
+```bash
+# Example: deploy bot_config.py
+sshpass -p "$OPENCLAW1PWD" scp -o StrictHostKeyChecking=no \
+    src/core/bot_config.py stas@$OPENCLAW1_HOST:~/.taris/core/
+
+# Restart services
+sshpass -p "$OPENCLAW1PWD" ssh -o StrictHostKeyChecking=no stas@$OPENCLAW1_HOST \
+    "systemctl --user restart taris-telegram taris-web"
+```
+
+**Switch back to LAN mode** (when at home):
+
+```bash
+source tools/use_lan.sh
+```
+
+---
+
+### `.env` Variables
+
+| Variable | Value | Purpose |
+|---|---|---|
+| `OPENCLAW1_HOST` | `SintAItion` (home) or `100.112.120.3` (travel) | Used by all deploy commands |
+| `OPENCLAW1_TAILSCALE_IP` | `100.112.120.3` | Permanent record of Tailscale IP |
+| `OPENCLAW1_LAN_IP` | `192.168.178.175` | Permanent record of LAN IP |
+| `OPENCLAW1PWD` | `buerger` | SSH password |
+
+> **Never commit `.env`** — it contains credentials. It is gitignored.
+
+---
+
+### Troubleshooting Remote Access
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| `ssh: connect to host 100.112.120.3 port 22: No route to host` | Tailscale not running on laptop | `sudo tailscale up` on laptop |
+| `ssh: connect to host 100.112.120.3 port 22: Connection refused` | `tailscaled` stopped on SintAItion | `ssh stas@192.168.178.175 "sudo systemctl restart tailscaled"` (from home) |
+| `Permission denied (publickey,password)` | Wrong password | password is `buerger` |
+| SSH hangs (no output) | Network issue / Tailscale relay | Wait 10s; retry; check `tailscale status` on both machines |
+| `OPENCLAW1_HOST` not updated | `use_tailscale.sh` not sourced | Run `source tools/use_tailscale.sh` |
+
+---
+
+*See also: §7 Network Configuration for SintAItion LAN fixes (EEE, route metrics, IPv4 preference)*
 
 ---
 
