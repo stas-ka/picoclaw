@@ -5,9 +5,10 @@ description: >
   new skills/prompts, or any structural change. Syncs: doc/architecture/*.md topic files,
   doc/bot-code-map.md, TODO.md (with links to doc/todo/ spec files), README.md,
   Copilot skill registry, Web UI route inventory, User Guide (doc/howto_bot.md),
-  and in-bot Help text (strings.json help_* keys).
+  Admin Guide (doc/howto_admin.md), in-bot Help text (strings.json help_* keys),
+  and uploads updated guides to both targets as RAG documents.
 argument-hint: >
-  Scope: all | arch | code-map | readme | todo | user-guide | help
+  Scope: all | arch | code-map | readme | todo | user-guide | admin-guide | help
   Optionally: list of changed files (space-separated, e.g. "src/bot_web.py src/telegram_menu_bot.py")
 ---
 
@@ -23,7 +24,9 @@ argument-hint: >
 | New Copilot skill / prompt added | `readme` + Copilot registry |
 | TODO item completed | `todo` |
 | New `doc/todo/*.md` spec file created | `todo` |
-| User-facing feature added | `user-guide` + `help` |
+| User-facing feature added | `user-guide` + `help` + `rag-upload` |
+| Admin config / deployment changed | `admin-guide` + `rag-upload` |
+| Performance tuning / target config changed | `admin-guide` + `rag-upload` |
 | `strings.json` help_* keys changed | `help` |
 | Architecture restructured | `arch` + `code-map` |
 
@@ -35,13 +38,15 @@ Read the argument (or infer from changed files) and limit work to the relevant s
 
 | Scope | Steps to run |
 |---|---|
-| `all` | Steps 0 → 10 |
+| `all` | Steps 0 → 12 |
 | `arch` | Steps 0, 2 |
 | `code-map` | Steps 0, 3 |
 | `readme` | Steps 0, 5, 6 |
 | `todo` | Steps 0, 4 |
-| `user-guide` | Steps 0, 8, 8b |
+| `user-guide` | Steps 0, 8, 8b, 12 |
+| `admin-guide` | Steps 0, 7a, 12 |
 | `help` | Steps 0, 8, 8b, 9 |
+| `rag-upload` | Step 12 only |
 
 When in doubt, run `all`.
 
@@ -252,6 +257,28 @@ Auth column values: `—` (public) · `✅` (user) · `✅ admin` (admin only).
 
 ---
 
+### Step 7a — Update Admin Guide (`doc/howto_admin.md`)
+
+Update when admin-relevant config, deployment, performance tuning, or target-specific settings change.
+
+**File:** `doc/howto_admin.md`  
+**Version header:** update `**Version:**` line to match `BOT_VERSION`.
+
+Rules:
+- Add a new section or subsection for any new admin-facing feature (LLM config, STT tuning, target differences, service management, deployment pipeline).
+- Update §2 (Target Comparison) when hardware, software stack, or runtime config of either target changes.
+- Update §5 (Deployment) if the deploy workflow changes.
+- Update §4 (Configuration Reference) when new `bot.env` variables are added.
+- Update §7 (Troubleshooting) when new failure modes or their fixes are discovered.
+- Do _not_ describe user-facing features here — link to `doc/howto_bot.md` instead.
+- Do _not_ expose secrets or private IPs.
+
+Check current content against `doc/architecture/openclaw-integration.md`, `doc/architecture/deployment.md`, and `src/core/bot_config.py` for new constants.
+
+> After updating `doc/howto_admin.md`, always run Step 12 to upload the refreshed guide to both targets.
+
+---
+
 ### Step 8 — Update User Guide (`doc/howto_bot.md`)
 
 Update when a user-facing feature is added, changed, or renamed.
@@ -264,6 +291,8 @@ Rules:
 - Do _not_ add implementation details — this is a user guide, not a technical reference.
 
 Check `doc/howto_bot.md` sections against the current menu structure in `src/telegram/bot_access.py` (`_menu_keyboard`) and `src/telegram_menu_bot.py`.
+
+> After updating `doc/howto_bot.md`, always run Step 12 to upload the refreshed guide to both targets.
 
 ---
 
@@ -335,14 +364,79 @@ All three languages must have identical key sets (T13).
 
 Stage and commit all documentation changes:
 
-```bat
-cd /d d:\Projects\workspace\taris
-git add doc/ README.md TODO.md src/strings.json .github/copilot-instructions.md .github/prompts/ .github/skills/
+```bash
+cd /home/stas/projects/sintaris-pl
+git add doc/ README.md TODO.md src/strings.json src/setup/load_system_docs.py \
+        .github/copilot-instructions.md .github/prompts/ .github/skills/
 git commit -m "docs: sync documentation with vX.Y.Z changes"
 ```
 
 Use `docs:` commit prefix for documentation-only changes.  
 Use `feat: <feature> + docs:` for commits that include both code and documentation.
+
+---
+
+### Step 12 — Upload guides to targets (RAG)
+
+Run after **any** change to `doc/howto_bot.md` or `doc/howto_admin.md`.  
+This refreshes the shared RAG documents that all users see in every conversation.
+
+#### TariStation2 (local)
+
+```bash
+# Copy updated guides
+cp /home/stas/projects/sintaris-pl/doc/howto_bot.md   /home/stas/.taris/doc/
+cp /home/stas/projects/sintaris-pl/doc/howto_admin.md /home/stas/.taris/doc/
+cp /home/stas/projects/sintaris-pl/src/setup/load_system_docs.py /home/stas/.taris/setup/
+
+# Run the loader (--force re-ingests even if hash unchanged)
+cd /home/stas/.taris && PYTHONPATH=/home/stas/.taris python3 setup/load_system_docs.py --force
+```
+
+Expected output:
+```
+INFO Found user guide: /home/stas/.taris/doc/howto_bot.md (NNNN chars)
+INFO Found admin guide: /home/stas/.taris/doc/howto_admin.md (NNNN chars)
+INFO [taris_user_guide] N chunks, N embedded
+INFO [taris_admin_guide] N chunks, N embedded
+INFO System docs loaded.
+```
+
+#### SintAItion / TariStation1 (remote)
+
+```bash
+# Load .env for credentials
+set -a && source /home/stas/projects/sintaris-pl/.env && set +a
+
+# Copy guide files
+sshpass -p "$OPENCLAW1PWD" scp -o StrictHostKeyChecking=no \
+    /home/stas/projects/sintaris-pl/doc/howto_bot.md \
+    /home/stas/projects/sintaris-pl/doc/howto_admin.md \
+    stas@SintAItion.local:~/.taris/doc/
+
+# Copy updated loader
+sshpass -p "$OPENCLAW1PWD" scp -o StrictHostKeyChecking=no \
+    /home/stas/projects/sintaris-pl/src/setup/load_system_docs.py \
+    stas@SintAItion.local:~/.taris/setup/
+
+# Run the loader on SintAItion
+sshpass -p "$OPENCLAW1PWD" ssh -o StrictHostKeyChecking=no stas@SintAItion.local \
+    "cd ~/.taris && PYTHONPATH=~/.taris python3 setup/load_system_docs.py --force"
+```
+
+#### Verification
+
+After loading, verify the docs appear in RAG by asking the bot:
+> "What is the taris admin guide?" / "What are the supported voice commands?"
+
+Both questions should return content from the respective guide, not "I don't know".
+
+#### When to skip
+
+Skip Step 12 if:
+- Only architecture docs (`doc/architecture/*.md`) changed — these are NOT loaded into RAG
+- Only code changes with no doc update
+- Target is offline (note in commit message: "RAG upload pending — target offline")
 
 ---
 
@@ -359,7 +453,9 @@ Use `feat: <feature> + docs:` for commits that include both code and documentati
 | `doc/architecture/` version headers updated | All edited topic files have updated `**Version:**` | Update version line |
 | `doc/bot-code-map.md` callback table complete | Every callback key in `telegram_menu_bot.py` has a row in the table | Add missing rows |
 | User Guide matches current menu | `doc/howto_bot.md` sections match `_menu_keyboard()` in `bot_access.py` | Update mismatched sections |
+| Admin Guide version matches BOT_VERSION | `**Version:**` in `doc/howto_admin.md` matches `BOT_VERSION` | Update version line |
 | Help text present in all 3 languages | `help_text*` keys exist in `ru`, `en`, `de` in `strings.json` | Add missing translations |
 | Playwright tests pass (Web UI changes) | All `test_ui.py` assertions pass against PI2 | Fix route/label mismatch before committing |
 | `doc/architecture.md` index updated | Every `doc/architecture/*.md` file has a row in the index table | Add missing row to Topic Index |
+| RAG upload done on both targets | `load_system_docs.py --force` ran on TariStation2 and SintAItion after guide changes | Run Step 12 |
 | Git diff is clean after commit | `git status` shows no unstaged changes in `doc/` or tracked doc files | Stage and commit missing files |

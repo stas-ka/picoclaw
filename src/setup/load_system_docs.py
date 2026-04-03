@@ -6,8 +6,9 @@ Two "virtual" knowledge sources are created as shared documents owned by
 the system user (chat_id = 0):
 
   1. taris_user_guide   — doc/howto_bot.md: usage for regular users
-  2. taris_admin_guide  — README.md + architecture/overview.md: full technical
-                          reference for admins (architecture, hardware, config)
+  2. taris_admin_guide  — doc/howto_admin.md: admin & operator reference
+                          (falls back to README.md + architecture/overview.md
+                           if howto_admin.md is not present)
 
 Documents are marked is_shared=1 so ALL users get them in RAG context.
 Run once after deployment, or re-run to refresh after doc updates.
@@ -64,19 +65,26 @@ def _load_docs(force: bool = False) -> None:
     else:
         log.warning("howto_bot.md not found — skipping user guide")
 
-    # --- Admin guide: README + architecture overview ---
-    readme = _resolve_doc("README.md")
-    overview = _resolve_doc("doc/architecture/overview.md")
-    admin_parts = []
-    if readme:
-        admin_parts.append(f"# Taris README\n\n{readme.read_text(encoding='utf-8')}")
-        log.info("Found README: %s", readme)
-    if overview:
-        admin_parts.append(f"# Architecture Overview\n\n{overview.read_text(encoding='utf-8')}")
-        log.info("Found overview: %s", overview)
-    if admin_parts:
-        admin_text = "\n\n---\n\n".join(admin_parts)
-        sources.append(("taris_admin_guide", "🔧 Taris — Admin & Technical Guide", admin_text))
+    # --- Admin guide: howto_admin.md (preferred) or README + overview ---
+    admin_guide = _resolve_doc("doc/howto_admin.md")
+    if admin_guide:
+        admin_text = admin_guide.read_text(encoding="utf-8")
+        log.info("Found admin guide: %s (%d chars)", admin_guide, len(admin_text))
+        sources.append(("taris_admin_guide", "🔧 Taris — Admin & Operator Guide", admin_text))
+    else:
+        log.warning("howto_admin.md not found — falling back to README + overview")
+        readme = _resolve_doc("README.md")
+        overview = _resolve_doc("doc/architecture/overview.md")
+        admin_parts = []
+        if readme:
+            admin_parts.append(f"# Taris README\n\n{readme.read_text(encoding='utf-8')}")
+            log.info("Found README: %s", readme)
+        if overview:
+            admin_parts.append(f"# Architecture Overview\n\n{overview.read_text(encoding='utf-8')}")
+            log.info("Found overview: %s", overview)
+        if admin_parts:
+            admin_text = "\n\n---\n\n".join(admin_parts)
+            sources.append(("taris_admin_guide", "🔧 Taris — Admin & Technical Guide", admin_text))
 
     if not sources:
         log.error("No source documents found — nothing loaded")
