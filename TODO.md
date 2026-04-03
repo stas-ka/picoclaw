@@ -11,6 +11,7 @@
 - [x] Delete personal context (memory) for User via Profile menu — `profile_clear_memory` button + handler wired in profile.yaml + telegram_menu_bot.py (v2026.3.30+)
 - [x] Static texts hardcoded in Python — `bot_calendar.py` `cal_event_saved_prefix`, `bot_voice.py` `audio_interrupted` + `voice_note_msg` moved to strings.json; T55 regression test added (v2026.3.30+1)
 
+
 ### ⏳ Infrastructure / Hardware (cannot fix in code)
 - [] PI2 missing Piper ONNX models (`ru_RU-irina-medium.onnx`, `.onnx.json`) — PI2 offline; install on next access
 - [] PI1 missing `migrate_to_db.py` at expected path — PI1 frozen (demo); fix after demo
@@ -19,6 +20,18 @@
 - [] PI2 has no Whisper model (`ggml-base.bin`) — PI2 offline; install on next access
 - [] Vosk WER regression on short audio (`audio_2026-03-08_08-34-23.ogg`) — WER 0.70 vs threshold 0.35; Pi-only (TariStation2 uses faster-whisper); tune model or adjust threshold when Pi is online
 
+## 0.1 Update Documntation
+
+1. Create `doc/howto_admin.md` - a proper standalone admin guide covering:
+   - Configuration for both TariStation2 and SintAItion
+   - Network setup, software stacks, memory tuning
+   - All the performance optimizations from yesterday
+2. Update `doc/howto_bot.md` (user guide) with any relevant user-facing changes
+3. Create `doc/performance-report-2026-04-02.md` - performance report
+
+4. Update `src/setup/load_system_docs.py` to use the new `howto_admin.md` instead of README + overview
+5. Update `doc/architecture/openclaw-integration.md` with current config info
+6. Update uploaded user guide in Taris client
 
 ## 1. Access & Security
 
