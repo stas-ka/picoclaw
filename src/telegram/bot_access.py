@@ -183,6 +183,82 @@ def _bot_config_block() -> str:
     )
 
 
+def _calendar_context(chat_id: int) -> str:
+    """Return a compact [CALENDAR] block with upcoming events (next 14 days), or empty string."""
+    try:
+        from core.store import store
+        from datetime import datetime, timedelta
+        now = datetime.now()
+        from_dt = now.isoformat(timespec="seconds")
+        to_dt   = (now + timedelta(days=14)).isoformat(timespec="seconds")
+        events  = store.load_events(chat_id, from_dt=from_dt, to_dt=to_dt)
+        if not events:
+            return ""
+        lines = ["[CALENDAR — upcoming events (next 14 days)]"]
+        for ev in events[:20]:
+            dt_str = ev.get("dt_iso", "")
+            try:
+                dt_fmt = datetime.fromisoformat(dt_str).strftime("%Y-%m-%d %H:%M")
+            except Exception:
+                dt_fmt = dt_str
+            lines.append(f"  • {dt_fmt}  {ev.get('title', '')}")
+        lines.append("[END CALENDAR]\n")
+        return "\n".join(lines) + "\n"
+    except Exception:
+        return ""
+
+
+def _notes_context(chat_id: int) -> str:
+    """Return a [NOTES] block listing user's notes with content snippets, or empty string."""
+    try:
+        from core.store import store
+        notes = store.list_notes(chat_id)
+        if not notes:
+            return ""
+        lines = ["[NOTES — personal notes]"]
+        for note in notes[:10]:
+            title = note.get("title") or "(untitled)"
+            slug  = note.get("slug", "")
+            content = ""
+            try:
+                full = store.load_note(chat_id, slug)
+                content = (full.get("content") or "").strip()
+            except Exception:
+                pass
+            snippet = (content[:200] + "…") if len(content) > 200 else content
+            if snippet:
+                lines.append(f"  • {title}: {snippet}")
+            else:
+                lines.append(f"  • {title}")
+        lines.append("[END NOTES]\n")
+        return "\n".join(lines) + "\n"
+    except Exception:
+        return ""
+
+
+def _contacts_context(chat_id: int) -> str:
+    """Return a compact [CONTACTS] block with user's contact list, or empty string."""
+    try:
+        from core.store import store
+        contacts = store.list_contacts(chat_id)
+        if not contacts:
+            return ""
+        lines = ["[CONTACTS]"]
+        for c in contacts[:50]:
+            parts = [c.get("name", "")]
+            if c.get("phone"):
+                parts.append(c["phone"])
+            if c.get("email"):
+                parts.append(c["email"])
+            if c.get("notes"):
+                parts.append(f"({c['notes'][:80]})")
+            lines.append("  • " + "  ".join(parts))
+        lines.append("[END CONTACTS]\n")
+        return "\n".join(lines) + "\n"
+    except Exception:
+        return ""
+
+
 def _docs_rag_context(chat_id: int, query: str) -> str:
     """Return a [KNOWLEDGE] context block from user's documents, or empty string.
 
@@ -280,9 +356,8 @@ def _with_lang(chat_id: int, user_text: str) -> str:
 def _build_system_message(chat_id: int, user_text: str = "") -> str:
     """Build the content for a role:system message in multi-turn LLM calls.
 
-    Contains: security preamble + bot config + memory context note + language instruction.
-    The same content was previously crammed into the last user turn via _with_lang(),
-    which meant history messages lacked framing and the LLM didn't know who it was.
+    Contains: security preamble + bot config + personal data context
+    (calendar, notes, contacts) + memory context note + language instruction.
     """
     from security.bot_security import SECURITY_PREAMBLE
     lang = _resolve_lang(chat_id, user_text)
@@ -291,7 +366,8 @@ def _build_system_message(chat_id: int, user_text: str = "") -> str:
         "You have access to the conversation history shown in this context. "
         "Use it to maintain coherent, context-aware responses across all turns.\n\n"
     )
-    return SECURITY_PREAMBLE + _bot_config_block() + memory_note + lang_instr
+    personal_ctx = _calendar_context(chat_id) + _notes_context(chat_id) + _contacts_context(chat_id)
+    return SECURITY_PREAMBLE + _bot_config_block() + personal_ctx + memory_note + lang_instr
 
 
 def _user_turn_content(chat_id: int, user_text: str) -> str:

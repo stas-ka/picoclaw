@@ -6394,6 +6394,35 @@ def t_startup_memory_check(**_) -> list[TestResult]:
     return results
 
 
+# ── T97 — Personal data context injection ─────────────────────────────────
+def t_personal_context_injection(**_) -> list[TestResult]:
+    """T97 — _calendar_context, _notes_context, _contacts_context defined in bot_access.py
+    and wired into _build_system_message()."""
+    results = []
+    try:
+        src = open("src/telegram/bot_access.py", encoding="utf-8").read()
+    except FileNotFoundError:
+        src = open("telegram/bot_access.py", encoding="utf-8").read()
+
+    checks = [
+        ("_calendar_context_defined",    "def _calendar_context(" in src),
+        ("_notes_context_defined",       "def _notes_context(" in src),
+        ("_contacts_context_defined",    "def _contacts_context(" in src),
+        ("calendar_in_build_system",     "_calendar_context(chat_id)" in src),
+        ("notes_in_build_system",        "_notes_context(chat_id)" in src),
+        ("contacts_in_build_system",     "_contacts_context(chat_id)" in src),
+        ("personal_ctx_var",             "personal_ctx" in src),
+    ]
+    for name, ok in checks:
+        results.append(TestResult(
+            f"personal_context_{name}",
+            "PASS" if ok else "FAIL",
+            0.0,
+            f"{'found' if ok else 'MISSING'}: {name}",
+        ))
+    return results
+
+
 TEST_FUNCTIONS = [
     t_piper_json_present,
     t_tmpfs_model_complete,
@@ -6561,6 +6590,8 @@ TEST_FUNCTIONS = [
     t_tail_log_no_readlines,
     # Startup memory warning via /proc/meminfo (no psutil dep) (T96)
     t_startup_memory_check,
+    # Personal data context injection: calendar/notes/contacts in _build_system_message (T97)
+    t_personal_context_injection,
 ]
 
 
